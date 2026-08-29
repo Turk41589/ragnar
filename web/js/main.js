@@ -395,6 +395,7 @@ const ctx = {
       ? Math.round((Date.now() - speech.getLastResultAt()) / 1000)
       : null;
 
+    const stats = speech.getStats();
     const voices = window.speechSynthesis?.getVoices?.() || [];
     const trVoice = voices.find((v) => v.lang?.toLowerCase().startsWith("tr"));
 
@@ -413,6 +414,10 @@ const ctx = {
         ? "Son tanima sonucu: mikrofon kapali"
         : `Son tanima sonucu: ${sinceResult} saniye once`,
       `Turkce konusma sesi: ${trVoice ? trVoice.name : "yok (sistem varsayilani kullanilacak)"}`,
+      `Kullanilan ayar: ${speech.currentProfile()?.name ?? "—"}`,
+      `Motor: ${stats.starts} kez basladi, ${stats.ends} kez bitti, ` +
+        `${stats.results} sonuc uretti` +
+        (stats.lastError ? `, son hata: ${stats.lastError}` : ""),
     ];
 
     hud.log("system", lines.join("\n"));
@@ -644,10 +649,10 @@ async function enableMicInner() {
     hud.sleepStatus("Mikrofona erisilemedi. Tarayici izinlerini kontrol edin.", "error");
   }
 
-  const started = speech.startListening({ processLocally });
-  if (!started) return;
-
   resetRecognitionHealth();
+  const profiles = processLocally ? speech.LOCAL_PROFILES : speech.CLOUD_PROFILES;
+  const started = speech.startListening(profiles[0]);
+  if (!started) return;
 
   state.micEnabled = true;
   dom.btnEnable.textContent = "Mikrofon acik";
@@ -660,56 +665,85 @@ async function enableMicInner() {
 let levelRaf = null;
 
 /* --- sessiz ariza gozcusu ------------------------------------------------
- * Mikrofon ses aliyor ama tanima motoru hic sonuc uretmiyorsa DRA sessizce
- * bekler ve kullanici neden cevap gelmedigini anlayamaz. Bu gozcu tam olarak
- * o durumu yakalar: konusma duyuldu, ama tanimadan metin gelmedi.
+ * Mikrofon ses aliyor ama tanima motoru hic sonuc uretmiyorsa, sorun
+ * genelde o tarayici surumunun secenek kombinasyonunu desteklememesidir —
+ * hata vermez, sadece susar. Bu gozcu durumu yakalar ve siradaki ayari
+ * dener. Hepsi tukenirse kullaniciya durumu acikca soyler.
  */
 const SPEECH_LEVEL = 0.18;      // "konusuluyor" sayilan seviye
-const SPEECH_NEEDED_MS = 3500;  // bu kadar konusma birikince
-const SILENCE_LIMIT_MS = 12000; // ve bu sure sonuc gelmezse uyar
+const SPEECH_NEEDED_MS = 3000;  // bu kadar konusma birikince
+const SILENCE_LIMIT_MS = 9000;  // ve bu sure sonuc gelmezse profili degistir
 
 let speakingMs = 0;
 let lastFrameAt = 0;
-let warnedNoResults = false;
+let profileIndex = 0;
+let gaveUp = false;
+
+/**
+ * Gizlilik ayarina gore denenebilecek profiller.
+ * Anahtar aciksa ses cihazdan cikmamali — yalnizca yerel profiller.
+ * Kapaliysa kullanici tarayici servisini bilerek secmis demektir.
+ */
+function availableProfiles() {
+  return store.localSpeechOnly ? speech.LOCAL_PROFILES : speech.CLOUD_PROFILES;
+}
 
 function checkRecognitionHealth(level, now) {
-  if (!speech.isListening()) return;
+  if (!speech.isListening() || gaveUp) return;
 
   const delta = lastFrameAt ? now - lastFrameAt : 0;
   lastFrameAt = now;
 
   if (level > SPEECH_LEVEL) speakingMs += delta;
 
-  // Tanimadan sonuc geldiyse her sey yolunda: sayaci sifirla.
+  // Sonuc geliyorsa her sey yolunda.
   if (now - speech.getLastResultAt() < SILENCE_LIMIT_MS) {
     speakingMs = 0;
     return;
   }
-  if (speakingMs < SPEECH_NEEDED_MS || warnedNoResults) return;
+  if (speakingMs < SPEECH_NEEDED_MS) return;
 
-  warnedNoResults = true;
-  const local = speech.isLocalRecognition();
-  const message = local
-    ? "Sesinizi duyuyorum ama cihaz uzerindeki Turkce ses tanima sonuc uretmiyor. " +
-      "Ayar sekmesinden \"Sesi cihazda tut\" anahtarini kapatirsaniz tarayicinin " +
-      "kendi servisi devreye girer (sesiniz tarayici saticisina gider). " +
-      "Ya da yazarak devam edebilirsiniz — tum komutlar ayni sekilde calisir."
-    : "Sesinizi duyuyorum ama ses tanima sonuc uretmiyor. Chrome'un dil ayarlarini " +
-      "ve internet baglantinizi kontrol edin. Yazarak devam edebilirsiniz.";
+  // Konusma duyuldu ama sonuc yok: siradaki ayari dene.
+  speakingMs = 0;
+  const profiles = availableProfiles();
+  profileIndex += 1;
 
-  hud.log("system", message);
-  hud.toast("Ses tanima sonuc uretmiyor — sohbet paneline bakin", 7000);
-  if (state.current === S.SLEEPING) {
-    hud.sleepStatus("Ses geliyor ama tanima sonuc uretmiyor", "error");
+  if (profileIndex < profiles.length) {
+    const next = profiles[profileIndex];
+    hud.log(
+      "system",
+      `Ses geliyor ama tanima sonuc uretmedi. Farkli bir ayar deneniyor: ${next.name}`,
+    );
+    hud.toast(`Ses tanima ayari deneniyor: ${next.name}`, 4000);
+    speech.startListening(next);
+    hud.setPrivacyPill(speech.isLocalRecognition() ? "local" : "cloud");
+    return;
   }
-  console.warn("[dra] ses tanima sonuc uretmiyor. cihaz ustu mod:", local);
+
+  gaveUp = true;
+  hud.log(
+    "system",
+    store.localSpeechOnly
+      ? "Cihaz uzerindeki ses tanimanin tum ayarlari denendi, hicbiri sonuc " +
+        "uretmedi. Bu tarayici surumunde cihaz ustu Turkce tanima calismiyor " +
+        "gorunuyor. Ayar sekmesinden \"Sesi cihazda tut\" anahtarini kapatirsaniz " +
+        "tarayicinin kendi servisi denenir (sesiniz tarayici saticisina gider). " +
+        "Ya da yazarak devam edin — tum komutlar ayni sekilde calisir."
+      : "Ses tanimanin hicbir ayari sonuc uretmedi. Chrome dil ayarlarini ve " +
+        "internet baglantinizi kontrol edin. Yazarak devam edebilirsiniz.",
+  );
+  hud.toast("Ses tanima calismiyor — sohbet paneline bakin", 8000);
+  if (state.current === S.SLEEPING) {
+    hud.sleepStatus("Ses tanima sonuc uretmiyor — yazarak kullanin", "error");
+  }
 }
 
 /** Gozcuyu sifirlar (mikrofon yeniden acildiginda). */
 function resetRecognitionHealth() {
   speakingMs = 0;
   lastFrameAt = 0;
-  warnedNoResults = false;
+  profileIndex = 0;
+  gaveUp = false;
 }
 
 function pollLevel() {

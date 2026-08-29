@@ -65,15 +65,22 @@ let deafUntil = 0;
 let lastResultAt = 0;
 export const getLastResultAt = () => lastResultAt;
 
-function buildRecognition({ processLocally }) {
+/**
+ * Tanima motorunun yasam dongusu sayaclari.
+ * Motor baslayip hemen bitiyorsa (sessiz ariza) bunu ancak buradan gorurus.
+ */
+const stats = { starts: 0, ends: 0, results: 0, lastError: null };
+export const getStats = () => ({ ...stats, profile: currentOptions?.name ?? null });
+
+function buildRecognition(options) {
   const rec = new SpeechRecognition();
   rec.lang = "tr-TR";
-  rec.continuous = true;
-  rec.interimResults = true;
-  rec.maxAlternatives = 3;
+  rec.continuous = options.continuous;
+  rec.interimResults = options.interimResults;
+  rec.maxAlternatives = options.maxAlternatives;
 
   // Destekleyen tarayicilarda sesin cihazdan cikmamasini saglar.
-  if (processLocally && "processLocally" in rec) {
+  if (options.processLocally && "processLocally" in rec) {
     rec.processLocally = true;
     localActive = true;
   } else {
@@ -82,11 +89,13 @@ function buildRecognition({ processLocally }) {
 
   rec.onstart = () => {
     running = true;
+    stats.starts += 1;
     emit("mic", { status: "on" });
   };
 
   rec.onresult = (event) => {
     lastResultAt = Date.now();
+    stats.results += 1;
     if (Date.now() < deafUntil) return;
 
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
@@ -110,6 +119,7 @@ function buildRecognition({ processLocally }) {
 
   rec.onerror = (event) => {
     const err = event.error;
+    stats.lastError = err;
     // "no-speech" ve "aborted" normal akisin parcasi — sessizce yeniden baslar.
     if (err === "no-speech" || err === "aborted") return;
 
@@ -140,6 +150,7 @@ function buildRecognition({ processLocally }) {
 
   rec.onend = () => {
     running = false;
+    stats.ends += 1;
     if (!wantRunning) {
       emit("mic", { status: "off" });
       return;
@@ -161,10 +172,41 @@ function buildRecognition({ processLocally }) {
 }
 
 /**
- * Surekli dinlemeyi baslatir.
- * `processLocally` true ise tanima cihaz uzerinde zorlanir.
+ * Denenecek tanima ayarlari, sirayla.
+ *
+ * Cihaz ustu tanima her tarayici surumunde ayni secenekleri desteklemiyor;
+ * bazi kombinasyonlarda hata vermeden hic sonuc uretmiyor. Tek bir ayara
+ * bel baglamak yerine calisani buluyoruz.
  */
-export function startListening({ processLocally = false } = {}) {
+export const PROFILES = [
+  {
+    name: "cihazda · surekli",
+    processLocally: true, continuous: true, interimResults: true, maxAlternatives: 3,
+  },
+  {
+    name: "cihazda · sade",
+    processLocally: true, continuous: true, interimResults: false, maxAlternatives: 1,
+  },
+  {
+    name: "cihazda · kisa dinleme",
+    processLocally: true, continuous: false, interimResults: true, maxAlternatives: 1,
+  },
+  {
+    name: "tarayici servisi · surekli",
+    processLocally: false, continuous: true, interimResults: true, maxAlternatives: 3,
+  },
+];
+
+/** Cihazdan cikmayan profiller (gizlilik anahtari acikken kullanilir). */
+export const LOCAL_PROFILES = PROFILES.filter((p) => p.processLocally);
+
+/** Tarayicinin kendi servisini kullanan profiller (anahtar kapaliyken). */
+export const CLOUD_PROFILES = PROFILES.filter((p) => !p.processLocally);
+
+let currentOptions = null;
+
+/** Surekli dinlemeyi verilen profil ile baslatir. */
+export function startListening(profile = PROFILES[0]) {
   if (!speechSupported) {
     emit("mic", {
       status: "unsupported",
@@ -172,12 +214,18 @@ export function startListening({ processLocally = false } = {}) {
     });
     return false;
   }
-  // Mod degistiyse tanimayi yeniden kur.
-  if (recognition && localActive !== Boolean(processLocally)) {
+
+  // Profil degistiyse motoru bastan kur.
+  if (recognition && currentOptions?.name !== profile.name) {
     stopListening();
     recognition = null;
   }
-  if (!recognition) recognition = buildRecognition({ processLocally });
+
+  if (!recognition) {
+    currentOptions = profile;
+    recognition = buildRecognition(profile);
+  }
+
   wantRunning = true;
   lastResultAt = Date.now();
   if (running) return true;
@@ -188,6 +236,9 @@ export function startListening({ processLocally = false } = {}) {
   }
   return true;
 }
+
+/** Su an kullanilan profil. */
+export const currentProfile = () => currentOptions;
 
 /** Dinlemeyi tamamen durdurur. */
 export function stopListening() {

@@ -99,6 +99,26 @@ export async function run(page, base, t, { external }) {
   t.eq(settings.theme, [186, 122, 255], "tema secilebiliyor");
   t.eq(settings.css, "186", "tema CSS'e uygulaniyor");
 
+  /* ------------------------------------------- ses tanima profilleri --- */
+  const profiles = await page.evaluate(async () => {
+    const sp = await import("/js/speech.js");
+    return {
+      hepsi: sp.PROFILES.length,
+      yerel: sp.LOCAL_PROFILES.map((p) => p.processLocally),
+      bulut: sp.CLOUD_PROFILES.map((p) => p.processLocally),
+      adlar: sp.PROFILES.map((p) => p.name),
+    };
+  });
+  t.ok(profiles.yerel.length > 1, "birden fazla cihaz ustu ayar deneniyor");
+  t.ok(profiles.yerel.every((v) => v === true), "yerel profillerin hepsi cihazda isliyor");
+  t.ok(profiles.bulut.every((v) => v === false), "bulut profilleri cihazda islemiyor");
+  t.eq(
+    profiles.yerel.length + profiles.bulut.length,
+    profiles.hepsi,
+    "profiller yerel/bulut olarak eksiksiz ayrilmis",
+  );
+  t.ok(new Set(profiles.adlar).size === profiles.hepsi, "profil adlari benzersiz");
+
   /* ------------------------------------------------------------ teshis - */
   await page.click("#set-diag");
   await page.waitForTimeout(600);
