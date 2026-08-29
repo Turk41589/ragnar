@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>DRA</title>
+    <meta name="description" content="DRA — sesle uyanan, JARVIS tarzi kisisel yapay zeka asistani." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='none' stroke='%2335e6ff' stroke-width='2'/><circle cx='16' cy='16' r='5' fill='%2335e6ff'/></svg>" />
+    <link rel="stylesheet" href="./css/core.css" />
+    <link rel="stylesheet" href="./css/hud.css" />
+  </head>
+  <body data-state="sleeping">
+    <!-- Arka plan katmanlari -->
+    <div class="backdrop" aria-hidden="true">
+      <div class="backdrop__glow"></div>
+      <div class="backdrop__grid"></div>
+      <div class="backdrop__scan"></div>
+      <div class="backdrop__vignette"></div>
+    </div>
+
+    <!-- ================= UYKU EKRANI ================= -->
+    <section id="sleep-screen" class="sleep" aria-label="Uyku modu">
+      <div class="sleep__sigil">
+        <svg viewBox="0 0 200 200" aria-hidden="true">
+          <circle class="sigil-ring sigil-ring--outer" cx="100" cy="100" r="86" />
+          <circle class="sigil-ring sigil-ring--mid" cx="100" cy="100" r="64" />
+          <circle class="sigil-core" cx="100" cy="100" r="16" />
+        </svg>
+        <span class="sleep__mark">DRA</span>
+      </div>
+
+      <p class="sleep__hint">
+        Uyandirmak icin <b>&laquo;DRA&raquo;</b> deyin
+      </p>
+      <p class="sleep__sub" id="sleep-sub">Mikrofon bekleniyor&hellip;</p>
+
+      <div class="sleep__actions">
+        <button type="button" class="btn btn--primary" id="btn-enable">
+          Mikrofonu baslat
+        </button>
+        <button type="button" class="btn" id="btn-manual-wake">
+          Elle uyandir <kbd>Boşluk</kbd>
+        </button>
+      </div>
+
+      <div class="sleep__meter" id="sleep-meter" hidden>
+        <span class="sleep__meter-label">dinliyor</span>
+        <div class="sleep__meter-bar"><i id="sleep-level"></i></div>
+      </div>
+    </section>
+
+    <!-- ================= ACILIS DIZISI ================= -->
+    <section id="boot" class="boot" hidden aria-hidden="true">
+      <pre class="boot__log" id="boot-log"></pre>
+    </section>
+
+    <!-- ================= ANA HUD ================= -->
+    <main id="hud" class="hud" hidden>
+      <!-- Ust bar -->
+      <header class="hud__top">
+        <div class="brand">
+          <span class="brand__mark">DRA</span>
+          <span class="brand__sub">dijital yanit asistani</span>
+        </div>
+        <div class="statusline">
+          <span class="statuspill" id="state-pill"><i></i><b>hazir</b></span>
+          <span class="statuspill statuspill--muted" id="brain-pill"><i></i><b>beyin</b></span>
+        </div>
+        <div class="clock">
+          <b id="clock-time">--:--</b>
+          <span id="clock-date">&nbsp;</span>
+        </div>
+      </header>
+
+      <!-- Sol panel -->
+      <aside class="panel panel--left">
+        <h2 class="panel__title">Sistem</h2>
+        <ul class="gauges" id="gauges">
+          <li data-gauge="mic"><span>Mikrofon</span><div class="gauge"><i></i></div><b>0%</b></li>
+          <li data-gauge="net"><span>Ag</span><div class="gauge"><i></i></div><b>—</b></li>
+          <li data-gauge="brain"><span>Beyin</span><div class="gauge"><i></i></div><b>—</b></li>
+          <li data-gauge="battery"><span>Enerji</span><div class="gauge"><i></i></div><b>—</b></li>
+        </ul>
+
+        <h2 class="panel__title">Notlar</h2>
+        <ul class="notes" id="notes">
+          <li class="notes__empty">Kayitli not yok</li>
+        </ul>
+
+        <h2 class="panel__title">Zamanlayicilar</h2>
+        <ul class="timers" id="timers">
+          <li class="timers__empty">Aktif zamanlayici yok</li>
+        </ul>
+      </aside>
+
+      <!-- Merkez: reaktor -->
+      <section class="core">
+        <div class="core__ring">
+          <canvas id="reactor" class="core__canvas"></canvas>
+          <div class="core__state">
+            <span id="core-state-label">HAZIR</span>
+          </div>
+        </div>
+        <p class="core__caption" id="core-caption">Sizi dinliyorum.</p>
+      </section>
+
+      <!-- Sag panel -->
+      <aside class="panel panel--right">
+        <h2 class="panel__title">Kayit</h2>
+        <ol class="log" id="log" aria-live="polite"></ol>
+      </aside>
+
+      <!-- Alt bar -->
+      <footer class="hud__bottom">
+        <div class="wave" id="wave-wrap"><canvas id="wave"></canvas></div>
+        <form class="composer" id="composer" autocomplete="off">
+          <span class="composer__caret">&rsaquo;</span>
+          <input
+            id="composer-input"
+            class="composer__input"
+            type="text"
+            placeholder="Komut yazin ya da konusun&hellip;"
+            aria-label="DRA'ya komut"
+          />
+          <button class="btn btn--ghost" type="submit">Gonder</button>
+        </form>
+        <div class="controls">
+          <button type="button" class="btn btn--icon" id="btn-mic" title="Mikrofon (M)">MIK</button>
+          <button type="button" class="btn btn--icon" id="btn-voice" title="Sesli yanit (S)">SES</button>
+          <button type="button" class="btn btn--icon" id="btn-full" title="Tam ekran (F)">TAM</button>
+          <button type="button" class="btn btn--icon btn--danger" id="btn-sleep" title="Uyut (Esc)">UYU</button>
+        </div>
+      </footer>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script type="module" src="./js/main.js"></script>
+  </body>
+</html>

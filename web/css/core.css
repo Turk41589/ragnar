@@ -1,0 +1,428 @@
+/* ==========================================================================
+   DRA — temel katman: degiskenler, sifirlama, arka plan, uyku ekrani, acilis
+   ========================================================================== */
+
+:root {
+  /* Tema rengi calisma aninda degistirilebilir (bkz. commands.js "renk ...") */
+  --hue-r: 53;
+  --hue-g: 230;
+  --hue-b: 255;
+
+  --accent: rgb(var(--hue-r) var(--hue-g) var(--hue-b));
+  --accent-soft: rgb(var(--hue-r) var(--hue-g) var(--hue-b) / 0.55);
+  --accent-faint: rgb(var(--hue-r) var(--hue-g) var(--hue-b) / 0.16);
+  --accent-ghost: rgb(var(--hue-r) var(--hue-g) var(--hue-b) / 0.06);
+
+  --amber: #ffb454;
+  --danger: #ff4d5e;
+  --ok: #4dffa8;
+
+  --bg: #04070c;
+  --bg-lift: #070c14;
+  --ink: #cfefff;
+  --ink-dim: rgb(207 239 255 / 0.55);
+  --ink-faint: rgb(207 239 255 / 0.3);
+
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+  --pad: clamp(12px, 1.6vw, 22px);
+  --radius: 3px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: clamp(12px, 0.85vw, 14px);
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0.02em;
+}
+
+h1, h2, h3, p, ul, ol, pre, figure {
+  margin: 0;
+  padding: 0;
+}
+
+ul, ol {
+  list-style: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+kbd {
+  font: inherit;
+  font-size: 0.85em;
+  border: 1px solid var(--accent-faint);
+  border-radius: 2px;
+  padding: 0 4px;
+  opacity: 0.7;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: #01121a;
+}
+
+/* --------------------------------------------------------------- arka plan */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.backdrop__glow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(58% 58% at 50% 52%, var(--accent-ghost), transparent 70%),
+    radial-gradient(120% 90% at 50% 120%, rgb(var(--hue-r) var(--hue-g) var(--hue-b) / 0.09), transparent 60%);
+  transition: background 600ms ease;
+}
+
+.backdrop__grid {
+  position: absolute;
+  inset: -2px;
+  background-image:
+    linear-gradient(var(--accent-ghost) 1px, transparent 1px),
+    linear-gradient(90deg, var(--accent-ghost) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(72% 72% at 50% 50%, #000 25%, transparent 85%);
+  opacity: 0.8;
+}
+
+.backdrop__scan {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 0.022) 0 1px,
+    transparent 1px 3px
+  );
+  animation: scan-drift 9s linear infinite;
+}
+
+.backdrop__vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(100% 100% at 50% 50%, transparent 42%, #000 100%);
+  opacity: 0.85;
+}
+
+@keyframes scan-drift {
+  to { background-position-y: 3px; }
+}
+
+/* Uyanikken arka plan biraz canlanir */
+body[data-state="thinking"] .backdrop__glow,
+body[data-state="speaking"] .backdrop__glow {
+  filter: brightness(1.5);
+}
+
+/* ------------------------------------------------------------------ butonlar */
+
+.btn {
+  --btn-tint: var(--accent);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  background: transparent;
+  border: 1px solid rgb(var(--hue-r) var(--hue-g) var(--hue-b) / 0.35);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease,
+    box-shadow 160ms ease, transform 80ms ease;
+}
+
+.btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--accent-ghost), transparent);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-faint), 0 0 18px -6px var(--accent);
+}
+
+.btn:hover::before { opacity: 1; }
+.btn:active { transform: translateY(1px); }
+
+.btn:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn--primary {
+  background: var(--accent-faint);
+  border-color: var(--accent);
+  color: #eafcff;
+}
+
+.btn--ghost {
+  border-color: transparent;
+  color: var(--ink-dim);
+}
+
+.btn--ghost:hover { color: var(--ink); }
+
+.btn--icon {
+  padding: 7px 11px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.btn--danger {
+  border-color: rgb(255 77 94 / 0.35);
+}
+
+.btn--danger:hover {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px rgb(255 77 94 / 0.2), 0 0 18px -6px var(--danger);
+}
+
+/* Aktif/pasif durum isareti (mikrofon, ses vb.) */
+.btn[aria-pressed="false"] {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+/* ---------------------------------------------------------------- uyku ekrani */
+
+.sleep {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  text-align: center;
+  padding: var(--pad);
+  animation: fade-in 700ms ease both;
+}
+
+.sleep[hidden] { display: none; }
+
+.sleep__sigil {
+  position: relative;
+  width: min(38vmin, 300px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+
+.sleep__sigil svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.sigil-ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1;
+  opacity: 0.35;
+  transform-origin: 100px 100px;
+}
+
+.sigil-ring--outer {
+  stroke-dasharray: 3 12;
+  animation: spin 26s linear infinite;
+}
+
+.sigil-ring--mid {
+  stroke-dasharray: 90 260;
+  opacity: 0.6;
+  animation: spin 14s linear infinite reverse;
+}
+
+/* Yazinin arkasinda duran yumusak isik havuzu — DRA yazisini yutmamali. */
+.sigil-core {
+  fill: var(--accent);
+  opacity: 0.2;
+  filter: blur(6px) drop-shadow(0 0 30px var(--accent));
+  animation: breathe 3.4s ease-in-out infinite;
+  transform-origin: 100px 100px;
+}
+
+.sleep__mark {
+  position: relative;
+  z-index: 1;
+  font-size: clamp(28px, 5vmin, 46px);
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+  color: #eafcff;
+  text-shadow: 0 0 26px var(--accent-soft);
+}
+
+.sleep__hint {
+  font-size: clamp(13px, 1.3vw, 16px);
+  color: var(--ink-dim);
+  letter-spacing: 0.1em;
+}
+
+.sleep__hint b {
+  color: var(--accent);
+  font-weight: 400;
+}
+
+.sleep__sub {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  min-height: 1.4em;
+}
+
+.sleep__sub[data-tone="ok"] { color: var(--accent-soft); }
+.sleep__sub[data-tone="warn"] { color: var(--amber); }
+.sleep__sub[data-tone="error"] { color: var(--danger); }
+
+.sleep__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.sleep__meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(320px, 70vw);
+}
+
+.sleep__meter[hidden] { display: none; }
+
+.sleep__meter-label {
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.sleep__meter-bar {
+  flex: 1;
+  height: 2px;
+  background: var(--accent-faint);
+  overflow: hidden;
+}
+
+.sleep__meter-bar i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  transition: width 90ms linear;
+}
+
+/* ------------------------------------------------------------- acilis dizisi */
+
+.boot {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  background: rgb(4 7 12 / 0.92);
+  animation: fade-in 220ms ease both;
+}
+
+.boot[hidden] { display: none; }
+
+.boot__log {
+  font-family: var(--mono);
+  font-size: clamp(11px, 1.05vw, 14px);
+  line-height: 1.85;
+  color: var(--accent);
+  text-shadow: 0 0 14px var(--accent-soft);
+  white-space: pre;
+  max-height: 80vh;
+  overflow: hidden;
+}
+
+.boot__log::after {
+  content: "▊";
+  animation: blink 1s steps(2) infinite;
+}
+
+/* ------------------------------------------------------------------- bildirim */
+
+.toast {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  bottom: 5vh;
+  transform: translateX(-50%);
+  padding: 10px 18px;
+  background: rgb(7 12 20 / 0.94);
+  border: 1px solid var(--accent-soft);
+  border-radius: var(--radius);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+  box-shadow: 0 0 30px -10px var(--accent);
+  animation: fade-in 200ms ease both;
+}
+
+.toast[hidden] { display: none; }
+
+/* -------------------------------------------------------------- animasyonlar */
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.75; }
+  50% { transform: scale(1.16); opacity: 1; }
+}
+
+@keyframes blink { 50% { opacity: 0; } }
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
