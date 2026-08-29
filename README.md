@@ -76,7 +76,10 @@ npm run test:tam               # alarmın gerçekten çalmasını da bekler, ~2 
 `npm test` sunucuyu kendi başlatır, tarayıcıyı açar ve şunları doğrular:
 
 * **Komut motoru** — Türkçe saat çözümleyici (11 vaka), matematik, komut
-  eşleşmesi, komut önerisi, zamanlayıcı/alarm ayrımı
+  eşleşmesi, komut önerisi, zamanlayıcı/alarm ayrımı ve yan etkili
+  komutlardan sonra komut hattının açık kaldığı
+* **Komut yönlendirme** — 84 farklı yazılışın doğru kurala gittiği
+  (yazım hatası, boşluk, Türkçe ek ve eş anlamlı ifadeler dahil)
 * **Arayüz** — uyandırma kelimesi (yanlış tetiklenme dahil), sohbet paneli,
   dört sekme, not/alarm ekleme-silme, ayarlar, kalıcılık, sıfırlama, dar
   ekran yerleşimi ve **localhost dışına hiçbir istek atılmadığı**
@@ -144,7 +147,26 @@ Uyku ekranında da bir yazı kutusu var: mikrofonu hiç açmadan da kullanabilir
 
 ## Komutlar
 
-Konuşun ya da yazın — fark etmez. Komutu tek nefeste de söyleyebilirsiniz:
+Konuşun ya da yazın — fark etmez.
+
+### Komutu tam olarak doğru yazmanız gerekmiyor
+
+DRA komutları birebir aramaz. Üç katmanlı bir eşleştirme kullanır:
+
+| Ne değişebilir | Örnek |
+|---|---|
+| Büyük/küçük harf, Türkçe karakter, noktalama | `BUGÜN NE?` · `bugun ne` |
+| Boşluk | `bugün ne` · `bu gün ne` |
+| Yazım hatası | `bue gün ne` · `saaat kaç` · `alrm kur` · `mrhaba` |
+| Türkçe ekler | `notlarımı göster` · `alarmlarım` · `saatte` |
+| Farklı ifade | `vakit ne` · `hangi gündeyiz` · `her şey yolunda mı` |
+
+Her komutun birden fazla söyleniş biçimi tanımlı; girdi hepsine karşı
+puanlanır ve en yüksek puanı alan kural çalışır. Hiçbiri yeterince güçlü
+değilse en yakın komut önerilir.
+
+Bu davranış test altında: `test/suites/yonlendirme.mjs` 84 farklı yazılışın
+doğru komuta gittiğini doğrular. Komutu tek nefeste de söyleyebilirsiniz:
 *"DRA, saat kaç?"*
 
 | Ne dersiniz | Ne yapar |
@@ -184,6 +206,7 @@ Sesli yanıt kapalı olsa bile zil çalar. Tek seferlik alarmlar kendini kapatı
 ```
 web/js/main.js       akışı yöneten orkestrasyon + uyandırma kelimesi
 web/js/speech.js     ses tanıma (cihaz üstü tercihli) ve konuşma sentezi
+web/js/match.js      esnek metin eşleştirme (ek çözümleme, yazım toleransı)
 web/js/commands.js   Türkçe komut motoru, saat çözümleyici, komut önerici
 web/js/reactor.js    merkezdeki canvas reaktörü ve dönen parçalar
 web/js/panel.js      sol kontrol paneli (sekmeler, not, alarm, ayar)

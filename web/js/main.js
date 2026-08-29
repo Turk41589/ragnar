@@ -165,7 +165,8 @@ async function handleUtterance(rawText) {
     const local = await runCommand(text, ctx);
     if (local) {
       await respond(local.text);
-      if (local.then) await local.then();
+      // Yan etki yanittan SONRA: once "uyuyorum" desin, sonra uyusun.
+      if (local.after) await local.after();
       return;
     }
 

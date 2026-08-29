@@ -82,13 +82,49 @@ export async function run(page, base, t) {
   );
 
   /* ------------------------------------------------------- oneriler --- */
+  // Dogrudan cevaplanabilen dolayli sorular oneriye dusmemeli.
   await tell(page, "saatin kac oldugunu soyler misin");
   let chat = await readChat(page);
-  t.has(chat.at(-1).text, 'saat kac', "yakin komut onerisi");
+  t.has(chat.at(-1).text, "Saat ", "dolayli soru dogrudan cevaplaniyor");
+
+  // Kismen tutan ama komut olmayan girdi en yakin komutu onerir.
+  await tell(page, "not defteri nerede");
+  chat = await readChat(page);
+  t.has(chat.at(-1).text, "not al", "yakin komut onerisi");
 
   await tell(page, "blorp zonk gribble");
   chat = await readChat(page);
   t.has(chat.at(-1).text, "yapay zekasi degilim", "anlasilmayan girdi: yetenek listesi");
+
+  /* -------------------------------------------- yan etkili komutlar ---- */
+  // Regresyon: bu kurallar `{text, then}` donduruyordu. `.then` metodu olan
+  // her nesne JavaScript'te promise sayildigi icin `await` onu cozmeye
+  // calisiyor, resolve hic cagrilmadigindan komut hatti sonsuza kadar
+  // asili kaliyordu — DRA "dusunuyor" durumunda kilitleniyordu.
+  await tell(page, "sesini kapat");
+  chat = await readChat(page);
+  t.has(chat.at(-1).text, "Sesimi kapatiyorum", "'sesini kapat' yanit veriyor");
+
+  await tell(page, "12 kere 8 kac eder");
+  chat = await readChat(page);
+  t.has(chat.at(-1).text, "96", "yan etkili komuttan SONRA hat acik kaliyor");
+
+  t.eq(
+    await page.evaluate(() => document.body.dataset.state),
+    "idle",
+    "yan etkili komut sonrasi durum kilitlenmiyor",
+  );
+
+  // Uyutan komut da ayni kaliptaydi: uyandiktan sonra hat acik olmali.
+  await tell(page, "uyu", 900);
+  t.ok(await page.locator("#sleep-screen").isVisible(), "'uyu' gercekten uyutuyor");
+
+  await page.click("#btn-manual-wake");
+  await page.waitForSelector("#hud:not([hidden])", { timeout: 15000 });
+  await page.waitForTimeout(300);
+  await tell(page, "saat kac");
+  chat = await readChat(page);
+  t.has(chat.at(-1).text, "Saat ", "uyuyup uyandiktan sonra komutlar calisiyor");
 
   /* -------------------- zamanlayici ile alarmi karistirmamali --------- */
   const timers = await page.$$eval("#timers li", (e) => e.map((x) => x.textContent));

@@ -8,26 +8,11 @@
 
 import { formatDate, formatTime } from "./hud.js";
 
-/* ------------------------------------------------------------ metin normalize */
+/* ------------------------------------------------------------ metin esleme */
 
-/** Turkce harfleri sadelestirip noktalama temizler — kalip eslemesi icin. */
-export function normalize(text) {
-  return (text || "")
-    .toLocaleLowerCase("tr")
-    .replace(/[ıİ]/g, "i")
-    .replace(/ğ/g, "g")
-    .replace(/ü/g, "u")
-    .replace(/ş/g, "s")
-    .replace(/ö/g, "o")
-    .replace(/ç/g, "c")
-    .replace(/â/g, "a")
-    .replace(/î/g, "i")
-    .replace(/û/g, "u")
-    .replace(/['’`]/g, "")
-    .replace(/[^\p{L}\p{N}\s.,+\-*/%^()]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+// Normalize, ek cozumleme ve yazim toleransi match.js'te.
+export { normalize } from "./match.js";
+import { normalize, tokenize, bestScore, mentions } from "./match.js";
 
 const has = (n, ...words) => words.some((w) => n.includes(w));
 
@@ -319,66 +304,6 @@ const GREETINGS = [
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-/* ---------------------------------------------------------------- oneriler */
-
-/**
- * Bilinen komutlarin ornekleri ve onlari cagristiran sozcukler.
- * DRA bir dil modeli degil; anlamadigi bir sey duyunca cevap uydurmak
- * yerine buradan en yakin komutu onerir.
- */
-const EXAMPLES = [
-  { say: "saat kac", words: ["saat", "zaman", "kac", "vakit"] },
-  { say: "bugun gunlerden ne", words: ["tarih", "gun", "bugun", "ay", "hangi"] },
-  { say: "12 kere 8 kac eder", words: ["hesap", "hesapla", "topla", "cikar", "carp", "bol", "kac", "eder", "matematik"] },
-  { say: "youtube ac", words: ["ac", "site", "youtube", "google", "github", "spotify", "sayfa"] },
-  { say: "google'da kedi ara", words: ["ara", "arat", "bul", "arama"] },
-  { say: "5 dakika zamanlayici kur", words: ["zamanlayici", "sayac", "dakika", "saniye", "geri", "sayim", "sure"] },
-  { say: "sabah yedi bucukta alarm kur", words: ["alarm", "uyandir", "sabah", "aksam", "kur"] },
-  { say: "not al ekmek al", words: ["not", "yaz", "kaydet", "hatirla", "liste"] },
-  { say: "notlarim", words: ["not", "notlar", "neydi"] },
-  { say: "sistem durumu", words: ["durum", "sistem", "rapor", "nasil"] },
-  { say: "renk yesil", words: ["renk", "tema", "gorunum", "mavi", "yesil", "kirmizi"] },
-  { say: "ayarlari ac", words: ["ayar", "ayarlar", "secenek", "panel"] },
-  { say: "sesini kapat", words: ["ses", "sus", "sessiz", "konusma"] },
-  { say: "uyu", words: ["uyu", "kapan", "gorusuruz", "bitir"] },
-  { say: "saka yap", words: ["saka", "espri", "fikra", "komik", "guldur"] },
-];
-
-/**
- * Anlasilmayan girdi icin yardimci bir yanit uretir.
- * Ortak sozcuk sayisina gore en yakin ornegi bulur.
- */
-export function suggestCommand(text) {
-  const tokens = normalize(text).split(" ").filter((w) => w.length > 2);
-
-  let best = null;
-  let bestScore = 0;
-  for (const example of EXAMPLES) {
-    let score = 0;
-    for (const token of tokens) {
-      // Tam eslesme ya da kok eslesmesi (Turkce ekleri yakalamak icin)
-      if (example.words.some((w) => w === token || token.startsWith(w) || w.startsWith(token))) {
-        score += 1;
-      }
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      best = example;
-    }
-  }
-
-  if (best && bestScore > 0) {
-    return `Bunu tam anlayamadim. Sunu mu demek istediniz: "${best.say}"?`;
-  }
-
-  return (
-    "Bunu anlayamadim. Ben bir sohbet yapay zekasi degilim, komutlarla calisan " +
-    "bir asistanim. Saat ve tarih soyleyebilir, hesap yapabilir, alarm ve " +
-    "zamanlayici kurabilir, not tutabilir, site acabilir ve arama yapabilirim. " +
-    "Tum listeyi duymak icin \"neler yapabilirsin\" deyin."
-  );
-}
-
 /* ------------------------------------------------------------ komut tablosu */
 
 /**
@@ -389,20 +314,28 @@ const RULES = [
   /* -- uyku -------------------------------------------------------------- */
   {
     name: "uyu",
-    test: (n) =>
-      has(n, "uyku moduna", "uykuya gec", "kendini kapat", "gorusuruz", "hosca kal",
-        "bay bay", "iyi geceler", "kapan artik") ||
-      /^(uyu|kapan|kapat|sus ve uyu)$/.test(n),
+    example: "uyu",
+    phrases: [
+      "uyu", "uyku moduna gec", "uykuya gec", "kendini kapat", "kapan",
+      "gorusuruz", "hosca kal", "bay bay", "iyi geceler", "dinlen",
+      "mola ver", "kapat kendini", "artik kapan", "isim bitti",
+    ],
+    exclude: ["ses", "sessiz", "mikrofon", "ekran"],
     run: (n, raw, ctx) => ({
       text: "Uyku moduna geciyorum. Ihtiyaciniz olursa adimi soyleyin.",
-      then: () => ctx.sleep(),
+      after: () => ctx.sleep(),
     }),
   },
 
   /* -- selamlama --------------------------------------------------------- */
   {
     name: "selam",
-    test: (n) => /^(merhaba|selam|selamlar|hey|alo|gunaydin|iyi aksamlar|iyi gunler|naber|nasilsin|nasil gidiyor)\b/.test(n),
+    example: "merhaba",
+    phrases: [
+      "merhaba", "selam", "selamlar", "selamun aleykum", "hey", "alo",
+      "gunaydin", "iyi aksamlar", "iyi gunler", "naber", "nasilsin",
+      "ne haber", "nasil gidiyor", "iyi misin", "orada misin",
+    ],
     run: (n) => {
       if (has(n, "nasilsin", "naber", "nasil gidiyor")) {
         return "Tum sistemlerim calisiyor, tesekkur ederim. Siz nasilsiniz?";
@@ -414,14 +347,22 @@ const RULES = [
   },
   {
     name: "tesekkur",
-    test: (n) => /^(tesekkurler|tesekkur ederim|sagol|sag ol|eyvallah|helal)\b/.test(n),
+    example: "tesekkurler",
+    phrases: [
+      "tesekkurler", "tesekkur ederim", "sagol", "sag ol", "eyvallah",
+      "helal", "minnettarim", "cok iyisin",
+    ],
     run: () => "Rica ederim efendim. Baska bir sey lazim olursa buradayim.",
   },
 
   /* -- kimlik / yardim --------------------------------------------------- */
   {
     name: "kimsin",
-    test: (n) => has(n, "adin ne", "ismin ne", "kimsin", "sen kimsin", "kendini tanit", "sen nesin"),
+    example: "kimsin",
+    phrases: [
+      "kimsin", "sen kimsin", "adin ne", "ismin ne", "kendini tanit",
+      "sen nesin", "nesin sen", "seni kim yapti", "sen bir yapay zeka misin",
+    ],
     run: () =>
       "Ben DRA. Kisisel asistaniniz. Bir yapay zeka degilim — komutlarla calisan " +
       "bir programim. Tamamen bu cihazda calisirim, hicbir sirkete baglanmam ve " +
@@ -429,7 +370,12 @@ const RULES = [
   },
   {
     name: "yardim",
-    test: (n) => has(n, "ne yapabilirsin", "neler yapabilirsin", "yardim", "komutlar", "nasil kullanilir"),
+    example: "neler yapabilirsin",
+    phrases: [
+      "ne yapabilirsin", "neler yapabilirsin", "yardim", "komutlar",
+      "nasil kullanilir", "yeteneklerin", "ne is yaparsin", "hangi komutlar",
+      "komut listesi", "bana yardim et",
+    ],
     run: () =>
       "Saati ve tarihi soyleyebilirim, hesap yapabilirim, site acabilirim, arama " +
       "yapabilirim, alarm ve zamanlayici kurabilirim, not tutabilirim, tema rengimi " +
@@ -440,19 +386,32 @@ const RULES = [
   /* -- saat / tarih ------------------------------------------------------ */
   {
     name: "saat",
-    test: (n) => /\bsaat\b/.test(n) && !has(n, "zamanlayici", "sayac", "alarm", "sonra"),
+    example: "saat kac",
+    phrases: ["saat kac", "saat kacta", "saati soyle", "zaman ne", "vakit ne", "saat"],
+    // Alarm ve sayac cumlelerinde de "saat" gecer; onlar bu kurala dusmemeli.
+    exclude: ["alarm", "zamanlayici", "sayac", "hatirlat", "geri sayim", "uyandir"],
     run: () => `Saat ${formatTime()}.`,
   },
   {
     name: "tarih",
-    test: (n) => has(n, "bugun ayin kaci", "bugun gunlerden", "hangi gundeyiz", "tarih ne", "bugunun tarihi", "ayin kaci"),
+    example: "bugun gunlerden ne",
+    phrases: [
+      "bugun gunlerden ne", "bugun ayin kaci", "hangi gundeyiz", "tarih ne",
+      "bugunun tarihi", "ayin kaci", "bugun ne", "hangi gun", "gunlerden ne",
+      "bugun gun ne", "tarih", "hangi tarihteyiz", "ne zamandayiz",
+    ],
+    exclude: ["alarm", "zamanlayici", "sayac"],
     run: () => `Bugun ${formatDate()}.`,
   },
 
   /* -- hava -------------------------------------------------------------- */
   {
     name: "hava",
-    test: (n) => has(n, "hava durumu", "hava nasil", "disarisi nasil", "yagmur yagacak"),
+    example: "hava durumu",
+    phrases: [
+      "hava durumu", "hava nasil", "disarisi nasil", "yagmur yagacak mi",
+      "hava kac derece", "sicaklik kac", "hava",
+    ],
     run: () =>
       "Hava durumunu soyleyemem. Bunun icin konumunuzu bir hava servisine " +
       "gondermem gerekirdi; disariya hicbir baglanti kurmayacak sekilde tasarlandim.",
@@ -461,7 +420,10 @@ const RULES = [
   /* -- site acma --------------------------------------------------------- */
   {
     name: "site-ac",
-    test: (n) => /\b(ac|acar misin|baslat)\b/.test(n) && Object.keys(SITES).some((k) => n.includes(k)),
+    example: "youtube ac",
+    phrases: ["ac", "acar misin", "baslat", "goster", "gir", "acsana"],
+    // Yalnizca tanidigi bir siteden bahsediliyorsa gecerli.
+    guard: (n, raw, tokens) => mentions(tokens, Object.keys(SITES)),
     run: (n, raw, ctx) => {
       const key = Object.keys(SITES).find((k) => n.includes(k));
       ctx.openUrl(SITES[key]);
@@ -472,7 +434,11 @@ const RULES = [
   /* -- arama ------------------------------------------------------------- */
   {
     name: "arama",
-    test: (n) => /\b(ara|arat|arama yap|bul)\b/.test(n) && n.split(" ").length > 1,
+    example: "googleda kedi ara",
+    phrases: ["ara", "arat", "arama yap", "bul", "aratir misin", "arastir"],
+    exclude: ["alarm", "zamanlayici", "sayac"],
+    // "ara" tek basina yeterli degil; aranacak bir sey olmali.
+    guard: (n, raw, tokens) => tokens.length > 1,
     run: (n, raw, ctx) => {
       const target = has(n, "youtube") ? "youtube"
         : has(n, "wikipedia", "vikipedi") ? "wikipedia"
@@ -500,10 +466,11 @@ const RULES = [
   /* -- matematik --------------------------------------------------------- */
   {
     name: "hesap",
+    example: "12 kere 8 kac eder",
+    phrases: ["hesapla", "kac eder", "kac yapar", "toplami", "carpimi", "hesap yap"],
+    // Sade aritmetik ifadeler ("12 kere 8") kalip listesine girmez.
     test: (n) => {
-      if (has(n, "hesapla", "kac eder", "kacdir", "kac yapar", "toplami")) return true;
       const m = mathify(n);
-      // En az bir islec ve iki sayi iceren sade ifadeler.
       return /^[\d\s+\-*/^%().]+$/.test(m) && /[+\-*/^]/.test(m) && /\d/.test(m);
     },
     run: (n) => {
@@ -526,9 +493,12 @@ const RULES = [
      calisiyordu. */
   {
     name: "alarmlari-oku",
-    test: (n) =>
-      has(n, "alarmlarim", "alarmlari soyle", "alarmlari goster", "alarmlari ac",
-        "kurulu alarm", "alarm var mi", "hangi alarmlar"),
+    example: "alarmlarim",
+    phrases: [
+      "alarmlarim", "alarmlari soyle", "alarmlari goster", "alarmlari listele",
+      "kurulu alarmlar", "alarm var mi", "hangi alarmlar", "alarmlarimi goster",
+    ],
+    exclude: ["sil", "temizle", "kaldir", "iptal"],
     run: (n, raw, ctx) => {
       ctx.openPanel("alarm");
       const list = ctx.getAlarms().filter((a) => a.enabled);
@@ -541,9 +511,11 @@ const RULES = [
   },
   {
     name: "alarmlari-sil",
-    test: (n) =>
-      has(n, "alarmlari sil", "alarmlari iptal", "alarmlari kapat",
-        "tum alarmlari", "alarmi iptal et"),
+    example: "alarmlari sil",
+    phrases: [
+      "alarmlari sil", "alarmlari iptal et", "alarmlari kapat", "tum alarmlari sil",
+      "alarmi kaldir", "alarmlari temizle", "alarmi iptal et",
+    ],
     run: (n, raw, ctx) => {
       if (!ctx.getAlarms().length) return "Zaten kurulu alarm yok.";
       ctx.clearAlarms();
@@ -552,12 +524,13 @@ const RULES = [
   },
   {
     name: "alarm-kur",
-    test: (n) => {
-      // Sure anlatan ifadeler ("5 dakika sonra") zamanlayici kuralina kalir.
-      if (hasDurationShape(n) && !hasClockShape(n)) return false;
-      if (has(n, "alarm")) return true;
-      return /\buyandir/.test(n) && hasClockShape(n);
-    },
+    example: "sabah yedi bucukta alarm kur",
+    phrases: [
+      "alarm kur", "alarm ayarla", "alarm koy", "alarm istiyorum", "alarma kur",
+      "beni uyandir", "uyandir beni", "alarm kurar misin", "alarm",
+    ],
+    // Sure anlatan ifadeler ("5 dakika sonra") zamanlayici kuralina kalir.
+    guard: (n) => !(hasDurationShape(n) && !hasClockShape(n)),
     run: (n, raw, ctx) => {
       const time = parseClockTime(n);
       if (!time) {
@@ -580,9 +553,14 @@ const RULES = [
   /* -- zamanlayici ------------------------------------------------------- */
   {
     name: "zamanlayici",
-    test: (n) =>
-      has(n, "zamanlayici", "sayac", "hatirlat", "geri sayim") &&
-      !hasClockShape(n),
+    example: "5 dakika zamanlayici kur",
+    phrases: [
+      "zamanlayici kur", "sayac kur", "geri sayim baslat", "hatirlat",
+      "sure tut", "kronometre", "zamanlayici", "sayac", "geri sayim",
+      "dakika sonra hatirlat",
+    ],
+    // Mutlak saat verilmisse bu bir alarmdir, sayac degil.
+    guard: (n) => !hasClockShape(n),
     run: (n, raw, ctx) => {
       const amount = extractNumber(n);
       if (!amount || amount <= 0) return "Kac dakika ya da saniye istediginizi soyleyin.";
@@ -600,7 +578,9 @@ const RULES = [
   /* -- notlar ------------------------------------------------------------ */
   {
     name: "not-al",
-    test: (n) => /^(not al|not et|sunu not al|kaydet)\b/.test(n),
+    example: "not al sut al",
+    phrases: ["not al", "not et", "not tut", "kaydet", "yaz bunu", "aklinda tut", "sunu not al"],
+    exclude: ["notlarim", "notlari sil", "notlari oku"],
     run: (n, raw, ctx) => {
       const body = raw.replace(/^\s*(not al|not et|sunu not al|kaydet)\s*/i, "").trim();
       if (!body) return "Ne not almami istiyorsunuz?";
@@ -610,7 +590,13 @@ const RULES = [
   },
   {
     name: "notlari-oku",
-    test: (n) => has(n, "notlarim", "notlari oku", "notlari soyle", "ne not almistim"),
+    example: "notlarim",
+    phrases: [
+      "notlarim", "notlari oku", "notlari soyle", "ne not almistim",
+      "notlarimi goster", "not var mi", "notlari goster", "notlari listele",
+    ],
+    // "notlari sil" da "notlari" iceriyor; silme kurallarini burada kesiyoruz.
+    exclude: ["sil", "temizle", "kaldir", "iptal"],
     run: (n, raw, ctx) => {
       ctx.openPanel("notlar");
       const notes = ctx.getNotes();
@@ -620,7 +606,8 @@ const RULES = [
   },
   {
     name: "notlari-sil",
-    test: (n) => has(n, "notlari sil", "notlari temizle", "tum notlari sil"),
+    example: "notlari sil",
+    phrases: ["notlari sil", "notlari temizle", "tum notlari sil", "notlari kaldir"],
     run: (n, raw, ctx) => {
       ctx.clearNotes();
       return "Tum notlar silindi.";
@@ -630,17 +617,20 @@ const RULES = [
   /* -- sans oyunlari ----------------------------------------------------- */
   {
     name: "yazi-tura",
-    test: (n) => has(n, "yazi tura", "para at"),
+    example: "yazi tura at",
+    phrases: ["yazi tura", "para at", "yazi mi tura mi", "yazi tura at"],
     run: () => `${Math.random() < 0.5 ? "Yazi" : "Tura"} geldi.`,
   },
   {
     name: "zar",
-    test: (n) => has(n, "zar at", "zar atalim"),
+    example: "zar at",
+    phrases: ["zar at", "zar atalim", "zar"],
     run: () => `Zar ${1 + Math.floor(Math.random() * 6)} geldi.`,
   },
   {
     name: "rastgele-sayi",
-    test: (n) => has(n, "rastgele sayi", "sayi tut", "rasgele sayi"),
+    example: "sayi tut",
+    phrases: ["rastgele sayi", "sayi tut", "rasgele sayi", "sayi sec", "tut bir sayi"],
     run: (n) => {
       const nums = (n.match(/\d+/g) || []).map(Number);
       const min = nums.length > 1 ? Math.min(...nums) : 1;
@@ -652,14 +642,20 @@ const RULES = [
   /* -- saka -------------------------------------------------------------- */
   {
     name: "saka",
-    test: (n) => has(n, "saka yap", "espri yap", "fikra anlat", "guldur beni", "komik bir sey"),
+    example: "saka yap",
+    phrases: [
+      "saka yap", "espri yap", "fikra anlat", "guldur beni",
+      "komik bir sey soyle", "saka", "espri",
+    ],
     run: () => pick(JOKES),
   },
 
   /* -- arayuz kontrolleri ------------------------------------------------ */
   {
     name: "renk",
-    test: (n) => /\b(renk|tema)\b/.test(n),
+    example: "renk yesil",
+    phrases: ["renk", "tema", "rengini degistir", "temayi degistir", "rengi degistir"],
+    exclude: ["ayar"],
     run: (n, raw, ctx) => {
       const THEMES = {
         mavi: [53, 230, 255], turkuaz: [53, 230, 255], camgobegi: [53, 230, 255],
@@ -675,15 +671,17 @@ const RULES = [
   },
   {
     name: "sesi-kapat",
-    test: (n) => has(n, "sesini kapat", "sessiz ol", "konusma artik", "sus"),
+    example: "sesini kapat",
+    phrases: ["sesini kapat", "sessiz ol", "konusma", "sus", "sesi kis", "sessize al"],
     run: (n, raw, ctx) => ({
       text: "Sesimi kapatiyorum. Yazili yanit vermeye devam edecegim.",
-      then: () => ctx.setVoice(false),
+      after: () => ctx.setVoice(false),
     }),
   },
   {
     name: "sesi-ac",
-    test: (n) => has(n, "sesini ac", "konus benimle", "sesli yanit ver"),
+    example: "sesini ac",
+    phrases: ["sesini ac", "konus benimle", "sesli yanit ver", "sesi ac", "sesini geri ac"],
     run: (n, raw, ctx) => {
       ctx.setVoice(true);
       return "Sesim tekrar acik.";
@@ -691,7 +689,8 @@ const RULES = [
   },
   {
     name: "tam-ekran",
-    test: (n) => has(n, "tam ekran", "tam ekrana gec"),
+    example: "tam ekran",
+    phrases: ["tam ekran", "tam ekrana gec", "ekrani buyut", "buyut ekrani"],
     run: (n, raw, ctx) => {
       ctx.toggleFullscreen();
       return "Tam ekran moduna geciyorum.";
@@ -699,7 +698,11 @@ const RULES = [
   },
   {
     name: "temizle",
-    test: (n) => has(n, "ekrani temizle", "kaydi temizle", "gecmisi temizle", "logu temizle"),
+    example: "ekrani temizle",
+    phrases: [
+      "ekrani temizle", "kaydi temizle", "gecmisi temizle", "sohbeti temizle",
+      "logu temizle", "sohbeti sil",
+    ],
     run: (n, raw, ctx) => {
       ctx.clearLog();
       return "Kayit temizlendi.";
@@ -709,7 +712,11 @@ const RULES = [
   /* -- panel gezinme ----------------------------------------------------- */
   {
     name: "panel-ac",
-    test: (n) => /\b(ac|goster|gecis yap)\b/.test(n) && has(n, "ayarlar", "ayar sekmesi", "notlar sekmesi", "sistem sekmesi"),
+    example: "ayarlari ac",
+    phrases: [
+      "ayarlari ac", "ayarlar", "ayar sekmesi", "not sekmesi", "sistem sekmesi",
+      "paneli ac", "ayarlara git", "secenekler",
+    ],
     run: (n, raw, ctx) => {
       const target = has(n, "ayar") ? "ayar" : has(n, "not") ? "notlar" : "sistem";
       ctx.openPanel(target);
@@ -720,38 +727,113 @@ const RULES = [
   /* -- sistem raporu ----------------------------------------------------- */
   {
     name: "durum",
-    test: (n) => has(n, "sistem durumu", "durum raporu", "rapor ver", "sistemler nasil", "durumun ne"),
+    example: "sistem durumu",
+    phrases: [
+      "sistem durumu", "durum raporu", "rapor ver", "sistemler nasil",
+      "durumun ne", "her sey yolunda mi", "durum",
+    ],
     run: (n, raw, ctx) => ctx.systemReport(),
   },
 ];
 
+/* ---------------------------------------------------------------- esleme */
+
+/** Bir kuralin calismasi icin gereken en dusuk puan. */
+const THRESHOLD = 0.62;
+/** Bu puanin ustundeki en yakin kural "sunu mu demek istediniz" olur. */
+const SUGGEST_THRESHOLD = 0.34;
+
+/**
+ * Metni tum kurallara karsi puanlar ve en iyisini dondurur.
+ *
+ * Onceki surumde kurallar sirayla denenip ilk tutan calisiyordu; bu,
+ * "alarmlarim" gibi bir cumlenin "alarm kur" kuralina dusmesine yol
+ * aciyordu. Artik hepsi puanlanip en yuksek olan seciliyor.
+ */
+function scoreRules(raw) {
+  const n = normalize(raw);
+  const tokens = tokenize(n);
+  const scored = [];
+
+  for (const rule of RULES) {
+    // Disarida birakma kaliplari
+    if (rule.exclude && mentions(tokens, rule.exclude)) continue;
+    // Ek kosul (ornegin mutlak saat var mi)
+    if (rule.guard && !rule.guard(n, raw, tokens)) continue;
+
+    let score = 0;
+    // Ozel mantik (aritmetik ifade gibi) tam puan sayilir.
+    if (rule.test) {
+      try {
+        if (rule.test(n, raw, tokens)) score = 1;
+      } catch {
+        score = 0;
+      }
+    }
+    if (score < 1 && rule.phrases) {
+      score = Math.max(score, bestScore(tokens, rule.phrases));
+    }
+    if (score > 0) scored.push({ rule, score, n });
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored;
+}
+
+/**
+ * Hangi kurallarin ne puan aldigini dondurur (test ve teshis icin).
+ * Yanlis yonlendirmeleri ancak buradan gorebiliyoruz.
+ */
+export function explain(rawText, limit = 3) {
+  return scoreRules(rawText)
+    .slice(0, limit)
+    .map(({ rule, score }) => ({ name: rule.name, score: Number(score.toFixed(3)) }));
+}
+
 /**
  * Metni komut tablosuyla esler.
- * Eslesme yoksa null doner ve cagiran taraf beyne yonlendirir.
+ * Yeterince guclu bir eslesme yoksa null doner.
+ *
+ * Kurallar `{ text }` ya da `{ text, after }` dondurebilir; `after`,
+ * yanit soylendikten SONRA calisacak yan etkidir (uyutmak, sesi kapatmak).
+ * Bu alanin adi bilerek `then` DEGIL: `.then` metodu olan her nesne
+ * JavaScript'te promise sayilir, `await` onu cozmeye calisir ve resolve
+ * cagrilmadigi icin komut hatti sonsuza kadar asili kalir.
  */
 export async function runCommand(rawText, ctx) {
   const raw = (rawText || "").trim();
   if (!raw) return null;
-  const n = normalize(raw);
 
-  for (const rule of RULES) {
-    let matched = false;
-    try {
-      matched = rule.test(n, raw);
-    } catch {
-      matched = false;
-    }
-    if (!matched) continue;
+  const scored = scoreRules(raw);
+  const best = scored[0];
+  if (!best || best.score < THRESHOLD) return null;
 
-    try {
-      const result = await rule.run(n, raw, ctx);
-      if (!result) return null;
-      return typeof result === "string" ? { text: result } : result;
-    } catch (err) {
-      console.error(`[dra] "${rule.name}" komutu hata verdi:`, err);
-      return { text: "Bu komutu calistirirken bir sorun cikti." };
-    }
+  try {
+    const result = await best.rule.run(best.n, raw, ctx);
+    if (!result) return null;
+    return typeof result === "string" ? { text: result } : result;
+  } catch (err) {
+    console.error(`[dra] "${best.rule.name}" komutu hata verdi:`, err);
+    return { text: "Bu komutu calistirirken bir sorun cikti." };
+  }
+}
+
+/**
+ * Anlasilmayan girdi icin yardimci yanit.
+ * Esik altinda kalan ama tamamen alakasiz da olmayan bir kural varsa
+ * onun ornegini onerir.
+ */
+export function suggestCommand(text) {
+  const near = scoreRules(text).find((s) => s.score >= SUGGEST_THRESHOLD);
+
+  if (near?.rule.example) {
+    return `Bunu tam anlayamadim. Sunu mu demek istediniz: "${near.rule.example}"?`;
   }
 
-  return null;
+  return (
+    "Bunu anlayamadim. Ben bir sohbet yapay zekasi degilim, komutlarla calisan " +
+    "bir asistanim. Saat ve tarih soyleyebilir, hesap yapabilir, alarm ve " +
+    "zamanlayici kurabilir, not tutabilir, site acabilir ve arama yapabilirim. " +
+    "Tum listeyi duymak icin \"neler yapabilirsin\" deyin."
+  );
 }

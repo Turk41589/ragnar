@@ -18,6 +18,7 @@ const ONLY = onlyArg !== -1 ? (process.argv[onlyArg + 1] || "").toLowerCase() : 
 
 const SUITES = [
   await import("./suites/komutlar.mjs"),
+  await import("./suites/yonlendirme.mjs"),
   await import("./suites/arayuz.mjs"),
   await import("./suites/alarm.mjs"),
 ];
