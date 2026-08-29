@@ -99,6 +99,17 @@ export async function run(page, base, t, { external }) {
   t.eq(settings.theme, [186, 122, 255], "tema secilebiliyor");
   t.eq(settings.css, "186", "tema CSS'e uygulaniyor");
 
+  /* ------------------------------------------------------------ teshis - */
+  await page.click("#set-diag");
+  await page.waitForTimeout(600);
+  // Teshis iki mesaj basar: rapor, sonra yorum. Ikisini de ayri ayri ara.
+  const diagChat = await readChat(page);
+  const report = diagChat.find((m) => m.text.includes("Cihaz ustu Turkce tanima"));
+  t.ok(report, "teshis ses tanima durumunu raporluyor");
+  t.has(report?.text ?? "", "Mikrofon seviyesi", "teshis mikrofon seviyesini yaziyor");
+  t.has(diagChat.at(-1).text, "mikrofonu acin", "teshis mikrofon kapaliyken yol gosteriyor");
+  await page.click('.tab[data-tab="ayar"]');
+
   /* --------------------------------------------------------- kalicilik */
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForTimeout(600);

@@ -61,6 +61,9 @@ let running = false;
 let restartTimer = null;
 /** DRA konusurken kendi sesini komut sanmasin diye kapi. */
 let deafUntil = 0;
+/** Ses tanimadan en son ne zaman sonuc geldi? (teshis icin) */
+let lastResultAt = 0;
+export const getLastResultAt = () => lastResultAt;
 
 function buildRecognition({ processLocally }) {
   const rec = new SpeechRecognition();
@@ -83,6 +86,7 @@ function buildRecognition({ processLocally }) {
   };
 
   rec.onresult = (event) => {
+    lastResultAt = Date.now();
     if (Date.now() < deafUntil) return;
 
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
@@ -175,6 +179,7 @@ export function startListening({ processLocally = false } = {}) {
   }
   if (!recognition) recognition = buildRecognition({ processLocally });
   wantRunning = true;
+  lastResultAt = Date.now();
   if (running) return true;
   try {
     recognition.start();

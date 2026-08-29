@@ -104,6 +104,17 @@ Tarayıcıların varsayılan ses tanıması sesi **satıcının sunucusuna gönd
 * Üst bardaki rozet o an hangi modda olduğunuzu gösterir:
   `cihazda` · `tarayıcı servisi` · `yazı modu`.
 
+### Ses tanıma çalışmıyorsa
+
+Ayar sekmesindeki **"Ses tanımayı sına"** düğmesine basın. Tarayıcının ne
+desteklediğini, hangi modda olduğunuzu ve en son ne zaman sonuç geldiğini
+sohbete yazar — tahmin yürütmek yerine oradan bakın.
+
+Mikrofon ses alıyor ama tanıma sonuç üretmiyorsa DRA bunu kendisi fark eder
+ve sohbette söyler. Bu genelde cihaz üstü Türkçe modelinin çalışmadığı
+anlamına gelir; Ayar'dan **"Sesi cihazda tut"** anahtarını kapatarak
+tarayıcının kendi servisini deneyebilirsiniz.
+
 Bulut tanımayı bilerek kullanmak isterseniz Ayar'dan bu anahtarı kapatın.
 Kapattığınızda rozet `tarayıcı servisi` olur — gizlenmez.
 

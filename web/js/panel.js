@@ -338,6 +338,8 @@ export function mountPanel(context) {
     );
   });
 
+  $("set-diag").addEventListener("click", () => ctx.runDiagnostics());
+
   $("set-clear-log").addEventListener("click", () => {
     ctx.clearLog();
     ctx.toast("Kayit silindi");

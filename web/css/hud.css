@@ -655,6 +655,8 @@
   font-size: 11px;
   line-height: 1.6;
   word-break: break-word;
+  /* Teshis ciktisi gibi cok satirli mesajlar satir satir gorunsun. */
+  white-space: pre-line;
   background: var(--accent-ghost);
   border: 1px solid var(--accent-faint);
   color: var(--ink-dim);
