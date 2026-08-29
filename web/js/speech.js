@@ -8,6 +8,7 @@
  */
 
 import { emit, state } from "./state.js";
+import { store } from "./store.js";
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -227,7 +228,7 @@ export function say(text) {
     const clean = (text || "").trim();
     if (!clean) return resolve();
 
-    if (!voiceSupported || !state.voiceEnabled) {
+    if (!voiceSupported || !store.voiceEnabled) {
       // Ses kapaliyken de okuma suresi kadar bekliyormus gibi yapmayiz;
       // gorsel durum yonetimi main.js'te hallediliyor.
       return resolve();
@@ -255,7 +256,7 @@ export function say(text) {
       const u = new SpeechSynthesisUtterance(chunk);
       u.lang = "tr-TR";
       if (voice) u.voice = voice;
-      u.rate = 1.04;
+      u.rate = store.speechRate;
       u.pitch = 0.95;
       u.volume = 1;
       u.onend = () => {

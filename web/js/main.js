@@ -13,19 +13,24 @@ import * as audio from "./audio.js";
 import * as hud from "./hud.js";
 import { mountReactor, mountWave } from "./reactor.js";
 import { runCommand, normalize } from "./commands.js";
+import { store, loadStore, saveStore } from "./store.js";
+import * as panel from "./panel.js";
+import * as alarms from "./alarms.js";
 
 /* ============================================================ ayarlar */
 
-/** Uyandirma kelimesinin ses tanimadan cikabilecegi bicimler. */
-const WAKE_WORDS = new Set([
-  "dra", "dara", "dira", "dera", "draa", "drama yok",
-  "tra", "tira", "tara", "dra.", "de ra", "d ra",
-]);
+/** Uyandirma kelimesinin ses tanimadan cikabilecegi temel bicimleri. */
+const BASE_WAKE_WORDS = [
+  "dra", "dara", "dira", "dera", "draa",
+  "tra", "tira", "tara", "de ra", "d ra",
+];
 
-/** Bu kadar sessizlikten sonra DRA kendini uyutur. */
-const AUTO_SLEEP_MS = 150_000;
+/** Temel liste + ayarlardan gelen ek sozcukler. */
+let wakeWords = new Set(BASE_WAKE_WORDS);
 
-const STORE_KEY = "dra.state.v1";
+function rebuildWakeWords() {
+  wakeWords = new Set([...BASE_WAKE_WORDS, ...store.extraWakeWords.map(normalize)]);
+}
 
 /* ============================================================ elemanlar */
 
@@ -42,36 +47,12 @@ const dom = {
   input: $("composer-input"),
 };
 
-/* ============================================================ kalici veri */
+/* ============================================================ tema */
 
-let notes = [];
-let theme = null;
-
-function loadStore() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-    notes = Array.isArray(saved.notes) ? saved.notes.slice(0, 40) : [];
-    theme = Array.isArray(saved.theme) && saved.theme.length === 3 ? saved.theme : null;
-    if (typeof saved.voiceEnabled === "boolean") state.voiceEnabled = saved.voiceEnabled;
-  } catch {
-    notes = [];
-  }
-}
-
-function saveStore() {
-  try {
-    localStorage.setItem(
-      STORE_KEY,
-      JSON.stringify({ notes, theme, voiceEnabled: state.voiceEnabled }),
-    );
-  } catch {
-    /* depolama kapali olabilir — sorun degil */
-  }
-}
-
+/** Tema rengini CSS degiskenlerine yazar. */
 function applyTheme(rgb) {
-  if (!rgb) return;
-  theme = rgb;
+  if (!Array.isArray(rgb) || rgb.length !== 3) return;
+  store.theme = rgb;
   const root = document.documentElement.style;
   root.setProperty("--hue-r", String(rgb[0]));
   root.setProperty("--hue-g", String(rgb[1]));
@@ -103,6 +84,37 @@ setInterval(() => {
   }
   hud.renderTimers(timers);
 }, 1000);
+
+/* ============================================================ alarmlar */
+
+/**
+ * Vakti gelen alarm.
+ *
+ * Alarm uyku modunda da calmali — kullanici DRA'yi uyandirmayi
+ * unutmus olabilir. Bu yuzden gerekiyorsa once kendini uyandirir.
+ */
+async function onAlarmFired(alarm) {
+  alarms.ring();
+  panel.markRinging(alarm.id);
+  panel.openTab("alarm");
+
+  const spoken = alarm.label
+    ? `Alarm efendim: ${alarm.label}. Saat ${alarm.time}.`
+    : `Alarm efendim. Saat ${alarm.time}.`;
+
+  if (state.current === S.SLEEPING) {
+    // Uyandirma sirasinda kendi selamini vermesin — alarmi duyursun.
+    await wakeUp("", { silent: true });
+  }
+
+  hud.log("system", `Alarm caldi: ${alarm.time}${alarm.label ? ` — ${alarm.label}` : ""}`);
+  hud.toast(`Alarm: ${alarm.time}`, 6000);
+  // `logged` bayragi verilmemeli: bu metni henuz kimse kayda yazmadi.
+  await respond(spoken);
+
+  // Vurguyu bir sure sonra kaldir.
+  setTimeout(() => panel.markRinging(null), 20_000);
+}
 
 /* ============================================================ beyin koprusu */
 
@@ -205,10 +217,12 @@ let autoSleepTimer = null;
 function touch() {
   clearTimeout(autoSleepTimer);
   if (state.current === S.SLEEPING) return;
+  // Ayarlarda 0 secilirse otomatik uyku tamamen kapanir.
+  if (!store.autoSleepMinutes) return;
   autoSleepTimer = setTimeout(() => {
     if (state.current === S.SLEEPING) return;
     goToSleep("Uzun suredir sessizsiniz. Uyku moduna geciyorum.");
-  }, AUTO_SLEEP_MS);
+  }, store.autoSleepMinutes * 60_000);
 }
 
 /** Metni ekrana yazar ve (ses aciksa) okur. */
@@ -218,7 +232,7 @@ async function respond(text, { logged = false, kind = null } = {}) {
   hud.setCaption(text, kind);
   remember("assistant", text);
 
-  if (state.voiceEnabled && speech.voiceSupported) {
+  if (store.voiceEnabled && speech.voiceSupported) {
     setState(S.SPEAKING);
     await speech.say(text);
   }
@@ -275,10 +289,10 @@ async function handleUtterance(rawText) {
 function isWakePhrase(text) {
   const n = normalize(text);
   if (!n) return false;
-  if (WAKE_WORDS.has(n)) return true;
+  if (wakeWords.has(n)) return true;
 
   for (const token of n.split(" ")) {
-    if (WAKE_WORDS.has(token)) return true;
+    if (wakeWords.has(token)) return true;
     // "dra", "draya", "drayi" gibi ekli bicimler
     if (token.startsWith("dra") && token.length <= 6) return true;
   }
@@ -294,12 +308,12 @@ function stripWakeWord(text) {
 
 let waking = false;
 
-async function wakeUp(spokenRest = "") {
+async function wakeUp(spokenRest = "", { silent = false } = {}) {
   if (waking || state.current !== S.SLEEPING) return;
   waking = true;
   setState(S.WAKING);
 
-  await hud.playBoot(brain.ready);
+  if (store.bootSequence) await hud.playBoot(brain.ready);
   hud.showHud();
   setState(S.IDLE);
   waking = false;
@@ -310,6 +324,9 @@ async function wakeUp(spokenRest = "") {
     hour < 6 ? "Iyi geceler" : hour < 12 ? "Gunaydin" : hour < 18 ? "Iyi gunler" : "Iyi aksamlar";
 
   hud.log("system", "DRA uyandirildi.");
+
+  // Alarm gibi kendi mesaji olan tetikleyiciler selami atlar.
+  if (silent) return;
 
   const rest = stripWakeWord(spokenRest);
   if (rest && rest.length > 2) {
@@ -396,43 +413,75 @@ on("mic", ({ status, message }) => {
 
 const ctx = {
   sleep: () => goToSleep(),
+
   openUrl: (url) => {
     const win = window.open(url, "_blank", "noopener,noreferrer");
     if (!win) hud.toast("Tarayici acilir pencereyi engelledi", 4000);
   },
-  addNote: (text) => {
-    notes.push(text);
-    if (notes.length > 40) notes.shift();
-    saveStore();
-    hud.renderNotes(notes);
-  },
-  getNotes: () => notes.slice(),
+
+  /* --- notlar --- */
+  addNote: (text) => panel.addNote(text),
+  getNotes: () => store.notes.slice(),
   clearNotes: () => {
-    notes = [];
+    store.notes = [];
     saveStore();
-    hud.renderNotes(notes);
+    panel.renderNotes();
   },
+
+  /* --- alarmlar --- */
+  addAlarm: (time, label, repeat) => {
+    const alarm = alarms.addAlarm(time, label, repeat);
+    if (alarm) {
+      panel.renderAlarms();
+      panel.openTab("alarm");
+    }
+    return alarm;
+  },
+  getAlarms: () => alarms.listAlarms(),
+  clearAlarms: () => {
+    alarms.clearAlarms();
+    panel.markRinging(null);
+  },
+  describeAlarm: (alarm) => alarms.describeUntil(alarm),
+
+  /* --- zamanlayicilar --- */
   addTimer,
-  setTheme: applyTheme,
+
+  /* --- arayuz --- */
+  setTheme: (rgb) => {
+    applyTheme(rgb);
+    panel.syncSettings();
+  },
   setVoice: (enabled) => {
-    state.voiceEnabled = enabled;
+    store.voiceEnabled = enabled;
+    saveStore();
     dom.btnVoice.setAttribute("aria-pressed", String(enabled));
     if (!enabled) speech.shutUp();
-    saveStore();
   },
   toggleFullscreen: () => {
     if (document.fullscreenElement) document.exitFullscreen?.();
     else document.documentElement.requestFullscreen?.().catch(() => {});
   },
   clearLog: () => hud.clearLog(),
+  openPanel: (name) => panel.openTab(name),
+  toast: (text, ms) => hud.toast(text, ms),
+
+  /* --- ayar geri cagrilari --- */
+  isMicOn: () => speech.isListening(),
+  toggleMic: () => dom.btnMic.click(),
+  onAutoSleepChanged: () => touch(),
+  onWakeWordsChanged: () => rebuildWakeWords(),
+
   systemReport: () => {
+    const nextAlarm = alarms.listAlarms().filter((a) => a.enabled)[0];
     const parts = [
       `Saat ${hud.formatTime()}.`,
       state.micEnabled ? "Mikrofon acik." : "Mikrofon kapali.",
       navigator.onLine ? "Ag baglantisi var." : "Ag baglantisi yok.",
-      brain.ready ? `Yapay zeka beynim bagli.` : "Yapay zeka beynim cevrimdisi, yerel modda calisiyorum.",
+      brain.ready ? "Yapay zeka beynim bagli." : "Yapay zeka beynim cevrimdisi, yerel modda calisiyorum.",
       timers.length ? `${timers.length} aktif zamanlayici var.` : "Aktif zamanlayici yok.",
-      notes.length ? `${notes.length} kayitli not var.` : "Kayitli not yok.",
+      nextAlarm ? `Siradaki alarm ${nextAlarm.time}.` : "Kurulu alarm yok.",
+      store.notes.length ? `${store.notes.length} kayitli not var.` : "Kayitli not yok.",
     ];
     return parts.join(" ");
   },
@@ -492,8 +541,9 @@ dom.btnSleep.addEventListener("click", () => goToSleep());
 dom.btnFull.addEventListener("click", ctx.toggleFullscreen);
 
 dom.btnVoice.addEventListener("click", () => {
-  ctx.setVoice(!state.voiceEnabled);
-  hud.toast(state.voiceEnabled ? "Sesli yanit acik" : "Sesli yanit kapali");
+  ctx.setVoice(!store.voiceEnabled);
+  panel.syncSettings();
+  hud.toast(store.voiceEnabled ? "Sesli yanit acik" : "Sesli yanit kapali");
 });
 
 dom.btnMic.addEventListener("click", () => {
@@ -568,12 +618,14 @@ function pollLevel() {
 
 function boot() {
   loadStore();
-  if (theme) applyTheme(theme);
+  applyTheme(store.theme);
+  rebuildWakeWords();
 
   mountReactor($("reactor"));
   mountWave($("wave"));
 
-  hud.renderNotes(notes);
+  panel.mountPanel(ctx);
+  alarms.startAlarmClock(onAlarmFired);
   hud.renderTimers(timers);
   hud.showSleep();
   updateNetGauge();
@@ -581,7 +633,7 @@ function boot() {
   checkBrain();
   setInterval(checkBrain, 60_000);
 
-  dom.btnVoice.setAttribute("aria-pressed", String(state.voiceEnabled));
+  dom.btnVoice.setAttribute("aria-pressed", String(store.voiceEnabled));
   dom.btnMic.setAttribute("aria-pressed", "false");
 
   if (!speech.speechSupported) {

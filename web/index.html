@@ -73,25 +73,127 @@
         </div>
       </header>
 
-      <!-- Sol panel -->
+      <!-- Sol panel: kontrol merkezi -->
       <aside class="panel panel--left">
-        <h2 class="panel__title">Sistem</h2>
-        <ul class="gauges" id="gauges">
-          <li data-gauge="mic"><span>Mikrofon</span><div class="gauge"><i></i></div><b>0%</b></li>
-          <li data-gauge="net"><span>Ag</span><div class="gauge"><i></i></div><b>—</b></li>
-          <li data-gauge="brain"><span>Beyin</span><div class="gauge"><i></i></div><b>—</b></li>
-          <li data-gauge="battery"><span>Enerji</span><div class="gauge"><i></i></div><b>—</b></li>
-        </ul>
+        <nav class="tabs" role="tablist" aria-label="Kontrol paneli">
+          <button class="tab" type="button" role="tab" data-tab="sistem" aria-selected="true">Sistem</button>
+          <button class="tab" type="button" role="tab" data-tab="notlar" aria-selected="false">Not</button>
+          <button class="tab" type="button" role="tab" data-tab="alarm" aria-selected="false">Alarm</button>
+          <button class="tab" type="button" role="tab" data-tab="ayar" aria-selected="false">Ayar</button>
+        </nav>
 
-        <h2 class="panel__title">Notlar</h2>
-        <ul class="notes" id="notes">
-          <li class="notes__empty">Kayitli not yok</li>
-        </ul>
+        <!-- ---------- SISTEM ---------- -->
+        <section class="pane" data-pane="sistem" role="tabpanel">
+          <ul class="gauges" id="gauges">
+            <li data-gauge="mic"><span>Mikrofon</span><div class="gauge"><i></i></div><b>0%</b></li>
+            <li data-gauge="net"><span>Ag</span><div class="gauge"><i></i></div><b>&mdash;</b></li>
+            <li data-gauge="brain"><span>Beyin</span><div class="gauge"><i></i></div><b>&mdash;</b></li>
+            <li data-gauge="battery"><span>Enerji</span><div class="gauge"><i></i></div><b>&mdash;</b></li>
+          </ul>
 
-        <h2 class="panel__title">Zamanlayicilar</h2>
-        <ul class="timers" id="timers">
-          <li class="timers__empty">Aktif zamanlayici yok</li>
-        </ul>
+          <h3 class="pane__title">Zamanlayicilar</h3>
+          <ul class="timers" id="timers">
+            <li class="list__empty">Aktif zamanlayici yok</li>
+          </ul>
+
+          <h3 class="pane__title">Siradaki alarm</h3>
+          <p class="nextalarm" id="next-alarm">Kurulu alarm yok</p>
+        </section>
+
+        <!-- ---------- NOTLAR ---------- -->
+        <section class="pane" data-pane="notlar" role="tabpanel" hidden>
+          <form class="minirow" id="note-form">
+            <input
+              id="note-input"
+              class="minirow__input"
+              type="text"
+              placeholder="Yeni not&hellip;"
+              maxlength="140"
+              aria-label="Yeni not"
+            />
+            <button class="btn btn--icon" type="submit">Ekle</button>
+          </form>
+          <ul class="notes" id="notes"></ul>
+          <button class="btn btn--icon btn--wide btn--danger" type="button" id="notes-clear">
+            Tum notlari sil
+          </button>
+        </section>
+
+        <!-- ---------- ALARM ---------- -->
+        <section class="pane" data-pane="alarm" role="tabpanel" hidden>
+          <form class="alarmform" id="alarm-form">
+            <div class="minirow">
+              <input id="alarm-time" class="minirow__input" type="time" required aria-label="Alarm saati" />
+              <button class="btn btn--icon" type="submit">Kur</button>
+            </div>
+            <input
+              id="alarm-label"
+              class="minirow__input minirow__input--full"
+              type="text"
+              placeholder="Etiket (istege bagli)"
+              maxlength="60"
+              aria-label="Alarm etiketi"
+            />
+            <label class="check">
+              <input type="checkbox" id="alarm-repeat" />
+              <span>Her gun tekrarla</span>
+            </label>
+          </form>
+          <ul class="alarms" id="alarms"></ul>
+          <button class="btn btn--icon btn--wide btn--danger" type="button" id="alarms-clear">
+            Tum alarmlari sil
+          </button>
+        </section>
+
+        <!-- ---------- AYARLAR ---------- -->
+        <section class="pane" data-pane="ayar" role="tabpanel" hidden>
+          <ul class="settings">
+            <li>
+              <span>Sesli yanit</span>
+              <button class="switch" type="button" id="set-voice" role="switch" aria-checked="true"></button>
+            </li>
+            <li>
+              <span>Mikrofon</span>
+              <button class="switch" type="button" id="set-mic" role="switch" aria-checked="false"></button>
+            </li>
+            <li>
+              <span>Acilis dizisi</span>
+              <button class="switch" type="button" id="set-boot" role="switch" aria-checked="true"></button>
+            </li>
+
+            <li class="settings__stack">
+              <label for="set-rate">Konusma hizi <b id="set-rate-val">1.05&times;</b></label>
+              <input id="set-rate" type="range" min="0.6" max="1.6" step="0.05" />
+            </li>
+
+            <li class="settings__stack">
+              <label for="set-sleep">Otomatik uyku</label>
+              <select id="set-sleep">
+                <option value="0">Kapali</option>
+                <option value="1">1 dakika</option>
+                <option value="2.5">2.5 dakika</option>
+                <option value="5">5 dakika</option>
+                <option value="10">10 dakika</option>
+              </select>
+            </li>
+
+            <li class="settings__stack">
+              <label>Tema rengi</label>
+              <div class="swatches" id="swatches"></div>
+            </li>
+
+            <li class="settings__stack">
+              <label for="set-wake">Ek uyandirma sozcukleri</label>
+              <input id="set-wake" type="text" placeholder="ornek: dira, dra" maxlength="80" />
+              <small class="hint">Virgulle ayirin. Ses tanima adinizi farkli yaziyorsa buraya ekleyin.</small>
+            </li>
+          </ul>
+
+          <div class="settings__actions">
+            <button class="btn btn--icon" type="button" id="set-clear-log">Kaydi sil</button>
+            <button class="btn btn--icon btn--danger" type="button" id="set-reset">Sifirla</button>
+          </div>
+        </section>
       </aside>
 
       <!-- Merkez: reaktor -->

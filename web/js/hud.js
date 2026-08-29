@@ -22,7 +22,6 @@ const el = {
   coreLabel: $("core-state-label"),
   caption: $("core-caption"),
   log: $("log"),
-  notes: $("notes"),
   timers: $("timers"),
   gauges: $("gauges"),
   toast: $("toast"),
@@ -204,29 +203,15 @@ export function clearLog() {
   el.log.replaceChildren();
 }
 
-/* ----------------------------------------------------------- notlar / sayaclar */
-
-export function renderNotes(notes) {
-  el.notes.replaceChildren();
-  if (!notes.length) {
-    const li = document.createElement("li");
-    li.className = "notes__empty";
-    li.textContent = "Kayitli not yok";
-    el.notes.append(li);
-    return;
-  }
-  notes.forEach((note, i) => {
-    const li = document.createElement("li");
-    li.textContent = `${i + 1}. ${note}`;
-    el.notes.append(li);
-  });
-}
+/* --------------------------------------------------------------- sayaclar */
+/* Notlar ve alarmlar panel.js tarafindan yonetilir; burada yalnizca
+   geri sayim zamanlayicilari cizilir. */
 
 export function renderTimers(timers) {
   el.timers.replaceChildren();
   if (!timers.length) {
     const li = document.createElement("li");
-    li.className = "timers__empty";
+    li.className = "list__empty";
     li.textContent = "Aktif zamanlayici yok";
     el.timers.append(li);
     return;
@@ -234,6 +219,7 @@ export function renderTimers(timers) {
   for (const t of timers) {
     const li = document.createElement("li");
     const name = document.createElement("span");
+    name.className = "alarms__body";
     name.textContent = t.label;
     const left = document.createElement("b");
     const secs = Math.max(0, Math.ceil((t.endsAt - Date.now()) / 1000));

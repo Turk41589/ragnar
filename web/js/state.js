@@ -48,7 +48,6 @@ export function emit(event, payload) {
 export const state = {
   current: S.SLEEPING,
   micEnabled: false,
-  voiceEnabled: true,
   brainReady: false,
   level: 0,           // 0..1 anlik mikrofon seviyesi
   history: [],        // {role, content} — beyne gonderilen konusma gecmisi

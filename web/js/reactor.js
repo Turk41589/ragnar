@@ -64,12 +64,102 @@ function buildTickRing(size, R, dpr, accent) {
   return off;
 }
 
+/**
+ * Donen glif halkasi: cevrede akan karakter dizisi.
+ * Her karede 60 harf dondurmek pahali oldugu icin bir kez cizilip
+ * onbellege alinir; sonra sadece drawImage + rotate ile dondurulur.
+ */
+function buildGlyphRing(size, R, dpr, accent) {
+  const off = document.createElement("canvas");
+  off.width = size;
+  off.height = size;
+  const c = off.getContext("2d");
+  c.translate(size / 2, size / 2);
+  c.font = `${8 * dpr}px ui-monospace, monospace`;
+  c.textAlign = "center";
+  c.textBaseline = "middle";
+  c.fillStyle = rgba(accent, 0.4);
+
+  const glyphs = "DRA0123456789ABCDEF//::..↑↓<>[]{}";
+  const count = 68;
+  for (let i = 0; i < count; i += 1) {
+    const a = (i / count) * TAU;
+    c.save();
+    c.rotate(a);
+    c.translate(0, -R);
+    c.fillText(glyphs[i % glyphs.length], 0, 0);
+    c.restore();
+  }
+  return off;
+}
+
+/**
+ * Donen parca halkasi: farkli uzunlukta yay dilimleri ve uc tirnaklari.
+ * Reaktorun "etrafinda donen parcalar" hissini veren ana katman.
+ */
+function buildSegmentRing(size, R, dpr, accent, spec) {
+  const off = document.createElement("canvas");
+  off.width = size;
+  off.height = size;
+  const c = off.getContext("2d");
+  c.translate(size / 2, size / 2);
+  c.lineCap = "butt";
+
+  for (const seg of spec) {
+    const start = seg.at * TAU;
+    const end = start + seg.len * TAU;
+    c.strokeStyle = rgba(accent, seg.alpha);
+    c.lineWidth = seg.weight * dpr;
+    c.beginPath();
+    c.arc(0, 0, R, start, end);
+    c.stroke();
+
+    // Dilim uclarindaki kisa tirnaklar
+    c.lineWidth = 1 * dpr;
+    for (const a of [start, end]) {
+      const inner = R - seg.weight * 2.5 * dpr;
+      const outer = R + seg.weight * 2.5 * dpr;
+      c.beginPath();
+      c.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+      c.lineTo(Math.cos(a) * outer, Math.sin(a) * outer);
+      c.stroke();
+    }
+  }
+  return off;
+}
+
+/** Kose ayraclari — donerken cerceve hissi verir. */
+function buildBrackets(size, R, dpr, accent) {
+  const off = document.createElement("canvas");
+  off.width = size;
+  off.height = size;
+  const c = off.getContext("2d");
+  c.translate(size / 2, size / 2);
+  c.strokeStyle = rgba(accent, 0.5);
+  c.lineWidth = 1.5 * dpr;
+  const span = TAU * 0.045;
+  for (let i = 0; i < 4; i += 1) {
+    const mid = (i / 4) * TAU + Math.PI / 4;
+    c.beginPath();
+    c.arc(0, 0, R, mid - span, mid + span);
+    c.stroke();
+    for (const a of [mid - span, mid + span]) {
+      c.beginPath();
+      c.moveTo(Math.cos(a) * R, Math.sin(a) * R);
+      c.lineTo(Math.cos(a) * (R - 9 * dpr), Math.sin(a) * (R - 9 * dpr));
+      c.stroke();
+    }
+  }
+  return off;
+}
+
 export function mountReactor(canvas) {
   const ctx = canvas.getContext("2d");
   let accent = readAccent();
   let accentAge = 0;
-  let tickRing = null;
-  let tickKey = "";
+  // Onbelleklenen donen katmanlar (boyut ya da renk degisince yenilenir)
+  let layers = null;
+  let layerKey = "";
 
   // Yumusatilmis degerler — ani sicramalari onler.
   let smoothLevel = 0;
@@ -78,11 +168,30 @@ export function mountReactor(canvas) {
   let speakPhase = 0;
 
   const bars = new Float32Array(56);
-  const orbit = Array.from({ length: 5 }, (_, i) => ({
-    r: 0.62 + i * 0.055,
-    speed: (i % 2 ? -1 : 1) * (0.14 + i * 0.05),
-    phase: (i / 5) * TAU,
+  // Cekirdegin cevresinde donen kucuk noktalar
+  const orbit = Array.from({ length: 7 }, (_, i) => ({
+    r: 0.6 + (i % 3) * 0.06,
+    speed: (i % 2 ? -1 : 1) * (0.12 + i * 0.04),
+    phase: (i / 7) * TAU,
   }));
+
+  // Yorungede donen "parcalar": her biri kendi hizinda, merkeze bir
+  // baglanti cizgisiyle bagli kucuk bloklar.
+  const shards = [
+    { r: 0.97, size: 13, speed: 0.10, phase: 0.0, alpha: 0.85, ticks: 3 },
+    { r: 0.97, size: 8, speed: 0.10, phase: TAU * 0.5, alpha: 0.6, ticks: 2 },
+    { r: 0.88, size: 10, speed: -0.17, phase: TAU * 0.25, alpha: 0.7, ticks: 2 },
+    { r: 0.88, size: 6, speed: -0.17, phase: TAU * 0.72, alpha: 0.5, ticks: 1 },
+    { r: 0.74, size: 7, speed: 0.24, phase: TAU * 0.12, alpha: 0.65, ticks: 2 },
+    { r: 0.74, size: 5, speed: 0.24, phase: TAU * 0.62, alpha: 0.45, ticks: 1 },
+  ];
+
+  // Yorungede donen ama dik duran kucuk veri levhalari
+  const slabs = [
+    { r: 0.93, speed: -0.07, phase: TAU * 0.16, w: 26, h: 15, rows: 3 },
+    { r: 0.93, speed: -0.07, phase: TAU * 0.66, w: 20, h: 11, rows: 2 },
+    { r: 0.8, speed: 0.13, phase: TAU * 0.42, w: 17, h: 9, rows: 2 },
+  ];
 
   function draw(time) {
     const dpr = fitCanvas(canvas);
@@ -125,15 +234,51 @@ export function mountReactor(canvas) {
     const baseAlpha = asleep ? 0.35 : 1;
     const pulse = 0.5 + 0.5 * Math.sin(time / (busy ? 220 : 1100));
 
-    // --- 1. dis tik halkasi (onbellekli) ------------------------------
+    // --- katman onbellegi ---------------------------------------------
     const key = `${w}x${h}|${accent.r},${accent.g},${accent.b}`;
-    if (key !== tickKey) {
-      tickRing = buildTickRing(Math.min(w, h), R, dpr, accent);
-      tickKey = key;
+    if (key !== layerKey) {
+      const size = Math.min(w, h);
+      layers = {
+        ticks: buildTickRing(size, R, dpr, accent),
+        glyphs: buildGlyphRing(size, R * 0.955, dpr, accent),
+        outerSegs: buildSegmentRing(size, R * 0.9, dpr, accent, [
+          { at: 0.0, len: 0.14, weight: 3, alpha: 0.8 },
+          { at: 0.22, len: 0.05, weight: 3, alpha: 0.45 },
+          { at: 0.4, len: 0.19, weight: 3, alpha: 0.65 },
+          { at: 0.68, len: 0.08, weight: 3, alpha: 0.5 },
+          { at: 0.82, len: 0.11, weight: 3, alpha: 0.75 },
+        ]),
+        midSegs: buildSegmentRing(size, R * 0.7, dpr, accent, [
+          { at: 0.1, len: 0.22, weight: 2, alpha: 0.55 },
+          { at: 0.46, len: 0.1, weight: 2, alpha: 0.4 },
+          { at: 0.64, len: 0.26, weight: 2, alpha: 0.6 },
+        ]),
+        brackets: buildBrackets(size, R * 0.78, dpr, accent),
+      };
+      layerKey = key;
     }
+
+    /** Onbellekli bir katmani verilen aci kadar dondurup basar. */
+    const stamp = (layer, angle, alpha = 1) => {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.globalAlpha = alpha * baseAlpha;
+      ctx.drawImage(layer, -layer.width / 2, -layer.height / 2);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    };
+
+    // --- 1. sabit tik halkasi -----------------------------------------
     ctx.globalAlpha = baseAlpha;
-    ctx.drawImage(tickRing, cx - tickRing.width / 2, cy - tickRing.height / 2);
+    ctx.drawImage(layers.ticks, cx - layers.ticks.width / 2, cy - layers.ticks.height / 2);
     ctx.globalAlpha = 1;
+
+    // --- 1b. birbirine gore donen parca halkalari ---------------------
+    stamp(layers.glyphs, spin * 0.5);
+    stamp(layers.outerSegs, -spin * 1.9);
+    stamp(layers.midSegs, spin * 2.6);
+    stamp(layers.brackets, -spin * 0.9, 0.9);
 
     // --- 2. donen kesik halka -----------------------------------------
     ctx.save();
@@ -148,20 +293,6 @@ export function mountReactor(canvas) {
     ctx.setLineDash([]);
     ctx.restore();
 
-    // --- 3. ters yonde donen kalin yaylar ------------------------------
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(-spin * 1.7);
-    ctx.lineCap = "round";
-    ctx.lineWidth = 2.5 * dpr;
-    for (let i = 0; i < 3; i += 1) {
-      const start = (i / 3) * TAU;
-      ctx.strokeStyle = rgba(accent, (0.75 - i * 0.16) * baseAlpha);
-      ctx.beginPath();
-      ctx.arc(0, 0, R * 0.82, start, start + TAU * 0.17);
-      ctx.stroke();
-    }
-    ctx.restore();
 
     // --- 4. spektrum cubuklari ----------------------------------------
     const spectrum = live ? readSpectrum(bars.length) : null;
@@ -252,6 +383,87 @@ export function mountReactor(canvas) {
       ctx.beginPath();
       ctx.arc(x, y, 1.9 * dpr, 0, TAU);
       ctx.fill();
+    }
+    ctx.restore();
+
+    // --- 7b. yorungede donen parcalar ---------------------------------
+    // Her parca merkeze bakan kisa bir baglanti cizgisiyle birlikte doner.
+    ctx.save();
+    ctx.translate(cx, cy);
+    for (const shard of shards) {
+      const a = shard.phase + spin * shard.speed * 22;
+      const rr = R * shard.r;
+      ctx.save();
+      ctx.rotate(a);
+      ctx.translate(rr, 0);
+
+      const size = shard.size * dpr;
+      ctx.strokeStyle = rgba(accent, shard.alpha * baseAlpha);
+      ctx.fillStyle = rgba(accent, shard.alpha * 0.12 * baseAlpha);
+      ctx.lineWidth = 1.2 * dpr;
+
+      // Govde
+      ctx.beginPath();
+      ctx.rect(-size / 2, -size / 2, size, size);
+      ctx.fill();
+      ctx.stroke();
+
+      // Ic tirnaklar
+      ctx.lineWidth = 1 * dpr;
+      ctx.strokeStyle = rgba(accent, shard.alpha * 0.6 * baseAlpha);
+      for (let t = 0; t < shard.ticks; t += 1) {
+        const y = -size / 2 + ((t + 1) * size) / (shard.ticks + 1);
+        ctx.beginPath();
+        ctx.moveTo(-size / 2 + 2 * dpr, y);
+        ctx.lineTo(size / 2 - 2 * dpr, y);
+        ctx.stroke();
+      }
+
+      // Merkeze uzanan baglanti
+      ctx.strokeStyle = rgba(accent, shard.alpha * 0.35 * baseAlpha);
+      ctx.beginPath();
+      ctx.moveTo(-size / 2, 0);
+      ctx.lineTo(-size / 2 - 10 * dpr, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // --- 7c. yorungede donen veri levhalari ---------------------------
+    // Yorungede tasinirlar ama okunabilir kalmalari icin dik dururlar.
+    ctx.save();
+    ctx.translate(cx, cy);
+    for (const slab of slabs) {
+      const a = slab.phase + spin * slab.speed * 22;
+      const x = Math.cos(a) * R * slab.r;
+      const y = Math.sin(a) * R * slab.r;
+      const w2 = slab.w * dpr;
+      const h2 = slab.h * dpr;
+
+      ctx.save();
+      ctx.translate(x, y);
+
+      ctx.strokeStyle = rgba(accent, 0.45 * baseAlpha);
+      ctx.fillStyle = rgba(accent, 0.07 * baseAlpha);
+      ctx.lineWidth = 1 * dpr;
+      ctx.beginPath();
+      ctx.rect(-w2 / 2, -h2 / 2, w2, h2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Icindeki sahte veri satirlari — canliligi seviyeye bagli
+      ctx.strokeStyle = rgba(accent, (0.3 + smoothLevel * 0.5) * baseAlpha);
+      ctx.lineWidth = 1 * dpr;
+      for (let r = 0; r < slab.rows; r += 1) {
+        const ly = -h2 / 2 + ((r + 1) * h2) / (slab.rows + 1);
+        const seed = Math.sin(time / 420 + r * 2.1 + slab.phase) * 0.5 + 0.5;
+        const len = (w2 - 6 * dpr) * (0.35 + seed * 0.6);
+        ctx.beginPath();
+        ctx.moveTo(-w2 / 2 + 3 * dpr, ly);
+        ctx.lineTo(-w2 / 2 + 3 * dpr + len, ly);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
     ctx.restore();
 

@@ -69,6 +69,128 @@ function extractNumber(n) {
   return null;
 }
 
+/* ------------------------------------------------------- saat cozumlemesi */
+
+/**
+ * Ekli sayi sozcugunu cozer: "dokuzda" -> 9, "yediye" -> 7, "besté" -> 5.
+ * Turkce'de saat neredeyse her zaman ek alir; ek atilmadan eslesmez.
+ */
+const NUM_SUFFIXES = ["da", "de", "ta", "te", "ya", "ye", "a", "e"];
+
+function numberWord(token) {
+  if (token in UNITS) return UNITS[token];
+  if (token in TENS) return TENS[token];
+  for (const suffix of NUM_SUFFIXES) {
+    if (!token.endsWith(suffix)) continue;
+    const base = token.slice(0, -suffix.length);
+    if (base in UNITS) return UNITS[base];
+    if (base in TENS) return TENS[base];
+  }
+  return null;
+}
+
+/** Metinde mutlak bir saat ifadesi var mi? */
+const hasClockShape = (n) =>
+  /\b\d{1,2}[:.]\d{2}\b/.test(n) ||
+  /bucuk|ceyrek/.test(n) ||
+  /\b(sabah|aksam|oglen|ogleden|gece)\b/.test(n);
+
+/** Metin mutlak saat degil de sure mi anlatiyor? ("5 dakika sonra") */
+const hasDurationShape = (n) =>
+  /\b(dakika|saniye)\b/.test(n) || (/\bsaat\b/.test(n) && /\bsonra\b/.test(n));
+
+/**
+ * "sabah yedi bucukta", "07:30", "aksam dokuzda" gibi ifadeleri "HH:MM" yapar.
+ * Cozemezse null doner.
+ */
+export function parseClockTime(n) {
+  let hour = null;
+  let minute = 0;
+
+  // 1) Dogrudan 07:30 / 07.30 bicimi
+  const direct = n.match(/\b(\d{1,2})[:.](\d{2})\b/);
+  if (direct) {
+    hour = Number(direct[1]);
+    minute = Number(direct[2]);
+  } else {
+    // 2) Rakamla yazilmis saat — "7 de", "8 30"
+    const digits = n.match(/\b\d{1,2}\b/g);
+    if (digits) {
+      hour = Number(digits[0]);
+      if (digits[1] !== undefined && Number(digits[1]) < 60) minute = Number(digits[1]);
+    } else {
+      // 3) Yaziyla yazilmis saat — "yedi", "on bir", "dokuzda"
+      const words = n.split(" ");
+      for (let i = 0; i < words.length; i += 1) {
+        const value = numberWord(words[i]);
+        if (value === null) continue;
+        let hours = value;
+        // "on bir", "yirmi uc" gibi bilesikler
+        if (value === 10 || value === 20) {
+          const next = numberWord(words[i + 1] || "");
+          if (next !== null && next < 10) hours = value + next;
+        }
+        if (hours >= 0 && hours <= 24) {
+          hour = hours;
+          break;
+        }
+      }
+    }
+  }
+
+  if (hour === null) return null;
+
+  // "bucuk" / "ceyrek" dakikayi belirler. Ek aldiklari icin (bucukta,
+  // ceyrege) kelime sinirina degil, govdeye bakiyoruz.
+  const quarterTo = /ceyrek/.test(n) && /kala/.test(n);
+  if (/bucuk/.test(n)) minute = 30;
+  else if (quarterTo) minute = 45;
+  else if (/ceyrek/.test(n)) minute = 15;
+
+  // "yediye ceyrek kala" bir onceki saati kasteder
+  if (quarterTo) hour = hour === 0 ? 23 : hour - 1;
+
+  // Gunun bolumu 12 saatlik ifadeyi 24 saate tasir
+  if (/\b(aksam|gece)\b/.test(n) && hour < 12) hour += 12;
+  else if (/\bogleden\b/.test(n) && /\bsonra\b/.test(n) && hour < 12) hour += 12;
+  else if (/\boglen\b/.test(n) && hour < 12) hour = 12;
+
+  if (hour > 23 || minute > 59 || hour < 0) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+/** Alarm cumlesinde etiket olmayan sozcukler. */
+const ALARM_STOPWORDS = new Set([
+  "alarm", "alarmi", "alarmini", "kur", "kurar", "misin", "ayarla", "ayarlar",
+  "uyandir", "uyandirir", "beni", "saat", "saate", "saatte", "sabah", "sabaha",
+  "aksam", "aksama", "gece", "geceye", "oglen", "ogleden", "sonra", "icin",
+  "her", "gun", "gune", "tekrarla", "lutfen", "kala", "de", "da", "te", "ta",
+  "ye", "ya", "bir", "olsun", "kurabilir", "kuralim",
+]);
+
+/**
+ * Alarm cumlesinden etiketi cikarir.
+ *
+ * Sozcukleri tek tek normalize edip eleriz ama KORUNANLARI ozgun haliyle
+ * birakiriz — boylece "ilac" degil "ilaç" yaziyor.
+ */
+function extractAlarmLabel(raw) {
+  return raw
+    .split(/\s+/)
+    .filter((word) => {
+      const t = normalize(word);
+      if (!t) return false;
+      if (/\d/.test(t)) return false;
+      if (ALARM_STOPWORDS.has(t)) return false;
+      if (numberWord(t) !== null) return false;
+      if (/^(bucuk|ceyrek)/.test(t)) return false;
+      return true;
+    })
+    .join(" ")
+    .trim()
+    .slice(0, 60);
+}
+
 /* ------------------------------------------------- guvenli matematik cozucu */
 
 /** Turkce islem sozcuklerini sembollere cevirir. */
@@ -384,10 +506,69 @@ const RULES = [
     },
   },
 
+  /* -- alarm ------------------------------------------------------------- */
+  /* Sorgu ve silme kurallari kurma kuralindan ONCE gelmeli: "alarmlarim"
+     da "alarm" sozcugunu icerdigi icin aksi halde yeni alarm kurmaya
+     calisiyordu. */
+  {
+    name: "alarmlari-oku",
+    test: (n) =>
+      has(n, "alarmlarim", "alarmlari soyle", "alarmlari goster", "alarmlari ac",
+        "kurulu alarm", "alarm var mi", "hangi alarmlar"),
+    run: (n, raw, ctx) => {
+      ctx.openPanel("alarm");
+      const list = ctx.getAlarms().filter((a) => a.enabled);
+      if (!list.length) return "Kurulu alarminiz yok.";
+      const spoken = list
+        .map((a) => `${a.time}${a.label ? ` ${a.label}` : ""}`)
+        .join(", ");
+      return `${list.length} alarminiz var: ${spoken}.`;
+    },
+  },
+  {
+    name: "alarmlari-sil",
+    test: (n) =>
+      has(n, "alarmlari sil", "alarmlari iptal", "alarmlari kapat",
+        "tum alarmlari", "alarmi iptal et"),
+    run: (n, raw, ctx) => {
+      if (!ctx.getAlarms().length) return "Zaten kurulu alarm yok.";
+      ctx.clearAlarms();
+      return "Tum alarmlar silindi.";
+    },
+  },
+  {
+    name: "alarm-kur",
+    test: (n) => {
+      // Sure anlatan ifadeler ("5 dakika sonra") zamanlayici kuralina kalir.
+      if (hasDurationShape(n) && !hasClockShape(n)) return false;
+      if (has(n, "alarm")) return true;
+      return /\buyandir/.test(n) && hasClockShape(n);
+    },
+    run: (n, raw, ctx) => {
+      const time = parseClockTime(n);
+      if (!time) {
+        return "Saat kaca alarm kurmami istersiniz? Ornegin: sabah yedi bucukta alarm kur.";
+      }
+
+      const repeat = has(n, "her gun", "her sabah", "her aksam", "tekrarla");
+      const label = extractAlarmLabel(raw);
+
+      const alarm = ctx.addAlarm(time, label, repeat);
+      if (!alarm) return "Bu saati anlayamadim.";
+
+      return (
+        `${alarm.time} icin alarm kuruldu${repeat ? ", her gun tekrarlanacak" : ""}. ` +
+        `${ctx.describeAlarm(alarm)} calacak.`
+      );
+    },
+  },
+
   /* -- zamanlayici ------------------------------------------------------- */
   {
     name: "zamanlayici",
-    test: (n) => has(n, "zamanlayici", "sayac", "alarm", "hatirlat", "geri sayim"),
+    test: (n) =>
+      has(n, "zamanlayici", "sayac", "hatirlat", "geri sayim") &&
+      !hasClockShape(n),
     run: (n, raw, ctx) => {
       const amount = extractNumber(n);
       if (!amount || amount <= 0) return "Kac dakika ya da saniye istediginizi soyleyin.";
@@ -417,6 +598,7 @@ const RULES = [
     name: "notlari-oku",
     test: (n) => has(n, "notlarim", "notlari oku", "notlari soyle", "ne not almistim"),
     run: (n, raw, ctx) => {
+      ctx.openPanel("notlar");
       const notes = ctx.getNotes();
       if (!notes.length) return "Kayitli notunuz yok.";
       return `${notes.length} notunuz var. ` + notes.map((x, i) => `${i + 1}. ${x}`).join(". ");
@@ -507,6 +689,17 @@ const RULES = [
     run: (n, raw, ctx) => {
       ctx.clearLog();
       return "Kayit temizlendi.";
+    },
+  },
+
+  /* -- panel gezinme ----------------------------------------------------- */
+  {
+    name: "panel-ac",
+    test: (n) => /\b(ac|goster|gecis yap)\b/.test(n) && has(n, "ayarlar", "ayar sekmesi", "notlar sekmesi", "sistem sekmesi"),
+    run: (n, raw, ctx) => {
+      const target = has(n, "ayar") ? "ayar" : has(n, "not") ? "notlar" : "sistem";
+      ctx.openPanel(target);
+      return `${target} paneli acildi.`;
     },
   },
 
