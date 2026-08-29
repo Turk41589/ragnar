@@ -39,6 +39,57 @@ Ardından tarayıcıda **http://localhost:4173** adresini açın.
 
 ---
 
+## Test
+
+### Elle deneme
+
+`npm start` deyip `http://localhost:4173` adresini açın. Mikrofon olmadan da
+baştan sona kullanabilirsiniz:
+
+1. Uyku ekranındaki kutuya **`saat kaç`** yazıp Enter'a basın → açılış dizisi
+   oynar, HUD açılır, DRA saati söyler.
+2. Sağdaki sohbet kutusuna sırayla deneyin:
+   `12 kere 8 kaç eder` · `sabah yedi buçukta alarm kur` · `not al süt al` ·
+   `alarmlarım` · `renk yeşil` · `sistem durumu` · `neler yapabilirsin`
+3. Sol paneldeki dört sekmeyi gezin; Alarm'dan saat seçip **Kur**'a basın,
+   Ayar'dan tema ve konuşma hızını değiştirin.
+4. Anlamayacağı bir şey yazın (`blorp zonk`) → cevap uydurmadığını görün.
+5. `uyu` yazın → uyku ekranına döner.
+
+**Sesli denemek için** "Mikrofonu başlat"a basın. İlk seferde Türkçe dil
+paketi indirilebilir (bir kerelik). Hazır olunca **"DRA"** deyin. Üst bardaki
+rozetin `cihazda` yazdığını doğrulayın.
+
+**Dışarıya bağlanmadığını görmek için:** F12 → Network sekmesi → sayfayı
+yenileyin. Tüm istekler `localhost:4173`'e olmalı, başka hiçbir alan adı
+görünmemeli.
+
+### Otomatik testler
+
+```bash
+npm install                    # yalnızca test için (Playwright)
+npx playwright install chromium
+npm test                       # hızlı testler, ~40 sn
+npm run test:tam               # alarmın gerçekten çalmasını da bekler, ~2 dk
+```
+
+`npm test` sunucuyu kendi başlatır, tarayıcıyı açar ve şunları doğrular:
+
+* **Komut motoru** — Türkçe saat çözümleyici (11 vaka), matematik, komut
+  eşleşmesi, komut önerisi, zamanlayıcı/alarm ayrımı
+* **Arayüz** — uyandırma kelimesi (yanlış tetiklenme dahil), sohbet paneli,
+  dört sekme, not/alarm ekleme-silme, ayarlar, kalıcılık, sıfırlama, dar
+  ekran yerleşimi ve **localhost dışına hiçbir istek atılmadığı**
+* **Alarm (yavaş)** — bir sonraki dakikaya alarm kurup gerçekten çalmasını,
+  DRA'yı uykudan uyandırmasını ve kendini kapatmasını bekler
+
+Tek bir paketi çalıştırmak için: `node test/run.mjs --sadece arayuz`
+
+Kendi Chromium'unuzu kullanmak isterseniz `PLAYWRIGHT_CHROMIUM_PATH` ortam
+değişkenini ayarlayın.
+
+---
+
 ## Ses ve gizlilik — okumaya değer
 
 Tarayıcıların varsayılan ses tanıması sesi **satıcının sunucusuna gönderir**

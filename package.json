@@ -7,9 +7,14 @@
   "main": "server/index.mjs",
   "scripts": {
     "start": "node server/index.mjs",
-    "dev": "node --watch server/index.mjs"
+    "dev": "node --watch server/index.mjs",
+    "test": "node test/run.mjs",
+    "test:tam": "node test/run.mjs --tam"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
   }
 }
