@@ -17,6 +17,12 @@ const DEFAULTS = {
   autoSleepMinutes: 2.5, // 0 = otomatik uyku kapali
   theme: [53, 230, 255],
   extraWakeWords: [],
+  // Web aramasi: varsayilan KAPALI. Acilinca DRA disariya baglanir.
+  webSearch: false,
+  // Yayinci destegi: Kick moderasyon komutlari.
+  streamerMode: false,
+  kickToken: "",
+  kickChannel: "",
   notes: [],
   alarms: [],
 };
@@ -35,6 +41,10 @@ function coerce(saved) {
   if (typeof saved.voiceEnabled === "boolean") store.voiceEnabled = saved.voiceEnabled;
   if (typeof saved.bootSequence === "boolean") store.bootSequence = saved.bootSequence;
   if (typeof saved.localSpeechOnly === "boolean") store.localSpeechOnly = saved.localSpeechOnly;
+  if (typeof saved.webSearch === "boolean") store.webSearch = saved.webSearch;
+  if (typeof saved.streamerMode === "boolean") store.streamerMode = saved.streamerMode;
+  if (typeof saved.kickToken === "string") store.kickToken = saved.kickToken.slice(0, 400);
+  if (typeof saved.kickChannel === "string") store.kickChannel = saved.kickChannel.slice(0, 80);
 
   if (Number.isFinite(saved.speechRate)) {
     store.speechRate = Math.min(1.6, Math.max(0.6, saved.speechRate));

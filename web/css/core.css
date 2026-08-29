@@ -61,6 +61,12 @@ ul, ol {
   list-style: none;
 }
 
+/* `hidden` niteligi tarayicinin varsayilan display:none'i ile gelir; bizim
+   .settings > li { display: flex } gibi kurallarimiz onu eziyordu. */
+[hidden] {
+  display: none !important;
+}
+
 button {
   font: inherit;
   color: inherit;

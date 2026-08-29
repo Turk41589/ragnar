@@ -111,6 +111,12 @@
 
           <h3 class="pane__title">Siradaki alarm</h3>
           <p class="nextalarm" id="next-alarm">Kurulu alarm yok</p>
+
+          <h3 class="pane__title">Uygulamalar</h3>
+          <p class="nextalarm" id="apps-info">Henuz taranmadi</p>
+          <button class="btn btn--icon btn--wide" type="button" id="apps-scan">
+            Bilgisayari tara
+          </button>
         </section>
 
         <!-- ---------- NOTLAR ---------- -->
@@ -205,6 +211,36 @@
             <li class="settings__stack">
               <label>Tema rengi</label>
               <div class="swatches" id="swatches"></div>
+            </li>
+
+            <li>
+              <span>Web aramasi</span>
+              <button class="switch" type="button" id="set-search" role="switch" aria-checked="false"></button>
+            </li>
+            <li class="settings__stack">
+              <small class="hint">
+                Kapaliyken DRA hicbir dis servise baglanmaz. Acinca bilmedigi
+                sorulari DuckDuckGo uzerinden arar ve sonucu sohbete yazar.
+              </small>
+            </li>
+
+            <li>
+              <span>Yayinci destegi</span>
+              <button class="switch" type="button" id="set-streamer" role="switch" aria-checked="false"></button>
+            </li>
+            <li class="settings__stack" id="kick-fields" hidden>
+              <label for="set-kick-channel">Kick kanal adi</label>
+              <input id="set-kick-channel" type="text" placeholder="kanaladi" maxlength="80" />
+              <label for="set-kick-token">Kick erisim jetonu</label>
+              <input id="set-kick-token" type="password" placeholder="Bearer jetonu" maxlength="400" />
+              <button class="btn btn--icon btn--wide" type="button" id="set-kick-test">
+                Baglantiyi sina
+              </button>
+              <small class="hint">
+                Jeton yalnizca sunucuda tutulur, sohbete ya da disariya yazilmaz.
+                Acikken sesle moderasyon yapabilirsiniz: &laquo;ahmeti banla&raquo;,
+                &laquo;ahmeti 10 dakika sustur&raquo;, &laquo;sohbete yaz merhaba&raquo;.
+              </small>
             </li>
 
             <li class="settings__stack">

@@ -12,10 +12,11 @@ import * as speech from "./speech.js";
 import * as audio from "./audio.js";
 import * as hud from "./hud.js";
 import { mountReactor, mountWave } from "./reactor.js";
-import { runCommand, normalize, suggestCommand } from "./commands.js";
+import { runCommand, normalize, suggestCommand, searchAnswer } from "./commands.js";
 import { store, loadStore, saveStore } from "./store.js";
 import * as panel from "./panel.js";
 import * as alarms from "./alarms.js";
+import * as system from "./system.js";
 
 /* ============================================================ ayarlar */
 
@@ -170,8 +171,14 @@ async function handleUtterance(rawText) {
       return;
     }
 
-    // Eslesme yok. DRA bir dil modeli degil — uydurmak yerine ne
-    // yapabildigini soyler ve en yakin komutu onerir.
+    // Eslesme yok.
+    // Web aramasi aciksa soruyu internete sorar; kapaliysa uydurmak
+    // yerine ne yapabildigini soyler ve en yakin komutu onerir.
+    if (ctx.searchEnabled()) {
+      hud.log("system", "Bunu komutlarimda bulamadim, internette ariyorum…");
+      await respond(await searchAnswer(ctx, text));
+      return;
+    }
     await respond(suggestCommand(text));
   } catch (err) {
     console.error("[dra]", err);
@@ -368,6 +375,7 @@ const ctx = {
   clearLog: () => hud.clearLog(),
   openPanel: (name) => panel.openTab(name),
   toast: (text, ms) => hud.toast(text, ms),
+  log: (who, text) => hud.log(who, text),
 
   /* --- ayar geri cagrilari --- */
   isMicOn: () => speech.isListening(),
@@ -438,6 +446,15 @@ const ctx = {
     }
     panel.openTab("sistem");
   },
+  /* --- sunucu yetenekleri (uygulama, arama, moderasyon) --- */
+  findApp: (query) => system.findApp(query),
+  launchApp: (id) => system.launchApp(id),
+  closeApp: (id) => system.closeApp(id),
+  searchEnabled: () => store.webSearch && system.searchEnabled(),
+  webSearch: (query) => system.webSearch(query),
+  kickReady: () => store.streamerMode && system.kickReady(),
+  kickAction: (action, args) => system.kickAction(action, args),
+
   onSpeechModeChanged: () => {
     if (!speech.isListening()) return;
     speech.stopListening();
@@ -461,6 +478,34 @@ const ctx = {
     return parts.join(" ");
   },
 };
+
+/* ============================================================ sunucu */
+
+/**
+ * Sunucuya baglanir: oturum jetonunu alir, uygulama listesini yukler,
+ * kayitli ayarlari (arama, Kick) sunucuya bildirir.
+ */
+async function connectServer() {
+  try {
+    await system.connect();
+    await system.loadApps();
+    panel.renderApps();
+
+    // Ayarlar tarayicida saklaniyor; sunucu her acilista bilgilendirilir.
+    if (store.webSearch) await system.setSearchEnabled(true);
+    if (store.streamerMode && store.kickToken) {
+      await system.configureKick(store.kickToken, store.kickChannel);
+    }
+    panel.syncSettings();
+  } catch (err) {
+    console.warn("[dra] sunucu yetenekleri kullanilamiyor:", err.message);
+    hud.log(
+      "system",
+      "Sunucuya baglanamadim. Uygulama baslatma ve arama calismayacak; " +
+        "diger komutlar etkilenmez.",
+    );
+  }
+}
 
 /* ============================================================ olcerler */
 
@@ -776,6 +821,7 @@ function boot() {
   initBattery();
   hud.setPrivacyPill("off");
   hud.setGauge("engine", 100, "yerel", "ok");
+  connectServer();
 
   dom.btnVoice.setAttribute("aria-pressed", String(store.voiceEnabled));
   dom.btnMic.setAttribute("aria-pressed", "false");

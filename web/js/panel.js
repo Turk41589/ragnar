@@ -6,6 +6,7 @@
  */
 
 import { store, saveStore, resetStore } from "./store.js";
+import * as system from "./system.js";
 import {
   listAlarms, addAlarm, removeAlarm, toggleAlarm, clearAlarms,
   isValidTime, describeUntil,
@@ -182,6 +183,23 @@ export function markRinging(id) {
   renderAlarms();
 }
 
+/* -------------------------------------------------------------- uygulamalar */
+
+/** Sistem sekmesindeki uygulama ozeti. */
+export function renderApps() {
+  const el = $("apps-info");
+  if (!el) return;
+  const list = system.appList();
+  if (!list.length) {
+    el.textContent = "Henuz taranmadi";
+    return;
+  }
+  const oyun = list.filter((a) => a.kind === "steam oyunu").length;
+  el.textContent = oyun
+    ? `${list.length} uygulama · ${oyun} oyun bulundu`
+    : `${list.length} uygulama bulundu`;
+}
+
 /* ------------------------------------------------------------------ ayarlar */
 
 function syncSwitch(el, value) {
@@ -215,6 +233,12 @@ export function syncSettings() {
   syncSwitch($("set-mic"), ctx.isMicOn());
   syncSwitch($("set-boot"), store.bootSequence);
   syncSwitch($("set-local"), store.localSpeechOnly);
+  syncSwitch($("set-search"), store.webSearch);
+  syncSwitch($("set-streamer"), store.streamerMode);
+
+  $("kick-fields").hidden = !store.streamerMode;
+  $("set-kick-channel").value = store.kickChannel;
+  $("set-kick-token").value = store.kickToken;
 
   $("set-rate").value = String(store.speechRate);
   $("set-rate-val").textContent = `${store.speechRate.toFixed(2)}×`;
@@ -338,6 +362,89 @@ export function mountPanel(context) {
     );
   });
 
+  /* --- uygulama taramasi --- */
+  $("apps-scan").addEventListener("click", async () => {
+    const button = $("apps-scan");
+    button.disabled = true;
+    button.textContent = "Taraniyor…";
+    ctx.toast("Bilgisayar taraniyor, bu biraz surebilir", 6000);
+    try {
+      const list = await system.scanApps();
+      renderApps();
+      ctx.toast(`${list.length} uygulama bulundu`);
+      ctx.log("system", `${list.length} uygulama bulundu. Artik "spotify ac" gibi soyleyebilirsiniz.`);
+    } catch (err) {
+      ctx.toast(`Tarama basarisiz: ${err.message}`, 6000);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Bilgisayari tara";
+    }
+  });
+
+  /* --- web aramasi --- */
+  $("set-search").addEventListener("click", async () => {
+    const next = !store.webSearch;
+    try {
+      await system.setSearchEnabled(next);
+      store.webSearch = next;
+      saveStore();
+      syncSettings();
+      ctx.toast(next ? "Web aramasi acildi" : "Web aramasi kapatildi");
+      if (next) {
+        ctx.log(
+          "system",
+          "Web aramasi acildi. Bundan sonra komutlarimda bulamadigim sorulari " +
+            "DuckDuckGo uzerinden arayacagim — yani artik disariya baglaniyorum.",
+        );
+      }
+    } catch (err) {
+      ctx.toast(`Degistirilemedi: ${err.message}`, 5000);
+    }
+  });
+
+  /* --- yayinci destegi --- */
+  $("set-streamer").addEventListener("click", () => {
+    store.streamerMode = !store.streamerMode;
+    saveStore();
+    syncSettings();
+    ctx.toast(store.streamerMode ? "Yayinci destegi acildi" : "Yayinci destegi kapatildi");
+    if (store.streamerMode && !store.kickToken) {
+      ctx.log("system", "Yayinci destegi acildi. Moderasyon icin kanal adi ve erisim jetonu girin.");
+    }
+  });
+
+  for (const id of ["set-kick-channel", "set-kick-token"]) {
+    $(id).addEventListener("change", async (event) => {
+      if (id === "set-kick-channel") store.kickChannel = event.target.value.trim();
+      else store.kickToken = event.target.value.trim();
+      saveStore();
+      if (store.kickToken) {
+        try {
+          await system.configureKick(store.kickToken, store.kickChannel);
+        } catch (err) {
+          ctx.toast(`Kick ayarlanamadi: ${err.message}`, 5000);
+        }
+      }
+    });
+  }
+
+  $("set-kick-test").addEventListener("click", async () => {
+    if (!store.kickToken) {
+      ctx.toast("Once erisim jetonunu girin");
+      return;
+    }
+    ctx.log("system", "Kick baglantisi sinaniyor…");
+    try {
+      await system.configureKick(store.kickToken, store.kickChannel);
+      const message = await system.kickAction("verify", []);
+      ctx.log("system", `Kick baglantisi calisiyor: ${message}`);
+      ctx.toast("Kick baglantisi calisiyor");
+    } catch (err) {
+      ctx.log("error", `Kick baglantisi kurulamadi: ${err.message}`);
+      ctx.toast("Kick baglantisi kurulamadi", 5000);
+    }
+  });
+
   $("set-diag").addEventListener("click", () => ctx.runDiagnostics());
 
   $("set-clear-log").addEventListener("click", () => {
@@ -361,6 +468,7 @@ export function mountPanel(context) {
   showTab("sistem");
   renderNotes();
   renderAlarms();
+  renderApps();
   syncSettings();
 
   // Alarm geri sayimlari dakikada bir tazelenir.

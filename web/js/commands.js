@@ -321,6 +321,9 @@ const RULES = [
       "mola ver", "kapat kendini", "artik kapan", "isim bitti",
     ],
     exclude: ["ses", "sessiz", "mikrofon", "ekran"],
+    // "kapat" sozcugu hem DRA'yi hem bir programi kapatmak icin kullanilir.
+    // Kurulu bir uygulama adi geciyorsa bu komut ona aittir.
+    guard: (n, raw, tokens, ctx) => !ctx?.findApp?.(stripVerbs(raw)),
     run: (n, raw, ctx) => ({
       text: "Uyku moduna geciyorum. Ihtiyaciniz olursa adimi soyleyin.",
       after: () => ctx.sleep(),
@@ -415,6 +418,133 @@ const RULES = [
     run: () =>
       "Hava durumunu soyleyemem. Bunun icin konumunuzu bir hava servisine " +
       "gondermem gerekirdi; disariya hicbir baglanti kurmayacak sekilde tasarlandim.",
+  },
+
+  /* -- uygulama / oyun acma --------------------------------------------- */
+  // Site acma kuralindan ONCE: "valorant ac" once kurulu oyunlarda aranir.
+  {
+    name: "uygulama-ac",
+    priority: 1,
+    example: "spotify ac",
+    phrases: ["ac", "acar misin", "baslat", "calistir", "acsana", "girelim"],
+    exclude: ["ayar", "panel", "tam ekran"],
+    // Yalnizca kurulu bir uygulamaya benziyorsa gecerli.
+    guard: (n, raw, tokens, ctx) => Boolean(ctx?.findApp?.(stripVerbs(raw))),
+    run: async (n, raw, ctx) => {
+      const hit = ctx.findApp(stripVerbs(raw));
+      if (!hit) return "Bu isimde kurulu bir uygulama bulamadim.";
+      try {
+        await ctx.launchApp(hit.app.id);
+        return `${hit.app.name} baslatiliyor.`;
+      } catch (err) {
+        return `${hit.app.name} baslatilamadi: ${err.message}`;
+      }
+    },
+  },
+  {
+    name: "uygulama-kapat",
+    priority: 1,
+    example: "spotify kapat",
+    phrases: ["kapat", "kapatir misin", "sonlandir", "cik", "durdur"],
+    exclude: ["ses", "mikrofon", "alarm", "ekran", "kendini"],
+    guard: (n, raw, tokens, ctx) => Boolean(ctx?.findApp?.(stripVerbs(raw))),
+    run: async (n, raw, ctx) => {
+      const hit = ctx.findApp(stripVerbs(raw));
+      if (!hit) return "Bu isimde acik bir uygulama bulamadim.";
+      try {
+        await ctx.closeApp(hit.app.id);
+        return `${hit.app.name} kapatildi.`;
+      } catch (err) {
+        return `${hit.app.name} kapatilamadi: ${err.message}`;
+      }
+    },
+  },
+
+  /* -- moderasyon (yayinci destegi acikken) ------------------------------ */
+  {
+    name: "mod-banla",
+    priority: 2,
+    example: "ahmeti banla",
+    phrases: ["banla", "yasakla", "ban at", "uzaklastir", "at kanaldan"],
+    guard: (n, raw, tokens, ctx) => Boolean(ctx?.kickReady?.()),
+    run: async (n, raw, ctx) => {
+      const user = extractUsername(raw, ["banla", "yasakla", "ban", "at", "kanaldan", "uzaklastir"]);
+      if (!user) return "Kimi yasaklayacagimi soyleyin.";
+      try {
+        return await ctx.kickAction("ban", [user]);
+      } catch (err) {
+        return `Yasaklayamadim: ${err.message}`;
+      }
+    },
+  },
+  {
+    name: "mod-sustur",
+    priority: 2,
+    example: "ahmeti 10 dakika sustur",
+    phrases: ["sustur", "timeout ver", "gecici yasak", "sessize al kullanici"],
+    guard: (n, raw, tokens, ctx) => Boolean(ctx?.kickReady?.()),
+    run: async (n, raw, ctx) => {
+      const user = extractUsername(raw, ["sustur", "timeout", "ver", "dakika", "saniye", "gecici", "yasak"]);
+      if (!user) return "Kimi susturacagimi soyleyin.";
+      const minutes = extractNumber(n) || 5;
+      try {
+        return await ctx.kickAction("timeout", [user, minutes * 60]);
+      } catch (err) {
+        return `Susturamadim: ${err.message}`;
+      }
+    },
+  },
+  {
+    name: "mod-ban-kaldir",
+    priority: 2,
+    example: "ahmetin yasagini kaldir",
+    phrases: ["yasagini kaldir", "bani kaldir", "affet", "yasagi kaldir", "unban"],
+    guard: (n, raw, tokens, ctx) => Boolean(ctx?.kickReady?.()),
+    run: async (n, raw, ctx) => {
+      const user = extractUsername(raw, ["yasagini", "yasagi", "bani", "kaldir", "affet", "unban"]);
+      if (!user) return "Kimin yasagini kaldiracagimi soyleyin.";
+      try {
+        return await ctx.kickAction("unban", [user]);
+      } catch (err) {
+        return `Kaldiramadim: ${err.message}`;
+      }
+    },
+  },
+  {
+    name: "mod-yaz",
+    priority: 2,
+    example: "sohbete yaz merhaba",
+    phrases: ["sohbete yaz", "kanala yaz", "chate yaz", "mesaj gonder"],
+    guard: (n, raw, tokens, ctx) => Boolean(ctx?.kickReady?.()),
+    run: async (n, raw, ctx) => {
+      const text = raw
+        .replace(/\b(sohbete|kanala|chate|yaz|mesaj|gonder)\b/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!text) return "Ne yazacagimi soyleyin.";
+      try {
+        return await ctx.kickAction("sendMessage", [text]);
+      } catch (err) {
+        return `Gonderemedim: ${err.message}`;
+      }
+    },
+  },
+
+  /* -- web aramasi (ayardan acikken) ------------------------------------- */
+  {
+    name: "web-arama",
+    priority: 1,
+    example: "arastir istanbul nufusu",
+    phrases: ["arastir", "internetten bul", "webden bul", "nedir", "kimdir", "ne demek", "hakkinda bilgi"],
+    guard: (n, raw, tokens, ctx) => Boolean(ctx?.searchEnabled?.()),
+    run: async (n, raw, ctx) => {
+      const query = raw
+        .replace(/\b(arastir|internetten|webden|bul|hakkinda|bilgi|ver|lutfen)\b/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!query) return "Neyi arastirmami istiyorsunuz?";
+      return searchAnswer(ctx, query);
+    },
   },
 
   /* -- site acma --------------------------------------------------------- */
@@ -736,6 +866,45 @@ const RULES = [
   },
 ];
 
+/**
+ * Arama sonucunu sesli okunabilir tek bir cumleye cevirir.
+ * Kaynak adi eklenir ki bilginin nereden geldigi belli olsun.
+ */
+export async function searchAnswer(ctx, query) {
+  try {
+    const result = await ctx.webSearch(query);
+    if (!result?.answer) return `"${query}" icin bir sonuc bulamadim.`;
+    const source = result.source ? ` Kaynak: ${result.source}.` : "";
+    return `${result.answer}${source}`;
+  } catch (err) {
+    return `Arama basarisiz: ${err.message}`;
+  }
+}
+
+/* --------------------------------------------------------- yardimcilar */
+
+/** "spotify ac" -> "spotify": komut fiillerini cumleden temizler. */
+const VERBS = /\b(ac|acar|acsana|misin|baslat|calistir|kapat|kapatir|sonlandir|cik|durdur|girelim|lutfen|bana|hemen|sunu|su|program|uygulama|oyun|oyunu)\b/gi;
+
+function stripVerbs(raw) {
+  return raw.replace(VERBS, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Moderasyon cumlesinden kullanici adini cikarir.
+ * Turkce ekleri de temizler: "ahmeti banla" -> "ahmet".
+ */
+function extractUsername(raw, stopWords) {
+  const stop = new Set([...stopWords, "lutfen", "sunu", "su", "bu", "kullanici", "kullaniciyi"]);
+  const words = raw.split(/\s+/).filter((w) => {
+    const t = normalize(w);
+    return t && !stop.has(t) && !/^\d+$/.test(t) && !/^(dakika|saniye|saat)$/.test(t);
+  });
+  if (!words.length) return null;
+  // Ilk kalan sozcuk kullanici adi sayilir; belirtme eki atilir.
+  return words[0].replace(/['’]?(yi|yı|yu|yü|i|ı|u|ü|nin|nın|nun|nün|in|ın|un|ün)$/i, "");
+}
+
 /* ---------------------------------------------------------------- esleme */
 
 /** Bir kuralin calismasi icin gereken en dusuk puan. */
@@ -750,7 +919,7 @@ const SUGGEST_THRESHOLD = 0.34;
  * "alarmlarim" gibi bir cumlenin "alarm kur" kuralina dusmesine yol
  * aciyordu. Artik hepsi puanlanip en yuksek olan seciliyor.
  */
-function scoreRules(raw) {
+function scoreRules(raw, ctx) {
   const n = normalize(raw);
   const tokens = tokenize(n);
   const scored = [];
@@ -758,8 +927,8 @@ function scoreRules(raw) {
   for (const rule of RULES) {
     // Disarida birakma kaliplari
     if (rule.exclude && mentions(tokens, rule.exclude)) continue;
-    // Ek kosul (ornegin mutlak saat var mi)
-    if (rule.guard && !rule.guard(n, raw, tokens)) continue;
+    // Ek kosul (mutlak saat var mi, kurulu uygulama mi, Kick acik mi)
+    if (rule.guard && !rule.guard(n, raw, tokens, ctx)) continue;
 
     let score = 0;
     // Ozel mantik (aritmetik ifade gibi) tam puan sayilir.
@@ -776,7 +945,12 @@ function scoreRules(raw) {
     if (score > 0) scored.push({ rule, score, n });
   }
 
-  scored.sort((a, b) => b.score - a.score);
+  // Esit puanda `priority` belirler. Ozel kipler (moderasyon, uygulama)
+  // genel kurallarin onune gecer: "sohbete yaz merhaba" bir selamlama
+  // degil, moderasyon komutudur.
+  scored.sort(
+    (a, b) => b.score - a.score || (b.rule.priority || 0) - (a.rule.priority || 0),
+  );
   return scored;
 }
 
@@ -784,8 +958,8 @@ function scoreRules(raw) {
  * Hangi kurallarin ne puan aldigini dondurur (test ve teshis icin).
  * Yanlis yonlendirmeleri ancak buradan gorebiliyoruz.
  */
-export function explain(rawText, limit = 3) {
-  return scoreRules(rawText)
+export function explain(rawText, limit = 3, ctx = null) {
+  return scoreRules(rawText, ctx)
     .slice(0, limit)
     .map(({ rule, score }) => ({ name: rule.name, score: Number(score.toFixed(3)) }));
 }
@@ -804,7 +978,7 @@ export async function runCommand(rawText, ctx) {
   const raw = (rawText || "").trim();
   if (!raw) return null;
 
-  const scored = scoreRules(raw);
+  const scored = scoreRules(raw, ctx);
   const best = scored[0];
   if (!best || best.score < THRESHOLD) return null;
 

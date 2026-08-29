@@ -13,10 +13,11 @@ ikisi de aynı şekilde çalışır. İşiniz bitince `uyu` deyin.
 DRA bir dil modeli değil, komutlarla çalışan bir programdır. Bunun pratik
 sonuçları var — ikisi de bilinçli tercih:
 
-* **Hiçbir şirkete bağlanmaz.** Ne yapay zekâ servisi, ne analitik, ne hava
-  durumu API'si, ne yazı tipi CDN'i. Uygulamanın tamamı `localhost`'tan
-  gelir ve dışarıya tek bir istek atmaz. Bu, tarayıcıda her ağ isteği
-  yakalanarak test edilir.
+* **Varsayılan halinde hiçbir şirkete bağlanmaz.** Ne yapay zekâ servisi, ne
+  analitik, ne yazı tipi CDN'i. Uygulamanın tamamı `localhost`'tan gelir.
+  Bu, tarayıcıda her ağ isteği yakalanarak test edilir. İki özellik bunun
+  istisnası ve **ikisi de varsayılan olarak kapalı**: web araması ve Kick
+  moderasyonu. Açmadıkça hiçbir dış bağlantı kurulmaz.
 * **Bilmediği şeyi uydurmaz.** Anlamadığı bir komut duyduğunda cevap
   üretmeye çalışmaz; en yakın komutu önerir ya da ne yapabildiğini söyler.
 
@@ -83,6 +84,10 @@ npm run test:tam               # alarmın gerçekten çalmasını da bekler, ~2 
 * **Arayüz** — uyandırma kelimesi (yanlış tetiklenme dahil), sohbet paneli,
   dört sekme, not/alarm ekleme-silme, ayarlar, kalıcılık, sıfırlama, dar
   ekran yerleşimi ve **localhost dışına hiçbir istek atılmadığı**
+* **Sunucu yetenekleri** — güvenlik koruması (jetonsuz, yabancı kökenli,
+  çapraz site ve form istekleri reddediliyor mu), listede olmayan uygulamanın
+  başlatılamadığı, kapalı özelliklerin gerçekten kapalı olduğu ve yeni
+  komutların doğru yönlendirildiği
 * **Alarm (yavaş)** — bir sonraki dakikaya alarm kurup gerçekten çalmasını,
   DRA'yı uykudan uyandırmasını ve kendini kapatmasını bekler
 
@@ -122,6 +127,59 @@ Bulut tanımayı bilerek kullanmak isterseniz Ayar'dan bu anahtarı kapatın.
 Kapattığınızda rozet `tarayıcı servisi` olur — gizlenmez.
 
 Konuşma sentezi (DRA'nın sesi) işletim sisteminizin Türkçe sesini kullanır.
+
+---
+
+## Bilgisayar kontrolü
+
+DRA kurulu uygulamaları ve Steam oyunlarını sesle başlatıp kapatabilir.
+
+**Sistem** sekmesinde **"Bilgisayarı tara"** düğmesine basın. DRA Başlat
+menüsünü, masaüstünü ve Steam kütüphanesini tarayıp bir liste çıkarır.
+Sonrasında `spotify aç` · `valorant aç` · `chrome kapat` diyebilirsiniz.
+
+**Neden tarama gerekiyor:** DRA rastgele komut çalıştırmaz. Yalnızca bu
+listedeki bir kaydı başlatabilir. Böylece yanlış duyulan bir kelime
+beklenmedik bir şey çalıştıramaz. Ayrıca isim eşleşmesi yüksek eşikle
+yapılır — emin olamazsa çalıştırmaz, sorar.
+
+**Güvenlik:** Sunucu artık program çalıştırabildiği için, tarayıcınızda
+açtığınız kötü niyetli bir sitenin arka planda `localhost`'a istek atma
+riski doğar. Buna karşı dört katman var: sunucu yalnızca `127.0.0.1`'e
+bağlanır, her açılışta üretilen gizli bir oturum jetonu istenir, `Origin`
+ve `Sec-Fetch-Site` başlıkları denetlenir, ve yalnızca taranmış listedeki
+kayıtlar çalıştırılabilir. Dördü de test altında.
+
+## Web araması (varsayılan kapalı)
+
+**Ayar → Web araması** anahtarını açarsanız DRA, komutlarında bulamadığı
+soruları DuckDuckGo üzerinden arar ve sonucu sohbete yazar. İstek tarayıcıdan
+değil sunucudan gider; tarayıcı geçmişinize ve çerezlerinize dokunmaz.
+
+Kapalıyken `araştır ...` komutu yine çalışır ama sadece tarayıcıda arama
+sayfasını açar — dış bağlantıyı DRA kurmaz.
+
+## Yayıncı desteği — Kick moderasyonu (varsayılan kapalı)
+
+**Ayar → Yayıncı desteği** açıldığında kanal adı ve Kick erişim jetonu
+alanları görünür. Jeton yalnızca sunucuda tutulur, sohbete yazılmaz.
+**"Bağlantıyı sına"** ile doğrulayın.
+
+Açıkken sesli moderasyon:
+
+| Ne dersiniz | Ne yapar |
+|---|---|
+| `ahmeti banla` | Kullanıcıyı yasaklar |
+| `ahmeti 10 dakika sustur` | Süreli susturma |
+| `ahmetin yasağını kaldır` | Yasağı kaldırır |
+| `sohbete yaz merhaba` | Kanala mesaj gönderir |
+
+> **Dürüst not:** Bu köprü Kick'in belgelenmiş API'sine göre yazıldı ama
+> **canlı doğrulanmadı** — geliştirme ortamında Kick hesabı ve jeton yoktu.
+> İlk kullanımda "Bağlantıyı sına" ile kontrol edin. Uç adresleri değiştiyse
+> `server/kick.mjs` içindeki `KICK_API` tablosundan düzeltmek yeterli.
+> Mesaj silme, mesajın kimliğini gerektirdiği için henüz yok; sohbet akışına
+> bağlanmadan "şu mesajı sil" demek mümkün değil.
 
 ---
 
@@ -215,7 +273,12 @@ web/js/store.js      kalıcı veri (localStorage)
 web/js/audio.js      görselleri besleyen mikrofon analizörü
 web/js/hud.js        sohbet, göstergeler, açılış dizisi
 web/js/state.js      durum makinesi ve olay yolu
-server/index.mjs     statik dosya servisi (bağımlılıksız)
+server/index.mjs     statik dosya servisi + yerel uçlar (bağımlılıksız)
+server/guard.mjs     yerel istek koruması (jeton, köken, içerik türü)
+server/apps.mjs      uygulama/oyun tarama, başlatma, kapatma
+server/search.mjs    web araması (kapalıyken hiç yüklenmez)
+server/kick.mjs      Kick moderasyon köprüsü
+web/js/system.js     sunucu köprüsü (istemci tarafı)
 ```
 
 **Durum akışı:** `uykuda → (adını duyar) → açılış → hazır → dinliyor →
