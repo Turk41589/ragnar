@@ -16,7 +16,7 @@ const el = {
   bootLog: $("boot-log"),
   hud: $("hud"),
   statePill: $("state-pill"),
-  brainPill: $("brain-pill"),
+  privacyPill: $("privacy-pill"),
   clockTime: $("clock-time"),
   clockDate: $("clock-date"),
   coreLabel: $("core-state-label"),
@@ -87,14 +87,15 @@ export function sleepMeter(visible, level = 0) {
 /* ------------------------------------------------------------- acilis dizisi */
 
 const BOOT_LINES = [
-  "DRA CEKIRDEK v1.0  ................  YUKLENIYOR",
+  "DRA CEKIRDEK v2.0  ................  YUKLENIYOR",
   "ses tanima modulu  ................  HAZIR",
   "konusma sentezi    ................  HAZIR",
   "komut motoru       ................  HAZIR",
-  "yapay zeka beyni   ................  {BRAIN}",
+  "alarm servisi      ................  HAZIR",
   "arayuz katmani     ................  HAZIR",
+  "dis baglanti       ................  YOK",
   "",
-  "TUM SISTEMLER CEVRIMICI.",
+  "TUM SISTEMLER YEREL.",
 ];
 
 /**
@@ -107,17 +108,14 @@ const BOOT_LINES = [
  */
 const BOOT_DURATION_MS = 1100;
 
-export function playBoot(brainReady) {
+export function playBoot() {
   return new Promise((resolve) => {
     el.sleep.hidden = true;
     el.hud.hidden = true;
     el.boot.hidden = false;
     el.bootLog.textContent = "";
 
-    const lines = BOOT_LINES.map((l) =>
-      l.replace("{BRAIN}", brainReady ? "BAGLI" : "CEVRIMDISI"),
-    );
-    const script = lines.join("\n");
+    const script = BOOT_LINES.join("\n");
     const started = performance.now();
 
     const frame = (now) => {
@@ -164,11 +162,32 @@ on("state", ({ next }) => {
   else delete el.statePill.dataset.tone;
 });
 
-export function setBrainPill(ready, model) {
-  el.brainPill.classList.toggle("statuspill--muted", !ready);
-  el.brainPill.querySelector("b").textContent = ready ? `beyin: ${model}` : "beyin: yerel";
-  if (ready) el.brainPill.dataset.tone = "ok";
-  else delete el.brainPill.dataset.tone;
+/**
+ * Ses tanimanin nerede calistigini gosterir.
+ * Tarayici cihaz uzerinde tanima sunuyorsa ses disari cikmaz; sunmuyorsa
+ * bunu gizlemek yerine acikca yaziyoruz.
+ */
+export function setPrivacyPill(mode) {
+  const pill = el.privacyPill;
+  const label = pill.querySelector("b");
+  if (mode === "local") {
+    label.textContent = "cihazda";
+    pill.dataset.tone = "ok";
+    pill.title = "Ses tanima cihazinizda calisiyor, ses disari cikmiyor.";
+  } else if (mode === "cloud") {
+    label.textContent = "tarayici servisi";
+    pill.dataset.tone = "warn";
+    pill.title =
+      "Tarayicinin ses tanima servisi kullaniliyor; ses tarayici saticisina gidiyor. " +
+      "Yalnizca yazarak kullanmak icin mikrofonu kapatin.";
+  } else {
+    label.textContent = "yazi modu";
+    delete pill.dataset.tone;
+    pill.classList.add("statuspill--muted");
+    pill.title = "Mikrofon kapali. Hicbir ses kaydedilmiyor.";
+    return;
+  }
+  pill.classList.remove("statuspill--muted");
 }
 
 /* ------------------------------------------------------------------ olcerler */
@@ -182,21 +201,46 @@ export function setGauge(name, percent, label, tone = null) {
   else delete g.li.dataset.tone;
 }
 
-/* ---------------------------------------------------------------- kayit akisi */
+/* ------------------------------------------------------------------ sohbet */
 
-/** who: user | dra | system | error */
+const WHO_LABEL = {
+  user: "siz",
+  dra: "dra",
+  system: "sistem",
+  error: "hata",
+};
+
+/**
+ * Sohbete bir mesaj ekler ve metin dugumunu dondurur.
+ * Dondurulen dugum sonradan guncellenebilir (or. yazilirken buyuyen yanit).
+ *
+ * who: user | dra | system | error
+ */
 export function log(who, text) {
   const li = document.createElement("li");
   li.dataset.who = who;
-  const time = document.createElement("time");
-  time.textContent = formatTime();
-  const span = document.createElement("span");
-  span.textContent = text;
-  li.append(time, span);
+
+  // Sistem satirlarinda kim/saat basligi gereksiz gurultu yapar.
+  if (who !== "system") {
+    const head = document.createElement("div");
+    head.className = "chat__who";
+    const name = document.createElement("span");
+    name.textContent = WHO_LABEL[who] || who;
+    const time = document.createElement("time");
+    time.textContent = formatTime();
+    head.append(name, time);
+    li.append(head);
+  }
+
+  const bubble = document.createElement("div");
+  bubble.className = "chat__bubble";
+  bubble.textContent = text;
+  li.append(bubble);
+
   el.log.append(li);
-  while (el.log.children.length > 60) el.log.firstElementChild.remove();
+  while (el.log.children.length > 80) el.log.firstElementChild.remove();
   el.log.scrollTop = el.log.scrollHeight;
-  return span;
+  return bubble;
 }
 
 export function clearLog() {

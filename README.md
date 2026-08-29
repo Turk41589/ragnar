@@ -1,103 +1,110 @@
 # DRA
 
-JARVIS tarzı, **sesle uyanan** Türkçe yapay zekâ asistanı.
+JARVIS tarzı, sesle uyanan Türkçe asistan. **Tamamen sizin cihazınızda çalışır.**
 
-Mikrofon açıkken **"DRA"** dediğinizde uyanır, açılış dizisini oynatır ve
-holografik arayüzünü açar. Sonrasında sesle ya da yazarak konuşabilirsiniz.
-İşi bitince `uyu` deyin, tekrar uykuya döner ve yalnızca adını dinlemeye başlar.
+Mikrofon açıkken **"DRA"** dediğinizde uyanır ve holografik arayüzünü açar.
+Sonrasında konuşarak ya da sağdaki sohbet kutusuna yazarak kullanırsınız —
+ikisi de aynı şekilde çalışır. İşiniz bitince `uyu` deyin.
 
 ---
+
+## Bu bir yapay zekâ değil
+
+DRA bir dil modeli değil, komutlarla çalışan bir programdır. Bunun pratik
+sonuçları var — ikisi de bilinçli tercih:
+
+* **Hiçbir şirkete bağlanmaz.** Ne yapay zekâ servisi, ne analitik, ne hava
+  durumu API'si, ne yazı tipi CDN'i. Uygulamanın tamamı `localhost`'tan
+  gelir ve dışarıya tek bir istek atmaz. Bu, tarayıcıda her ağ isteği
+  yakalanarak test edilir.
+* **Bilmediği şeyi uydurmaz.** Anlamadığı bir komut duyduğunda cevap
+  üretmeye çalışmaz; en yakın komutu önerir ya da ne yapabildiğini söyler.
+
+Bağımlılığı da yoktur — `npm install` gerekmez, `node_modules` yoktur.
 
 ## Kurulum
 
 Gereken tek şey Node.js 18 veya üstü.
 
 ```bash
-npm install
-npm start
+npm start          # ya da: node server/index.mjs
 ```
 
 Ardından tarayıcıda **http://localhost:4173** adresini açın.
 
-> **Neden bir sunucu var?**
-> Tarayıcılar `file://` üzerinden mikrofona izin vermez. `localhost` güvenli
-> bağlam sayıldığı için küçük bir Node sunucusu arayüzü servis eder — ve aynı
-> sunucu API anahtarınızı tarayıcıdan uzak tutar.
-
-**Tarayıcı:** Ses tanıma için **Chrome** veya **Edge** gerekir (Web Speech API).
-Firefox'ta arayüz ve yazılı komutlar çalışır, sesle uyandırma çalışmaz.
+> **Sunucu neden var?**
+> Tarayıcılar `file://` üzerinden mikrofona izin vermez; `localhost` güvenli
+> bağlam sayılır. Sunucunun tek işi `web/` klasörünü servis etmek — bağımlılığı
+> yok, dışarıya istek atmıyor, hiçbir şey kaydetmiyor.
 
 ---
 
-## Yapay zekâ beyni (opsiyonel)
+## Ses ve gizlilik — okumaya değer
 
-DRA anahtarsız da çalışır: aşağıdaki komutların tamamı yereldir, internet
-istemez. Bilmediği bir şey sorulduğunda ise isteği Claude'a devretmek için
-bir API anahtarı gerekir.
+Tarayıcıların varsayılan ses tanıması sesi **satıcının sunucusuna gönderir**
+(Chrome'da Google'a). DRA'nın amacı bunun tersi olduğu için:
 
-```bash
-cp .env.example .env
-# .env dosyasını açıp ANTHROPIC_API_KEY satırını doldurun
-npm start
-```
+* Ayarlarda **"Sesi cihazda tut"** varsayılan olarak **açıktır**.
+* Mikrofonu açtığınızda DRA önce tarayıcının **cihaz üstü** ses tanımasını
+  arar. Türkçe dil paketi indirilmemişse bir kerelik indirir; sonrasında ses
+  cihazınızdan hiç çıkmaz.
+* Tarayıcınız bunu desteklemiyorsa **mikrofon açılmaz.** Sessizce buluta
+  düşmez — bunu söyler ve yazarak kullanmanızı önerir.
+* Üst bardaki rozet o an hangi modda olduğunuzu gösterir:
+  `cihazda` · `tarayıcı servisi` · `yazı modu`.
 
-Anahtar **yalnızca sunucu sürecinde** durur; tarayıcıya hiçbir zaman
-gönderilmez. Üst bardaki `beyin` rozeti bağlantının durumunu gösterir:
-`beyin: yerel` (anahtar yok) ya da `beyin: claude-opus-5`.
+Bulut tanımayı bilerek kullanmak isterseniz Ayar'dan bu anahtarı kapatın.
+Kapattığınızda rozet `tarayıcı servisi` olur — gizlenmez.
 
-Modeli değiştirmek için `.env` içine `DRA_MODEL=...` ekleyin.
+Konuşma sentezi (DRA'nın sesi) işletim sisteminizin Türkçe sesini kullanır.
 
 ---
 
-## Kontrol paneli (sol taraf)
+## Ekran düzeni
 
-Sol taraftaki panel dört sekmeye ayrılır:
+**Sol** — kontrol paneli, dört sekme:
 
-**Sistem** — mikrofon seviyesi, ağ, beyin ve batarya göstergeleri; aktif geri
-sayımlar ve sıradaki alarm.
+| Sekme | İçerik |
+|---|---|
+| Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm |
+| Not | not ekle, tek tek sil, hepsini temizle |
+| Alarm | saatli alarm kur, etiket ver, her gün tekrarla, aç/kapa, sil |
+| Ayar | ses, mikrofon, sesi cihazda tut, açılış dizisi, konuşma hızı, otomatik uyku, tema rengi, ek uyandırma sözcükleri, sıfırlama |
 
-**Not** — not ekle, tek tek sil, hepsini temizle. Notlar tarayıcıda kalıcıdır.
+**Orta** — reaktör. Dönen halkalar, glif şeridi ve yörüngedeki parçalar;
+mikrofon sesiyle ve duruma göre canlanır.
 
-**Alarm** — saat seçip alarm kur, istersen etiket ver ve "her gün tekrarla"
-işaretle. Alarm çaldığında DRA **uykudaysa kendini uyandırır**, bir zil sesi
-çalar ve sesli olarak söyler. Sesli yanıt kapalı olsa bile zil çalar.
-Tek seferlik alarmlar çaldıktan sonra kendini kapatır.
+**Sağ** — sohbet. Yazdıklarınız ve DRA'nın yanıtları; en altta yazı kutusu.
 
-**Ayar** — sesli yanıtı, mikrofonu ve açılış dizisini aç/kapat; konuşma hızını
-ayarla; otomatik uyku süresini seç (ya da kapat); tema rengini değiştir; ve
-**ek uyandırma sözcükleri** tanımla. Son ikisi işe yarar: ses tanıma sizde
-"DRA"yı farklı yazıyorsa buraya ekleyince o da uyandırır.
+Uyku ekranında da bir yazı kutusu var: mikrofonu hiç açmadan da kullanabilirsiniz.
 
-`Kaydı sil` sağdaki günlüğü temizler, `Sıfırla` her şeyi fabrika ayarına döndürür.
+---
 
-## Sesli komutlar
+## Komutlar
 
-Uyandıktan sonra doğrudan konuşun. Komutu tek nefeste de söyleyebilirsiniz:
+Konuşun ya da yazın — fark etmez. Komutu tek nefeste de söyleyebilirsiniz:
 *"DRA, saat kaç?"*
 
 | Ne dersiniz | Ne yapar |
 |---|---|
 | `saat kaç` · `bugün günlerden ne` | Saat ve tarih |
 | `12 kere 8 kaç eder` · `hesapla 45 artı 17` | Matematik (`eval` yok, kendi çözücüsü var) |
-| `youtube aç` · `github aç` · `spotify aç` | Bilinen siteleri açar |
+| `youtube aç` · `github aç` · `spotify aç` | Bilinen siteleri yeni sekmede açar |
 | `google'da kedi videosu ara` | Google / YouTube / Wikipedia'da arar |
-| `5 dakika zamanlayıcı kur` · `10 saniye sonra hatırlat` | Geri sayım başlatır, dolunca seslenir |
-| `sabah yedi buçukta alarm kur` · `akşam dokuzda alarm kur ilaç` | Saatli alarm kurar |
-| `07:30 alarm kur` · `yediye çeyrek kala alarm kur` | Rakamla ya da "çeyrek kala" ile |
+| `5 dakika zamanlayıcı kur` · `10 saniye sonra hatırlat` | Geri sayım başlatır |
+| `sabah yedi buçukta alarm kur` · `akşam dokuzda alarm kur ilaç` | Saatli alarm |
+| `07:30 alarm kur` · `yediye çeyrek kala alarm kur` | Rakamla ya da "çeyrek kala" |
 | `her sabah altıda alarm kur` | Her gün tekrarlanan alarm |
-| `alarmlarım` · `alarmları sil` | Alarmları okur / hepsini siler |
-| `ayarları aç` | Sol paneldeki ilgili sekmeyi açar |
+| `alarmlarım` · `alarmları sil` | Alarmları okur / siler |
 | `not al yarın süt al` · `notlarım` · `notları sil` | Not tutar (tarayıcıda kalıcı) |
-| `hava durumu` | Konum izniyle güncel hava (Open-Meteo) |
-| `sistem durumu` | Mikrofon, ağ, beyin, sayaç ve not özeti |
-| `renk yeşil` · `renk turuncu` | Arayüz temasını değiştirir |
-| `sesini kapat` · `sesini aç` | Sesli yanıtı açar/kapatır |
-| `tam ekran` · `ekranı temizle` | Arayüz kontrolleri |
+| `sistem durumu` | Mikrofon, ağ, sayaç, alarm ve not özeti |
+| `renk yeşil` · `ayarları aç` | Tema ve panel |
+| `sesini kapat` · `tam ekran` · `ekranı temizle` | Arayüz kontrolleri |
 | `şaka yap` · `yazı tura at` · `zar at` | Ufak eğlence |
 | `uyu` · `görüşürüz` · `iyi geceler` | Uyku moduna döner |
 
-Listede olmayan her şey — *"Roma neden düştü?"*, *"şu maili özetle"* —
-yapay zekâ beynine gider.
+Alarm çaldığında DRA uykudaysa **kendini uyandırır**, zil çalar ve söyler.
+Sesli yanıt kapalı olsa bile zil çalar. Tek seferlik alarmlar kendini kapatır.
 
 ## Klavye kısayolları
 
@@ -105,10 +112,8 @@ yapay zekâ beynine gider.
 |---|---|
 | `Boşluk` | Uyku ekranında elle uyandır |
 | `Esc` | Konuşmayı kes ve uyut |
-| `M` | Mikrofonu aç/kapat |
-| `S` | Sesli yanıtı aç/kapat |
-| `F` | Tam ekran |
-| `/` | Yazı alanına odaklan |
+| `M` / `S` / `F` | Mikrofon / sesli yanıt / tam ekran |
+| `/` | Sohbet kutusuna odaklan |
 
 ---
 
@@ -116,45 +121,43 @@ yapay zekâ beynine gider.
 
 ```
 web/js/main.js       akışı yöneten orkestrasyon + uyandırma kelimesi
-web/js/speech.js     ses tanıma (kulak) ve konuşma sentezi (ses)
-web/js/commands.js   Türkçe yerel komut motoru + saat çözümleyici
+web/js/speech.js     ses tanıma (cihaz üstü tercihli) ve konuşma sentezi
+web/js/commands.js   Türkçe komut motoru, saat çözümleyici, komut önerici
 web/js/reactor.js    merkezdeki canvas reaktörü ve dönen parçalar
 web/js/panel.js      sol kontrol paneli (sekmeler, not, alarm, ayar)
 web/js/alarms.js     alarm motoru ve zil sesi
 web/js/store.js      kalıcı veri (localStorage)
 web/js/audio.js      görselleri besleyen mikrofon analizörü
-web/js/hud.js        ekrandaki tüm metin/gösterge güncellemeleri
+web/js/hud.js        sohbet, göstergeler, açılış dizisi
 web/js/state.js      durum makinesi ve olay yolu
-server/index.mjs     statik servis + /api/chat köprüsü
-server/brain.mjs     Anthropic SDK sarmalayıcısı (anahtar burada kalır)
+server/index.mjs     statik dosya servisi (bağımlılıksız)
 ```
 
 **Durum akışı:** `uykuda → (adını duyar) → açılış → hazır → dinliyor →
-düşünüyor → konuşuyor → hazır`. 2.5 dakika sessizlikten sonra kendini uyutur.
+düşünüyor → konuşuyor → hazır`. Ayarlardaki süre kadar sessizlikten sonra
+kendini uyutur (kapatılabilir).
 
-**Reaktör:** Dönen halkalar, glif şeridi ve yörüngedeki parçalar canvas'ta
-çizilir. Her karede yeniden üretilmeleri pahalı olduğu için sabit katmanlar
-bir kez çizilip önbelleğe alınır; her karede yalnızca döndürülüp basılırlar.
+**Reaktör:** Sabit katmanlar bir kez çizilip önbelleğe alınır; her karede
+yalnızca döndürülüp basılırlar. Aksi halde 120 tik çizgisi her karede
+yeniden üretilirdi.
 
-**Tasarım notu:** Ses tanıma motoru tek bir örnek olarak sürekli çalışır;
-duruma göre başlatılıp durdurulmaz. Web Speech API'de başlat/durdur yarışları
-en yaygın hata kaynağı olduğu için gelen metin duruma göre yönlendirilir.
-DRA konuşurken mikrofon kısa süreliğine sağırlaştırılır ki kendi sesini
-komut sanmasın.
+**Ses tanıma:** Motor tek bir örnek olarak sürekli çalışır; duruma göre
+başlatılıp durdurulmaz. Web Speech API'de başlat/durdur yarışları en yaygın
+hata kaynağı olduğu için gelen metin duruma göre yönlendirilir. DRA
+konuşurken mikrofon kısa süreliğine sağırlaştırılır ki kendi sesini komut
+sanmasın.
 
 ---
 
 ## Uyandırma kelimesi tutmuyorsa
 
 Ses tanıma "DRA"yı bazen farklı yazar. Uyku ekranındaki alt yazı **o an ne
-duyduğunu** gösterir. Sizde sürekli başka bir karşılık çıkıyorsa onu
+duyduğunu** gösterir. Sürekli başka bir karşılık çıkıyorsa onu
 **Ayar → Ek uyandırma sözcükleri** alanına yazın (virgülle ayırarak).
 Kod değiştirmeye gerek yok.
 
-## Bilinenler
+## Veriler nerede duruyor
 
-* Ses tanıma Chrome'da Google sunucularını kullanır — internet gerektirir ve
-  konuşulan ses Google'a gider. Bu, tarayıcının Web Speech API davranışıdır.
-* `hava durumu` komutu konum izni ister ve Open-Meteo'ya istek atar.
-* Sesli yanıt işletim sisteminin Türkçe sesine bağlıdır. Türkçe ses yüklü
-  değilse sistem varsayılanı kullanılır.
+Notlar, alarmlar ve ayarlar tarayıcınızın `localStorage`'ında, `dra.state.v2`
+anahtarında durur. Sunucuya hiçbir şey gitmez, disk üzerinde bir dosya
+oluşmaz. Ayar → **Sıfırla** hepsini siler.

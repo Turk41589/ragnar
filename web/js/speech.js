@@ -15,6 +15,44 @@ const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecogni
 export const speechSupported = Boolean(SpeechRecognition);
 export const voiceSupported = "speechSynthesis" in window;
 
+/* ------------------------------------------------- cihaz uzerinde tanima */
+
+/**
+ * Tarayicilarin varsayilan ses tanimasi sesi saticinin sunucusuna gonderir.
+ * DRA'nin amaci bunun tersi oldugu icin once CIHAZ UZERINDE tanimayi
+ * deniyoruz; boyle bir sey yoksa durumu gizlemeden bildiriyoruz.
+ *
+ * Doner: "available" | "downloadable" | "downloading" | "unavailable" | "unsupported"
+ */
+export async function probeLocalRecognition(lang = "tr-TR") {
+  if (!SpeechRecognition || typeof SpeechRecognition.available !== "function") {
+    return "unsupported";
+  }
+  try {
+    const status = await SpeechRecognition.available({
+      langs: [lang],
+      processLocally: true,
+    });
+    return typeof status === "string" ? status : status ? "available" : "unavailable";
+  } catch {
+    return "unsupported";
+  }
+}
+
+/** Cihaz uzerindeki dil paketini indirir. Basarili olursa true doner. */
+export async function installLocalRecognition(lang = "tr-TR") {
+  if (!SpeechRecognition || typeof SpeechRecognition.install !== "function") return false;
+  try {
+    return Boolean(await SpeechRecognition.install({ langs: [lang], processLocally: true }));
+  } catch {
+    return false;
+  }
+}
+
+/** Su anki tanima gercekten cihazda mi calisiyor? */
+let localActive = false;
+export const isLocalRecognition = () => localActive;
+
 /* ------------------------------------------------------------------ tanima */
 
 let recognition = null;
@@ -24,12 +62,20 @@ let restartTimer = null;
 /** DRA konusurken kendi sesini komut sanmasin diye kapi. */
 let deafUntil = 0;
 
-function buildRecognition() {
+function buildRecognition({ processLocally }) {
   const rec = new SpeechRecognition();
   rec.lang = "tr-TR";
   rec.continuous = true;
   rec.interimResults = true;
   rec.maxAlternatives = 3;
+
+  // Destekleyen tarayicilarda sesin cihazdan cikmamasini saglar.
+  if (processLocally && "processLocally" in rec) {
+    rec.processLocally = true;
+    localActive = true;
+  } else {
+    localActive = false;
+  }
 
   rec.onstart = () => {
     running = true;
@@ -81,7 +127,7 @@ function buildRecognition() {
     }
 
     if (err === "network") {
-      emit("mic", { status: "warn", message: "Ses tanima sunucusuna ulasilamadi." });
+      emit("mic", { status: "warn", message: "Ses tanima motoru yanit vermedi." });
       return;
     }
 
@@ -110,16 +156,24 @@ function buildRecognition() {
   return rec;
 }
 
-/** Surekli dinlemeyi baslatir. */
-export function startListening() {
+/**
+ * Surekli dinlemeyi baslatir.
+ * `processLocally` true ise tanima cihaz uzerinde zorlanir.
+ */
+export function startListening({ processLocally = false } = {}) {
   if (!speechSupported) {
     emit("mic", {
       status: "unsupported",
-      message: "Bu tarayici ses tanimayi desteklemiyor. Chrome veya Edge deneyin.",
+      message: "Bu tarayici ses tanimayi desteklemiyor. Yazarak kullanabilirsiniz.",
     });
     return false;
   }
-  if (!recognition) recognition = buildRecognition();
+  // Mod degistiyse tanimayi yeniden kur.
+  if (recognition && localActive !== Boolean(processLocally)) {
+    stopListening();
+    recognition = null;
+  }
+  if (!recognition) recognition = buildRecognition({ processLocally });
   wantRunning = true;
   if (running) return true;
   try {

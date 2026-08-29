@@ -316,6 +316,22 @@ body[data-state="speaking"] .backdrop__glow {
   justify-content: center;
 }
 
+.sleep__composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(420px, 78vw);
+  padding: 6px 12px;
+  background: var(--accent-ghost);
+  border: 1px solid var(--accent-faint);
+  border-radius: var(--radius);
+}
+
+.sleep__composer:focus-within {
+  border-color: var(--accent-soft);
+  box-shadow: 0 0 22px -8px var(--accent);
+}
+
 .sleep__meter {
   display: flex;
   align-items: center;

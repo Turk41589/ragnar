@@ -214,6 +214,7 @@ export function syncSettings() {
   syncSwitch($("set-voice"), store.voiceEnabled);
   syncSwitch($("set-mic"), ctx.isMicOn());
   syncSwitch($("set-boot"), store.bootSequence);
+  syncSwitch($("set-local"), store.localSpeechOnly);
 
   $("set-rate").value = String(store.speechRate);
   $("set-rate-val").textContent = `${store.speechRate.toFixed(2)}×`;
@@ -300,6 +301,14 @@ export function mountPanel(context) {
     store.bootSequence = !store.bootSequence;
     saveStore();
     syncSettings();
+  });
+
+  $("set-local").addEventListener("click", () => {
+    store.localSpeechOnly = !store.localSpeechOnly;
+    saveStore();
+    syncSettings();
+    // Tanima modu degistigi icin mikrofonun yeniden kurulmasi gerekir.
+    ctx.onSpeechModeChanged();
   });
 
   $("set-rate").addEventListener("input", (event) => {

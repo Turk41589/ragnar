@@ -1,10 +1,12 @@
 /**
  * DRA sunucusu.
  *
- * Iki isi var:
- *  1. web/ klasorunu localhost uzerinden servis eder. (Mikrofon izni icin sart:
- *     tarayicilar file:// uzerinden mikrofona izin vermez, localhost guvenli sayilir.)
- *  2. /api/chat ucundan Claude'a kopru kurar; API anahtari burada kalir.
+ * Tek isi var: web/ klasorunu localhost uzerinden servis etmek.
+ * Bu gerekli cunku tarayicilar file:// uzerinden mikrofona izin vermez;
+ * localhost ise "guvenli baglam" sayilir.
+ *
+ * Disariya HICBIR istek atmaz. Ne bir yapay zeka servisi, ne bir analitik,
+ * ne de baska bir ucuncu taraf. Bagimliligi da yok — sadece Node.
  */
 
 import { createServer } from "node:http";
@@ -16,31 +18,6 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 const WEB_DIR = join(ROOT, "web");
-
-// --- Kucuk .env yukleyici (harici bagimlilik istemiyoruz) ------------------
-function loadEnvFile() {
-  const envPath = join(ROOT, ".env");
-  if (!existsSync(envPath)) return;
-  for (const rawLine of readFileSync(envPath, "utf8").split("\n")) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    let value = line.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (key && process.env[key] === undefined) process.env[key] = value;
-  }
-}
-loadEnvFile();
-
-// Beyin modulu .env yuklendikten SONRA import edilmeli.
-const { askStream, brainStatus, describeError } = await import("./brain.mjs");
 
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -65,62 +42,6 @@ function sendJson(res, status, body) {
     "content-length": Buffer.byteLength(payload),
   });
   res.end(payload);
-}
-
-async function readBody(req, limit = 256 * 1024) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > limit) throw new Error("Istek govdesi cok buyuk.");
-    chunks.push(chunk);
-  }
-  if (!chunks.length) return {};
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-}
-
-/** Sunucudan tarayiciya olay akisi (SSE). */
-function sseWrite(res, event, data) {
-  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-}
-
-async function handleChat(req, res) {
-  let body;
-  try {
-    body = await readBody(req);
-  } catch {
-    return sendJson(res, 400, { error: "Gecersiz istek." });
-  }
-
-  const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-  if (!prompt) return sendJson(res, 400, { error: "Bos istek." });
-
-  res.writeHead(200, {
-    "content-type": "text/event-stream; charset=utf-8",
-    "cache-control": "no-cache, no-transform",
-    connection: "keep-alive",
-    "x-accel-buffering": "no",
-  });
-
-  let aborted = false;
-  req.on("close", () => {
-    aborted = true;
-  });
-
-  try {
-    const text = await askStream(
-      { prompt, history: body.history, context: body.context },
-      (delta) => {
-        if (!aborted) sseWrite(res, "delta", { text: delta });
-      },
-    );
-    if (!aborted) sseWrite(res, "done", { text });
-  } catch (err) {
-    console.error("[dra] beyin hatasi:", err?.message || err);
-    if (!aborted) sseWrite(res, "error", { message: describeError(err) });
-  } finally {
-    res.end();
-  }
 }
 
 async function serveStatic(req, res, pathname) {
@@ -148,12 +69,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
   if (url.pathname === "/api/health") {
-    return sendJson(res, 200, { ok: true, brain: brainStatus() });
-  }
-
-  if (url.pathname === "/api/chat") {
-    if (req.method !== "POST") return sendJson(res, 405, { error: "POST bekleniyor." });
-    return handleChat(req, res);
+    return sendJson(res, 200, { ok: true });
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {
@@ -164,7 +80,6 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  const brain = brainStatus();
   console.log("");
   console.log("  ██████╗ ██████╗  █████╗ ");
   console.log("  ██╔══██╗██╔══██╗██╔══██╗");
@@ -174,9 +89,7 @@ server.listen(PORT, HOST, () => {
   console.log("  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝");
   console.log("");
   console.log(`  Arayuz    : http://localhost:${PORT}`);
-  console.log(
-    `  Beyin     : ${brain.ready ? `bagli (${brain.model})` : `cevrimdisi — ${brain.reason}`}`,
-  );
   console.log(`  Uyandirma : mikrofon acikken "DRA" deyin`);
+  console.log(`  Ag        : disariya hicbir istek atilmiyor`);
   console.log("");
 });

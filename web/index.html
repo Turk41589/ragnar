@@ -44,6 +44,19 @@
         </button>
       </div>
 
+      <!-- Mikrofon olmadan da calisir: yazarak uyandirma -->
+      <form class="sleep__composer" id="sleep-form" autocomplete="off">
+        <span class="chat__caret">&rsaquo;</span>
+        <input
+          id="sleep-input"
+          class="chat__input"
+          type="text"
+          placeholder="Ya da yazarak baslayin&hellip;"
+          aria-label="Yazarak uyandir"
+        />
+        <button class="chat__send" type="submit" aria-label="Gonder">&rarr;</button>
+      </form>
+
       <div class="sleep__meter" id="sleep-meter" hidden>
         <span class="sleep__meter-label">dinliyor</span>
         <div class="sleep__meter-bar"><i id="sleep-level"></i></div>
@@ -65,7 +78,7 @@
         </div>
         <div class="statusline">
           <span class="statuspill" id="state-pill"><i></i><b>hazir</b></span>
-          <span class="statuspill statuspill--muted" id="brain-pill"><i></i><b>beyin</b></span>
+          <span class="statuspill" id="privacy-pill"><i></i><b>cihazda</b></span>
         </div>
         <div class="clock">
           <b id="clock-time">--:--</b>
@@ -87,7 +100,7 @@
           <ul class="gauges" id="gauges">
             <li data-gauge="mic"><span>Mikrofon</span><div class="gauge"><i></i></div><b>0%</b></li>
             <li data-gauge="net"><span>Ag</span><div class="gauge"><i></i></div><b>&mdash;</b></li>
-            <li data-gauge="brain"><span>Beyin</span><div class="gauge"><i></i></div><b>&mdash;</b></li>
+            <li data-gauge="engine"><span>Komut motoru</span><div class="gauge"><i></i></div><b>&mdash;</b></li>
             <li data-gauge="battery"><span>Enerji</span><div class="gauge"><i></i></div><b>&mdash;</b></li>
           </ul>
 
@@ -160,6 +173,18 @@
               <span>Acilis dizisi</span>
               <button class="switch" type="button" id="set-boot" role="switch" aria-checked="true"></button>
             </li>
+            <li>
+              <span>Sesi cihazda tut</span>
+              <button class="switch" type="button" id="set-local" role="switch" aria-checked="true"></button>
+            </li>
+            <li class="settings__stack">
+              <small class="hint" id="local-hint">
+                Acikken ses tanima yalnizca cihazinizda calisir. Tarayiciniz bunu
+                desteklemiyorsa mikrofon acilmaz &mdash; yazarak kullanabilirsiniz.
+                Kapatirsaniz tarayicinin kendi ses tanima servisi devreye girer ve
+                sesiniz tarayici saticisina gonderilir.
+              </small>
+            </li>
 
             <li class="settings__stack">
               <label for="set-rate">Konusma hizi <b id="set-rate-val">1.05&times;</b></label>
@@ -207,26 +232,31 @@
         <p class="core__caption" id="core-caption">Sizi dinliyorum.</p>
       </section>
 
-      <!-- Sag panel -->
-      <aside class="panel panel--right">
-        <h2 class="panel__title">Kayit</h2>
-        <ol class="log" id="log" aria-live="polite"></ol>
+      <!-- Sag panel: sohbet -->
+      <aside class="panel panel--right chat">
+        <h2 class="panel__title">Sohbet</h2>
+
+        <ol class="chat__list" id="log" aria-live="polite" aria-label="Sohbet gecmisi"></ol>
+
+        <form class="chat__composer" id="composer" autocomplete="off">
+          <span class="chat__caret">&rsaquo;</span>
+          <input
+            id="composer-input"
+            class="chat__input"
+            type="text"
+            placeholder="Yazin ya da konusun&hellip;"
+            aria-label="DRA'ya mesaj"
+          />
+          <button class="chat__send" type="submit" aria-label="Gonder">&rarr;</button>
+        </form>
       </aside>
 
       <!-- Alt bar -->
       <footer class="hud__bottom">
         <div class="wave" id="wave-wrap"><canvas id="wave"></canvas></div>
-        <form class="composer" id="composer" autocomplete="off">
-          <span class="composer__caret">&rsaquo;</span>
-          <input
-            id="composer-input"
-            class="composer__input"
-            type="text"
-            placeholder="Komut yazin ya da konusun&hellip;"
-            aria-label="DRA'ya komut"
-          />
-          <button class="btn btn--ghost" type="submit">Gonder</button>
-        </form>
+        <p class="hud__hint" id="bottom-hint">
+          Konusun ya da sagdaki kutuya yazin &mdash; ikisi de ayni sekilde calisir.
+        </p>
         <div class="controls">
           <button type="button" class="btn btn--icon" id="btn-mic" title="Mikrofon (M)">MIK</button>
           <button type="button" class="btn btn--icon" id="btn-voice" title="Sesli yanit (S)">SES</button>

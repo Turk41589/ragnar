@@ -319,53 +319,64 @@ const GREETINGS = [
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-/* ------------------------------------------------------------- hava durumu */
+/* ---------------------------------------------------------------- oneriler */
 
-const WEATHER_CODES = {
-  0: "acik", 1: "az bulutlu", 2: "parcali bulutlu", 3: "cok bulutlu",
-  45: "sisli", 48: "kirragi sisli", 51: "hafif ciseleme", 53: "ciseleme",
-  55: "yogun ciseleme", 61: "hafif yagmurlu", 63: "yagmurlu", 65: "kuvvetli yagmurlu",
-  71: "hafif kar yagisli", 73: "kar yagisli", 75: "yogun kar yagisli",
-  80: "saganak yagisli", 81: "saganak yagisli", 82: "kuvvetli saganak yagisli",
-  95: "gok gurultulu firtinali", 96: "dolulu firtinali", 99: "siddetli dolulu firtinali",
-};
+/**
+ * Bilinen komutlarin ornekleri ve onlari cagristiran sozcukler.
+ * DRA bir dil modeli degil; anlamadigi bir sey duyunca cevap uydurmak
+ * yerine buradan en yakin komutu onerir.
+ */
+const EXAMPLES = [
+  { say: "saat kac", words: ["saat", "zaman", "kac", "vakit"] },
+  { say: "bugun gunlerden ne", words: ["tarih", "gun", "bugun", "ay", "hangi"] },
+  { say: "12 kere 8 kac eder", words: ["hesap", "hesapla", "topla", "cikar", "carp", "bol", "kac", "eder", "matematik"] },
+  { say: "youtube ac", words: ["ac", "site", "youtube", "google", "github", "spotify", "sayfa"] },
+  { say: "google'da kedi ara", words: ["ara", "arat", "bul", "arama"] },
+  { say: "5 dakika zamanlayici kur", words: ["zamanlayici", "sayac", "dakika", "saniye", "geri", "sayim", "sure"] },
+  { say: "sabah yedi bucukta alarm kur", words: ["alarm", "uyandir", "sabah", "aksam", "kur"] },
+  { say: "not al ekmek al", words: ["not", "yaz", "kaydet", "hatirla", "liste"] },
+  { say: "notlarim", words: ["not", "notlar", "neydi"] },
+  { say: "sistem durumu", words: ["durum", "sistem", "rapor", "nasil"] },
+  { say: "renk yesil", words: ["renk", "tema", "gorunum", "mavi", "yesil", "kirmizi"] },
+  { say: "ayarlari ac", words: ["ayar", "ayarlar", "secenek", "panel"] },
+  { say: "sesini kapat", words: ["ses", "sus", "sessiz", "konusma"] },
+  { say: "uyu", words: ["uyu", "kapan", "gorusuruz", "bitir"] },
+  { say: "saka yap", words: ["saka", "espri", "fikra", "komik", "guldur"] },
+];
 
-async function getWeather() {
-  if (!navigator.geolocation) {
-    return "Bu tarayici konum servisini desteklemiyor, hava durumunu alamiyorum.";
-  }
-  let coords;
-  try {
-    coords = await new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => resolve(pos.coords),
-        reject,
-        { timeout: 8000, maximumAge: 600000 },
-      );
-    });
-  } catch {
-    return "Konum izni alamadim, bu yuzden hava durumunu soyleyemiyorum.";
+/**
+ * Anlasilmayan girdi icin yardimci bir yanit uretir.
+ * Ortak sozcuk sayisina gore en yakin ornegi bulur.
+ */
+export function suggestCommand(text) {
+  const tokens = normalize(text).split(" ").filter((w) => w.length > 2);
+
+  let best = null;
+  let bestScore = 0;
+  for (const example of EXAMPLES) {
+    let score = 0;
+    for (const token of tokens) {
+      // Tam eslesme ya da kok eslesmesi (Turkce ekleri yakalamak icin)
+      if (example.words.some((w) => w === token || token.startsWith(w) || w.startsWith(token))) {
+        score += 1;
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = example;
+    }
   }
 
-  try {
-    const url =
-      "https://api.open-meteo.com/v1/forecast" +
-      `?latitude=${coords.latitude.toFixed(3)}&longitude=${coords.longitude.toFixed(3)}` +
-      "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m" +
-      "&timezone=auto";
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("istek basarisiz");
-    const data = await res.json();
-    const c = data.current;
-    const desc = WEATHER_CODES[c.weather_code] || "degisken";
-    return (
-      `Bulundugunuz yerde hava ${desc}. Sicaklik ${Math.round(c.temperature_2m)} derece, ` +
-      `hissedilen ${Math.round(c.apparent_temperature)} derece. ` +
-      `Ruzgar saatte ${Math.round(c.wind_speed_10m)} kilometre.`
-    );
-  } catch {
-    return "Hava durumu servisine ulasamadim.";
+  if (best && bestScore > 0) {
+    return `Bunu tam anlayamadim. Sunu mu demek istediniz: "${best.say}"?`;
   }
+
+  return (
+    "Bunu anlayamadim. Ben bir sohbet yapay zekasi degilim, komutlarla calisan " +
+    "bir asistanim. Saat ve tarih soyleyebilir, hesap yapabilir, alarm ve " +
+    "zamanlayici kurabilir, not tutabilir, site acabilir ve arama yapabilirim. " +
+    "Tum listeyi duymak icin \"neler yapabilirsin\" deyin."
+  );
 }
 
 /* ------------------------------------------------------------ komut tablosu */
@@ -412,17 +423,18 @@ const RULES = [
     name: "kimsin",
     test: (n) => has(n, "adin ne", "ismin ne", "kimsin", "sen kimsin", "kendini tanit", "sen nesin"),
     run: () =>
-      "Ben DRA. Sizin kisisel sesli asistaniniz. Sesinizi dinler, komutlarinizi calistirir " +
-      "ve sorularinizi yanitlarim.",
+      "Ben DRA. Kisisel asistaniniz. Bir yapay zeka degilim — komutlarla calisan " +
+      "bir programim. Tamamen bu cihazda calisirim, hicbir sirkete baglanmam ve " +
+      "konustuklariniz disari cikmaz.",
   },
   {
     name: "yardim",
     test: (n) => has(n, "ne yapabilirsin", "neler yapabilirsin", "yardim", "komutlar", "nasil kullanilir"),
     run: () =>
-      "Saati ve tarihi soyleyebilirim, hesap yapabilirim, site acabilirim, arama yapabilirim, " +
-      "zamanlayici kurabilirim, not tutabilirim, hava durumunu getirebilirim ve tema rengimi " +
-      "degistirebilirim. Anlamadigim seyleri yapay zeka beynime yonlendiririm. " +
-      "Beni uyutmak icin uyu demeniz yeterli.",
+      "Saati ve tarihi soyleyebilirim, hesap yapabilirim, site acabilirim, arama " +
+      "yapabilirim, alarm ve zamanlayici kurabilirim, not tutabilirim, tema rengimi " +
+      "degistirebilirim ve sistem durumunu raporlayabilirim. Sol paneldeki ayarlardan " +
+      "beni yapilandirabilirsiniz. Beni uyutmak icin uyu demeniz yeterli.",
   },
 
   /* -- saat / tarih ------------------------------------------------------ */
@@ -441,7 +453,9 @@ const RULES = [
   {
     name: "hava",
     test: (n) => has(n, "hava durumu", "hava nasil", "disarisi nasil", "yagmur yagacak"),
-    run: () => getWeather(),
+    run: () =>
+      "Hava durumunu soyleyemem. Bunun icin konumunuzu bir hava servisine " +
+      "gondermem gerekirdi; disariya hicbir baglanti kurmayacak sekilde tasarlandim.",
   },
 
   /* -- site acma --------------------------------------------------------- */

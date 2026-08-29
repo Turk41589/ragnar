@@ -9,6 +9,9 @@ const LEGACY_KEY = "dra.state.v1";
 /** Varsayilan ayarlar. */
 const DEFAULTS = {
   voiceEnabled: true,
+  // Varsayilan olarak ses cihazdan cikmaz. Tarayici cihaz ustu tanima
+  // sunmuyorsa mikrofon acilmaz; kullanici bilerek kapatabilir.
+  localSpeechOnly: true,
   speechRate: 1.05,
   bootSequence: true,
   autoSleepMinutes: 2.5, // 0 = otomatik uyku kapali
@@ -31,6 +34,7 @@ function coerce(saved) {
 
   if (typeof saved.voiceEnabled === "boolean") store.voiceEnabled = saved.voiceEnabled;
   if (typeof saved.bootSequence === "boolean") store.bootSequence = saved.bootSequence;
+  if (typeof saved.localSpeechOnly === "boolean") store.localSpeechOnly = saved.localSpeechOnly;
 
   if (Number.isFinite(saved.speechRate)) {
     store.speechRate = Math.min(1.6, Math.max(0.6, saved.speechRate));

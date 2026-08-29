@@ -12,7 +12,7 @@ import * as speech from "./speech.js";
 import * as audio from "./audio.js";
 import * as hud from "./hud.js";
 import { mountReactor, mountWave } from "./reactor.js";
-import { runCommand, normalize } from "./commands.js";
+import { runCommand, normalize, suggestCommand } from "./commands.js";
 import { store, loadStore, saveStore } from "./store.js";
 import * as panel from "./panel.js";
 import * as alarms from "./alarms.js";
@@ -116,100 +116,6 @@ async function onAlarmFired(alarm) {
   setTimeout(() => panel.markRinging(null), 20_000);
 }
 
-/* ============================================================ beyin koprusu */
-
-let brain = { ready: false, model: null };
-
-async function checkBrain() {
-  try {
-    const res = await fetch("/api/health");
-    const data = await res.json();
-    brain = data.brain || { ready: false };
-  } catch {
-    brain = { ready: false, reason: "sunucuya ulasilamadi" };
-  }
-  state.brainReady = brain.ready;
-  hud.setBrainPill(brain.ready, brain.model);
-  hud.setGauge(
-    "brain",
-    brain.ready ? 100 : 12,
-    brain.ready ? "bagli" : "yerel",
-    brain.ready ? "ok" : "warn",
-  );
-}
-
-/**
- * Claude'a sorar. Gelen metni canli olarak kayda yazar, tamamini dondurur.
- */
-async function askBrain(prompt) {
-  const line = hud.log("dra", "");
-  let full = "";
-
-  const res = await fetch("/api/chat", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      prompt,
-      history: state.history,
-      context: `Tarih ve saat: ${hud.formatDate()} ${hud.formatTime()}.`,
-    }),
-  });
-
-  if (!res.ok || !res.body) throw new Error("Beyin yanit vermedi.");
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let failure = null;
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    // SSE cerceveleri bos satirla ayrilir.
-    let sep;
-    while ((sep = buffer.indexOf("\n\n")) !== -1) {
-      const frame = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-
-      let event = "message";
-      let data = "";
-      for (const raw of frame.split("\n")) {
-        if (raw.startsWith("event:")) event = raw.slice(6).trim();
-        else if (raw.startsWith("data:")) data += raw.slice(5).trim();
-      }
-      if (!data) continue;
-
-      let payload;
-      try {
-        payload = JSON.parse(data);
-      } catch {
-        continue;
-      }
-
-      if (event === "delta") {
-        full += payload.text || "";
-        line.textContent = full;
-        hud.setCaption(full);
-      } else if (event === "done") {
-        full = payload.text || full;
-        line.textContent = full;
-      } else if (event === "error") {
-        failure = payload.message || "Beyin hata verdi.";
-      }
-    }
-  }
-
-  if (failure) {
-    line.parentElement.dataset.who = "error";
-    line.textContent = failure;
-    return { text: failure, ok: false };
-  }
-
-  return { text: full.trim(), ok: true, logged: true };
-}
-
 /* ============================================================ konusma akisi */
 
 let autoSleepTimer = null;
@@ -263,16 +169,9 @@ async function handleUtterance(rawText) {
       return;
     }
 
-    if (!brain.ready) {
-      await respond(
-        "Bunu yerel komutlarimla karsilayamadim. Yapay zeka beynim de bagli degil — " +
-          "sunucuda ANTHROPIC_API_KEY tanimlarsaniz her soruyu yanitlayabilirim.",
-      );
-      return;
-    }
-
-    const answer = await askBrain(text);
-    await respond(answer.text, { logged: answer.logged, kind: answer.ok ? null : "error" });
+    // Eslesme yok. DRA bir dil modeli degil — uydurmak yerine ne
+    // yapabildigini soyler ve en yakin komutu onerir.
+    await respond(suggestCommand(text));
   } catch (err) {
     console.error("[dra]", err);
     hud.log("error", err.message || "Bilinmeyen hata");
@@ -313,8 +212,10 @@ async function wakeUp(spokenRest = "", { silent = false } = {}) {
   waking = true;
   setState(S.WAKING);
 
-  if (store.bootSequence) await hud.playBoot(brain.ready);
+  if (store.bootSequence) await hud.playBoot();
   hud.showHud();
+  // Klavyeyle gelen kullanici hemen yazmaya devam edebilsin.
+  if (!state.micEnabled) dom.input.focus();
   setState(S.IDLE);
   waking = false;
   touch();
@@ -399,6 +300,7 @@ on("mic", ({ status, message }) => {
     dom.btnMic?.setAttribute("aria-pressed", "false");
     if (state.current === S.SLEEPING) hud.sleepStatus("Mikrofon kapali", "warn");
     hud.sleepMeter(false, 0);
+    hud.setPrivacyPill("off");
   } else {
     state.micEnabled = false;
     dom.btnMic?.setAttribute("aria-pressed", "false");
@@ -471,6 +373,14 @@ const ctx = {
   toggleMic: () => dom.btnMic.click(),
   onAutoSleepChanged: () => touch(),
   onWakeWordsChanged: () => rebuildWakeWords(),
+  onSpeechModeChanged: () => {
+    if (!speech.isListening()) return;
+    speech.stopListening();
+    audio.stopMeter();
+    state.micEnabled = false;
+    dom.btnEnable.disabled = false;
+    enableMic();
+  },
 
   systemReport: () => {
     const nextAlarm = alarms.listAlarms().filter((a) => a.enabled)[0];
@@ -478,7 +388,7 @@ const ctx = {
       `Saat ${hud.formatTime()}.`,
       state.micEnabled ? "Mikrofon acik." : "Mikrofon kapali.",
       navigator.onLine ? "Ag baglantisi var." : "Ag baglantisi yok.",
-      brain.ready ? "Yapay zeka beynim bagli." : "Yapay zeka beynim cevrimdisi, yerel modda calisiyorum.",
+      "Tum islemler bu cihazda yurutuluyor.",
       timers.length ? `${timers.length} aktif zamanlayici var.` : "Aktif zamanlayici yok.",
       nextAlarm ? `Siradaki alarm ${nextAlarm.time}.` : "Kurulu alarm yok.",
       store.notes.length ? `${store.notes.length} kayitli not var.` : "Kayitli not yok.",
@@ -490,8 +400,9 @@ const ctx = {
 /* ============================================================ olcerler */
 
 function updateNetGauge() {
+  // Ag durumu yalnizca bilgi amacli; DRA calismak icin internete ihtiyac duymaz.
   const online = navigator.onLine;
-  hud.setGauge("net", online ? 100 : 0, online ? "cevrimici" : "cevrimdisi", online ? "ok" : "error");
+  hud.setGauge("net", online ? 100 : 0, online ? "var" : "yok", null);
 }
 
 window.addEventListener("online", updateNetGauge);
@@ -535,6 +446,15 @@ dom.composer.addEventListener("submit", (event) => {
   handleUtterance(text);
 });
 
+// Uyku ekranindan yazarak baslatma — mikrofon hic acilmasa da calisir.
+$("sleep-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const input = $("sleep-input");
+  const text = input.value.trim();
+  input.value = "";
+  wakeUp(text);
+});
+
 dom.btnEnable.addEventListener("click", enableMic);
 dom.btnManualWake.addEventListener("click", () => wakeUp());
 dom.btnSleep.addEventListener("click", () => goToSleep());
@@ -549,7 +469,10 @@ dom.btnVoice.addEventListener("click", () => {
 dom.btnMic.addEventListener("click", () => {
   if (speech.isListening()) {
     speech.stopListening();
+    audio.stopMeter();
     state.micEnabled = false;
+    dom.btnEnable.disabled = false;
+    dom.btnEnable.textContent = "Mikrofonu baslat";
     hud.toast("Mikrofon kapatildi");
   } else {
     enableMic();
@@ -585,7 +508,76 @@ document.addEventListener("keydown", (event) => {
 
 /* ============================================================ mikrofon acma */
 
+/**
+ * Mikrofonu acar.
+ *
+ * "Sesi cihazda tut" aciksa once tarayicinin cihaz ustu ses tanimasini arar.
+ * Yoksa mikrofonu ACMAZ — sessizce bulut servisine dusmek, kullanicinin
+ * acikca istemedigi bir sey yapmak olurdu.
+ */
+let micBusy = false;
+
 async function enableMic() {
+  // Dil paketi indirmesi dakikalar surebilir; ikinci tiklama ikinci
+  // indirme baslatmasin.
+  if (micBusy) {
+    hud.toast("Ses tanima hazirlaniyor, lutfen bekleyin");
+    return;
+  }
+  micBusy = true;
+  try {
+    await enableMicInner();
+  } finally {
+    micBusy = false;
+  }
+}
+
+async function enableMicInner() {
+  const wantLocal = store.localSpeechOnly;
+  let processLocally = false;
+
+  if (wantLocal) {
+    hud.sleepStatus("Cihaz uzerinde ses tanima araniyor…", null);
+    let status = await speech.probeLocalRecognition();
+
+    if (status === "downloadable" || status === "downloading") {
+      // Kullanici HUD'daysa uyku ekranindaki yaziyi gormez — sohbete de yaz.
+      const note =
+        "Turkce ses tanima paketi cihaza indiriliyor. Bu bir kerelik ve " +
+        "birkac dakika surebilir; bittiginde ses cihazdan hic cikmayacak.";
+      hud.sleepStatus("Turkce dil paketi indiriliyor…", "warn");
+      hud.log("system", note);
+      hud.toast("Dil paketi indiriliyor…", 6000);
+      dom.btnEnable.textContent = "Indiriliyor…";
+
+      const ok = await speech.installLocalRecognition();
+      status = ok ? "available" : await speech.probeLocalRecognition();
+
+      if (status === "available") hud.log("system", "Cihaz ustu ses tanima hazir.");
+      dom.btnEnable.textContent = "Mikrofonu baslat";
+    }
+
+    if (status === "available") {
+      processLocally = true;
+    } else {
+      const why =
+        status === "unsupported"
+          ? "Bu tarayici cihaz ustu ses tanima sunmuyor."
+          : "Turkce dil paketi cihaza indirilemedi.";
+      hud.sleepStatus("Cihaz ustu ses tanima yok", "warn");
+      hud.setPrivacyPill("off");
+      hud.toast(`${why} Yazarak kullanabilirsiniz.`, 8000);
+      hud.log(
+        "system",
+        `${why} Mikrofon acilmadi — sesinizin disari cikmasini istemediginizi ` +
+          "varsayiyorum. Yazili komutlar calismaya devam ediyor. Tarayicinin kendi " +
+          "ses servisine izin vermek isterseniz Ayar'dan \"Sesi cihazda tut\" " +
+          "anahtarini kapatin.",
+      );
+      return;
+    }
+  }
+
   hud.sleepStatus("Mikrofon izni bekleniyor…", null);
 
   const metered = await audio.startMeter();
@@ -593,12 +585,13 @@ async function enableMic() {
     hud.sleepStatus("Mikrofona erisilemedi. Tarayici izinlerini kontrol edin.", "error");
   }
 
-  const started = speech.startListening();
+  const started = speech.startListening({ processLocally });
   if (!started) return;
 
   state.micEnabled = true;
   dom.btnEnable.textContent = "Mikrofon acik";
   dom.btnEnable.disabled = true;
+  hud.setPrivacyPill(speech.isLocalRecognition() ? "local" : "cloud");
 
   if (metered) pollLevel();
 }
@@ -630,17 +623,17 @@ function boot() {
   hud.showSleep();
   updateNetGauge();
   initBattery();
-  checkBrain();
-  setInterval(checkBrain, 60_000);
+  hud.setPrivacyPill("off");
+  hud.setGauge("engine", 100, "yerel", "ok");
 
   dom.btnVoice.setAttribute("aria-pressed", String(store.voiceEnabled));
   dom.btnMic.setAttribute("aria-pressed", "false");
 
   if (!speech.speechSupported) {
-    hud.sleepStatus("Bu tarayici ses tanimayi desteklemiyor — Chrome veya Edge kullanin", "error");
+    hud.sleepStatus("Bu tarayicida ses tanima yok — yazarak kullanabilirsiniz", "warn");
     dom.btnEnable.disabled = true;
   } else {
-    hud.sleepStatus("Baslamak icin mikrofonu acin", null);
+    hud.sleepStatus("Mikrofonu acin ya da yazarak baslayin", null);
   }
 
   console.log(

@@ -606,44 +606,166 @@
 
 .settings__actions .btn { flex: 1; justify-content: center; }
 
-/* ----------------------------------------------------------------- kayit akisi */
+/* ------------------------------------------------------------------ sohbet */
 
-.log {
+.chat {
+  /* Sag panel: baslik, kayan mesaj listesi, sabit yazi kutusu */
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+}
+
+.chat__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   overflow-y: auto;
   min-height: 0;
   flex: 1;
+  padding-right: 3px;
   scrollbar-width: thin;
   scrollbar-color: var(--accent-faint) transparent;
 }
 
-.log::-webkit-scrollbar { width: 4px; }
-.log::-webkit-scrollbar-thumb { background: var(--accent-faint); }
+.chat__list::-webkit-scrollbar { width: 4px; }
+.chat__list::-webkit-scrollbar-thumb { background: var(--accent-faint); }
 
-.log li {
-  font-size: 10.5px;
-  line-height: 1.55;
-  padding-left: 9px;
-  border-left: 1px solid var(--accent-faint);
-  color: var(--ink-dim);
-  word-break: break-word;
-  animation: fade-in 260ms ease both;
+/* Bir mesaj */
+.chat__list li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 92%;
+  animation: fade-in 240ms ease both;
 }
 
-.log li time {
-  display: block;
-  font-size: 8.5px;
-  letter-spacing: 0.18em;
+.chat__who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 8px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
   color: var(--ink-faint);
-  margin-bottom: 2px;
 }
 
-.log li[data-who="user"] { border-left-color: var(--accent); color: var(--ink); }
-.log li[data-who="dra"] { border-left-color: var(--ok); }
-.log li[data-who="system"] { border-left-color: var(--amber); font-style: italic; }
-.log li[data-who="error"] { border-left-color: var(--danger); color: #ffd8dc; }
+.chat__bubble {
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  font-size: 11px;
+  line-height: 1.6;
+  word-break: break-word;
+  background: var(--accent-ghost);
+  border: 1px solid var(--accent-faint);
+  color: var(--ink-dim);
+}
+
+/* Kullanici — saga yaslanir */
+.chat__list li[data-who="user"] {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.chat__list li[data-who="user"] .chat__bubble {
+  background: var(--accent-faint);
+  border-color: var(--accent-soft);
+  color: #eafcff;
+}
+
+/* DRA — sola yaslanir */
+.chat__list li[data-who="dra"] { align-self: flex-start; }
+
+.chat__list li[data-who="dra"] .chat__bubble {
+  border-left: 2px solid var(--accent);
+  color: var(--ink);
+}
+
+/* Sistem ve hata — ortada, ince */
+.chat__list li[data-who="system"],
+.chat__list li[data-who="error"] {
+  align-self: center;
+  align-items: center;
+  max-width: 100%;
+}
+
+.chat__list li[data-who="system"] .chat__bubble {
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--accent-ghost);
+  border-bottom: 1px solid var(--accent-ghost);
+  border-radius: 0;
+  color: var(--amber);
+  font-style: italic;
+  font-size: 10px;
+  text-align: center;
+}
+
+.chat__list li[data-who="error"] .chat__bubble {
+  background: rgb(255 77 94 / 0.08);
+  border-color: rgb(255 77 94 / 0.4);
+  color: #ffd8dc;
+}
+
+/* Yazi kutusu — panelin dibinde sabit */
+.chat__composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--accent-ghost);
+  border: 1px solid var(--accent-faint);
+  border-radius: var(--radius);
+  flex: none;
+}
+
+.chat__composer:focus-within {
+  border-color: var(--accent-soft);
+  box-shadow: 0 0 20px -8px var(--accent);
+}
+
+.chat__caret {
+  color: var(--accent);
+  font-size: 14px;
+  line-height: 1;
+  flex: none;
+}
+
+.chat__input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  padding: 6px 0;
+}
+
+.chat__input::placeholder { color: var(--ink-faint); }
+
+.chat__send {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--accent-faint);
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.chat__send:hover { background: var(--accent-faint); border-color: var(--accent); }
+.chat__send:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+
+/* DRA konusurken yazi kutusu pasif gorunur ama kilitli degildir */
+body[data-state="thinking"] .chat__composer { opacity: 0.7; }
 
 /* --------------------------------------------------------------- merkez cekirdek */
 
@@ -730,41 +852,12 @@
   display: block;
 }
 
-.composer {
-  flex: 1 1 240px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: var(--accent-ghost);
-  border: 1px solid var(--accent-faint);
-  border-radius: var(--radius);
+.hud__hint {
+  flex: 1 1 200px;
   min-width: 0;
-}
-
-.composer:focus-within {
-  border-color: var(--accent-soft);
-  box-shadow: 0 0 22px -8px var(--accent);
-}
-
-.composer__caret {
-  color: var(--accent);
-  font-size: 15px;
-  line-height: 1;
-}
-
-.composer__input {
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--ink);
-  font: inherit;
-  padding: 6px 0;
-}
-
-.composer__input::placeholder {
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--ink-faint);
 }
 
@@ -792,21 +885,23 @@ body[data-state="error"] {
 /* ----------------------------------------------------------- dar ekran uyumu */
 
 @media (max-width: 900px), (max-height: 620px) {
-  /* Dar ekranda kontrol paneli gizlenmez, cekirdegin altina alinir —
-     ayarlar, notlar ve alarmlar telefonda da erisilebilir kalmali. */
+  /* Dar ekranda hicbir panel gizlenmez; cekirdegin altina alt alta
+     dizilirler — sohbet, ayarlar ve alarmlar telefonda da erisilebilir. */
   .hud {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr) minmax(0, auto) auto;
+    grid-template-rows: auto minmax(0, 1fr) minmax(0, auto) minmax(0, auto) auto;
     grid-template-areas:
       "top"
       "core"
+      "right"
       "left"
       "bottom";
   }
 
-  .panel--right { display: none; }
+  .panel--left,
+  .panel--right { max-height: 38vh; }
 
-  .panel--left { max-height: 42vh; }
+  .hud__hint { display: none; }
 
   .core__ring { width: min(100%, 74vmin); }
 
