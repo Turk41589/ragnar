@@ -234,6 +234,13 @@ export function syncSettings() {
   syncSwitch($("set-boot"), store.bootSequence);
   syncSwitch($("set-local"), store.localSpeechOnly);
   syncSwitch($("set-search"), store.webSearch);
+
+  // Acilista baslatma yalnizca masaustu surumunde anlamli.
+  const autostartRow = $("row-autostart");
+  autostartRow.hidden = !system.isDesktop();
+  if (system.isDesktop()) {
+    system.getAutoStart().then((on) => syncSwitch($("set-autostart"), on)).catch(() => {});
+  }
   syncSwitch($("set-streamer"), store.streamerMode);
 
   $("kick-fields").hidden = !store.streamerMode;
@@ -442,6 +449,17 @@ export function mountPanel(context) {
     } catch (err) {
       ctx.log("error", `Kick baglantisi kurulamadi: ${err.message}`);
       ctx.toast("Kick baglantisi kurulamadi", 5000);
+    }
+  });
+
+  $("set-autostart").addEventListener("click", async () => {
+    const next = $("set-autostart").getAttribute("aria-checked") !== "true";
+    try {
+      const applied = await system.setAutoStart(next);
+      syncSwitch($("set-autostart"), applied);
+      ctx.toast(applied ? "Bilgisayar acilinca DRA baslayacak" : "Acilista baslatma kapatildi");
+    } catch (err) {
+      ctx.toast(`Ayarlanamadi: ${err.message}`, 5000);
     }
   });
 

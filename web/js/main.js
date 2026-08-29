@@ -479,6 +479,26 @@ const ctx = {
   },
 };
 
+/* ============================================================ masaustu */
+
+/**
+ * Masaustu surumunde tepsi menusu ve kisayol tusu (Alt+Space) ana surecten
+ * olay gonderir. Tarayici surumunde bu abonelikler sessizce bos doner.
+ */
+function bindDesktopEvents() {
+  if (!system.isDesktop()) return;
+
+  system.onDesktopEvent("dra:wake", () => {
+    if (state.current === S.SLEEPING) wakeUp();
+  });
+  system.onDesktopEvent("dra:sleep", () => {
+    if (state.current !== S.SLEEPING) goToSleep();
+  });
+  system.onDesktopEvent("dra:toggle-mic", () => dom.btnMic.click());
+
+  document.body.dataset.desktop = "true";
+}
+
 /* ============================================================ sunucu */
 
 /**
@@ -821,6 +841,7 @@ function boot() {
   initBattery();
   hud.setPrivacyPill("off");
   hud.setGauge("engine", 100, "yerel", "ok");
+  bindDesktopEvents();
   connectServer();
 
   dom.btnVoice.setAttribute("aria-pressed", String(store.voiceEnabled));

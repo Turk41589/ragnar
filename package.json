@@ -1,13 +1,16 @@
 {
   "name": "dra",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "description": "DRA — sesle uyanan, tamamen cihazinizda calisan Turkce asistan",
   "type": "module",
-  "main": "server/index.mjs",
+  "main": "electron/main.mjs",
   "scripts": {
-    "start": "node server/index.mjs",
-    "dev": "node --watch server/index.mjs",
+    "start": "electron .",
+    "web": "node server/index.mjs",
+    "dev": "electron . --dev",
+    "paket": "electron-builder",
+    "paket:win": "electron-builder --win",
     "test": "node test/run.mjs",
     "test:tam": "node test/run.mjs --tam"
   },
@@ -15,6 +18,46 @@
     "node": ">=18"
   },
   "devDependencies": {
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
     "playwright": "^1.49.0"
+  },
+  "build": {
+    "appId": "com.dra.asistan",
+    "productName": "DRA",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "server/**/*",
+      "web/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "DRA-Kurulum-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DRA"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities"
+    }
   }
 }

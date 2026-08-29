@@ -25,18 +25,44 @@ Bağımlılığı da yoktur — `npm install` gerekmez, `node_modules` yoktur.
 
 ## Kurulum
 
-Gereken tek şey Node.js 18 veya üstü.
+DRA iki şekilde çalışır: **masaüstü uygulaması** (önerilen) veya
+tarayıcıda yerel sayfa. İkisi de aynı arayüzü, aynı komutları kullanır.
+
+### Masaüstü uygulaması
 
 ```bash
-npm start          # ya da: node server/index.mjs
+npm install        # Electron'u indirir
+npm start          # uygulamayı açar
 ```
 
-Ardından tarayıcıda **http://localhost:4173** adresini açın.
+Kurulabilir bir `.exe` üretmek için:
+
+```bash
+npm run paket:win  # dist/ altında DRA-Kurulum-3.0.0.exe
+```
+
+Uygulama sürümünde ek olarak: sistem tepsisi simgesi, **Alt+Space** ile her
+yerden çağırma, açılışta başlatma, ve tek pencere garantisi. Kapatma düğmesi
+uygulamayı sonlandırmaz — tepside beklemeye devam eder.
+
+**Uygulamada makineye erişim HTTP yerine doğrudan IPC ile yapılır.** Yani
+dinlenecek bir port ve korunacak bir oturum jetonu yoktur; saldırı yüzeyi
+tarayıcı sürümünden daha küçüktür. Arayüz Node'a erişemez (`contextIsolation`
+açık, `nodeIntegration` kapalı); yalnızca `electron/preload.cjs` içinde
+açıkça listelenen dar yüzeyi görür. Bu, testlerle doğrulanır.
+
+### Tarayıcı sürümü
+
+```bash
+npm run web        # bağımlılık gerektirmez
+```
+
+Ardından **http://localhost:4173** adresini açın (Chrome veya Edge).
 
 > **Sunucu neden var?**
 > Tarayıcılar `file://` üzerinden mikrofona izin vermez; `localhost` güvenli
-> bağlam sayılır. Sunucunun tek işi `web/` klasörünü servis etmek — bağımlılığı
-> yok, dışarıya istek atmıyor, hiçbir şey kaydetmiyor.
+> bağlam sayılır. Sunucunun tek işi `web/` klasörünü servis etmek ve
+> makineye erişim gerektiren işleri üstlenmek.
 
 ---
 
@@ -68,7 +94,7 @@ görünmemeli.
 ### Otomatik testler
 
 ```bash
-npm install                    # yalnızca test için (Playwright)
+npm install                    # Electron + Playwright
 npx playwright install chromium
 npm test                       # hızlı testler, ~40 sn
 npm run test:tam               # alarmın gerçekten çalmasını da bekler, ~2 dk
@@ -88,6 +114,9 @@ npm run test:tam               # alarmın gerçekten çalmasını da bekler, ~2 
   çapraz site ve form istekleri reddediliyor mu), listede olmayan uygulamanın
   başlatılamadığı, kapalı özelliklerin gerçekten kapalı olduğu ve yeni
   komutların doğru yönlendirildiği
+* **Masaüstü uygulaması** — Electron gerçekten açılıyor mu, arayüz yükleniyor
+  mu, IPC çalışıyor mu, Node arayüze sızmıyor mu, köprü yalnızca beklenen
+  yüzeyi mi açıyor, beyaz liste uygulamada da geçerli mi
 * **Alarm (yavaş)** — bir sonraki dakikaya alarm kurup gerçekten çalmasını,
   DRA'yı uykudan uyandırmasını ve kendini kapatmasını bekler
 
@@ -127,6 +156,15 @@ Bulut tanımayı bilerek kullanmak isterseniz Ayar'dan bu anahtarı kapatın.
 Kapattığınızda rozet `tarayıcı servisi` olur — gizlenmez.
 
 Konuşma sentezi (DRA'nın sesi) işletim sisteminizin Türkçe sesini kullanır.
+
+**Masaüstü sürümünde ses:** Electron mikrofon iznini kendiliğinden vermez —
+uygulama bunu açıkça açar (`electron/main.mjs` içindeki izin işleyicisi).
+Electron 44, cihaz üstü ses tanıma API'sini (`SpeechRecognition.available` /
+`install`) içeriyor. Ancak bu geliştirme ortamında hiç mikrofon olmadığı için
+**tanımanın uygulamada gerçekten sonuç ürettiği doğrulanamadı.** İlk açılışta
+Ayar → **"Ses tanımayı sına"** ile kontrol edin. Çalışmazsa tarayıcı sürümü
+(`npm run web`) yedek olarak durmaya devam ediyor; kalıcı çözüm olarak
+uygulamanın içine gömülü bir ses motoru (Vosk) eklenebilir.
 
 ---
 
@@ -273,6 +311,8 @@ web/js/store.js      kalıcı veri (localStorage)
 web/js/audio.js      görselleri besleyen mikrofon analizörü
 web/js/hud.js        sohbet, göstergeler, açılış dizisi
 web/js/state.js      durum makinesi ve olay yolu
+electron/main.mjs    masaüstü uygulaması: pencere, tepsi, kısayol, IPC, izinler
+electron/preload.cjs yalıtım köprüsü (arayüzün gördüğü tek yüzey)
 server/index.mjs     statik dosya servisi + yerel uçlar (bağımlılıksız)
 server/guard.mjs     yerel istek koruması (jeton, köken, içerik türü)
 server/apps.mjs      uygulama/oyun tarama, başlatma, kapatma

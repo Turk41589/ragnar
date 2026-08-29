@@ -21,6 +21,7 @@ const SUITES = [
   await import("./suites/yonlendirme.mjs"),
   await import("./suites/arayuz.mjs"),
   await import("./suites/sistem.mjs"),
+  await import("./suites/masaustu.mjs"),
   await import("./suites/alarm.mjs"),
 ];
 
@@ -35,8 +36,15 @@ try {
   console.log(gray("sunucu baslatiliyor…"));
   server = await startServer();
 
-  console.log(gray("tarayici aciliyor…"));
-  browser = await launchBrowser();
+  // Tarayici yalnizca gerektiginde acilir: Electron paketi kendi
+  // ornegini baslattigi icin ona tarayici gerekmiyor.
+  const getBrowser = async () => {
+    if (!browser) {
+      console.log(gray("tarayici aciliyor…"));
+      browser = await launchBrowser();
+    }
+    return browser;
+  };
 
   const summaries = [];
 
@@ -49,7 +57,21 @@ try {
 
     console.log(`\n${bold(suite.name)}`);
 
-    const context = await browser.newContext({ viewport: { width: 1600, height: 950 } });
+    // Kendi ornegini acan paketler (Electron) tarayici baglami istemez.
+    if (suite.standalone) {
+      const t = createTester(suite.name);
+      try {
+        await suite.run(null, server.base, t, {});
+      } catch (err) {
+        t.ok(false, `paket cokti: ${err.message}`);
+      }
+      summaries.push(t.summary);
+      continue;
+    }
+
+    const context = await (await getBrowser()).newContext({
+      viewport: { width: 1600, height: 950 },
+    });
     const page = await context.newPage();
 
     // Sayfa hatalarini ve localhost disina cikan istekleri topla.

@@ -8,12 +8,29 @@
 
 import { normalize, tokenize, scorePhrase } from "./match.js";
 
+/**
+ * Iki ortam, tek arayuz.
+ *
+ * Masaustu uygulamasinda (Electron) makineye erisim IPC ile yapilir:
+ * ortada dinlenecek bir port, korunacak bir jeton yoktur.
+ * Tarayicida ise ayni isler yerel HTTP sunucusuna gider.
+ *
+ * Bu modulun disindaki hicbir kod farki bilmez.
+ */
+const desktop = typeof window !== "undefined" && window.dra?.desktop === true;
+
+export const isDesktop = () => desktop;
+
 let token = null;
 let apps = [];
 let serverInfo = { platform: null, search: { enabled: false }, kick: { ready: false }, apps: {} };
 
-/** Saglik ucundan jetonu ve sunucu durumunu alir. */
+/** Baglantiyi kurar ve ortam bilgisini alir. */
 export async function connect() {
+  if (desktop) {
+    serverInfo = await window.dra.health();
+    return serverInfo;
+  }
   const res = await fetch("/api/health");
   if (!res.ok) throw new Error("Sunucuya ulasilamadi.");
   const data = await res.json();
@@ -23,9 +40,9 @@ export async function connect() {
 }
 
 export const info = () => serverInfo;
-export const connected = () => Boolean(token);
+export const connected = () => desktop || Boolean(token);
 
-/** Islem yapan uclara istek atar. */
+/** Tarayici surumunde islem yapan uclara istek atar. */
 async function post(path, body = {}) {
   if (!token) throw new Error("Sunucu baglantisi yok. Sayfayi yenileyin.");
   const res = await fetch(path, {
@@ -43,8 +60,7 @@ async function post(path, body = {}) {
 
 export async function loadApps() {
   try {
-    const res = await fetch("/api/apps");
-    const data = await res.json();
+    const data = desktop ? await window.dra.apps.list() : await (await fetch("/api/apps")).json();
     apps = Array.isArray(data.apps) ? data.apps : [];
   } catch {
     apps = [];
@@ -56,7 +72,7 @@ export const appList = () => apps;
 
 /** Sistemi yeniden tarar. */
 export async function scanApps() {
-  const data = await post("/api/apps/scan");
+  const data = desktop ? await window.dra.apps.scan() : await post("/api/apps/scan");
   apps = data.apps || [];
   return apps;
 }
@@ -87,13 +103,18 @@ export function findApp(query) {
   return bestScore >= 0.8 ? { app: best, score: bestScore } : null;
 }
 
-export const launchApp = (id) => post("/api/apps/launch", { id });
-export const closeApp = (id) => post("/api/apps/close", { id });
+export const launchApp = (id) =>
+  desktop ? window.dra.apps.launch(id) : post("/api/apps/launch", { id });
+
+export const closeApp = (id) =>
+  desktop ? window.dra.apps.close(id) : post("/api/apps/close", { id });
 
 /* ------------------------------------------------------------- arama */
 
 export async function setSearchEnabled(enabled) {
-  const data = await post("/api/search/toggle", { enabled });
+  const data = desktop
+    ? await window.dra.search.setEnabled(enabled)
+    : await post("/api/search/toggle", { enabled });
   serverInfo.search = { enabled: data.enabled };
   return data.enabled;
 }
@@ -101,14 +122,18 @@ export async function setSearchEnabled(enabled) {
 export const searchEnabled = () => Boolean(serverInfo.search?.enabled);
 
 export async function webSearch(query) {
-  const data = await post("/api/search", { query });
+  const data = desktop
+    ? await window.dra.search.query(query)
+    : await post("/api/search", { query });
   return data.result;
 }
 
 /* -------------------------------------------------------------- kick */
 
 export async function configureKick(tokenValue, channel) {
-  const data = await post("/api/kick/configure", { token: tokenValue, channel });
+  const data = desktop
+    ? await window.dra.kick.configure(tokenValue, channel)
+    : await post("/api/kick/configure", { token: tokenValue, channel });
   serverInfo.kick = data.status;
   return data.status;
 }
@@ -116,6 +141,27 @@ export async function configureKick(tokenValue, channel) {
 export const kickReady = () => Boolean(serverInfo.kick?.ready);
 
 export async function kickAction(action, args = []) {
-  const data = await post("/api/kick/action", { action, args });
+  const data = desktop
+    ? await window.dra.kick.action(action, args)
+    : await post("/api/kick/action", { action, args });
   return data.message;
+}
+
+/* --------------------------------------------------- masaustu ozellikleri */
+
+/** Acilista baslatma (yalnizca masaustu surumunde). */
+export async function getAutoStart() {
+  if (!desktop) return null;
+  return (await window.dra.window.getAutoStart()).enabled;
+}
+
+export async function setAutoStart(enabled) {
+  if (!desktop) return false;
+  return (await window.dra.window.setAutoStart(enabled)).enabled;
+}
+
+/** Ana surecten gelen olaylara abone olur (kisayol tusu, tepsi menusu). */
+export function onDesktopEvent(event, handler) {
+  if (!desktop) return () => {};
+  return window.dra.on(event, handler);
 }
