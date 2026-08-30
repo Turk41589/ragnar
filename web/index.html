@@ -179,6 +179,23 @@
               <span>Acilis dizisi</span>
               <button class="switch" type="button" id="set-boot" role="switch" aria-checked="true"></button>
             </li>
+            <li class="settings__stack" id="row-engine" hidden>
+              <label for="set-engine">Ses tanima motoru</label>
+              <select id="set-engine">
+                <option value="gomulu">Gomulu (cihazda, internetsiz)</option>
+                <option value="tarayici">Tarayici motoru</option>
+              </select>
+              <p class="nextalarm" id="model-status">Model durumu bilinmiyor</p>
+              <button class="btn btn--icon btn--wide" type="button" id="set-model-install">
+                Ses modelini kur
+              </button>
+              <small class="hint">
+                Gomulu motor sesi tamamen cihazinizda isler. Turkce model bir
+                kerelik indirilir (yaklasik 45 MB); sonrasinda internet gerekmez
+                ve ses hicbir yere gitmez.
+              </small>
+            </li>
+
             <li>
               <span>Sesi cihazda tut</span>
               <button class="switch" type="button" id="set-local" role="switch" aria-checked="true"></button>

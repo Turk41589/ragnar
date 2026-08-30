@@ -39,6 +39,29 @@ contextBridge.exposeInMainWorld("dra", {
     action: (action, args) => call("dra:kick:action", { action, args }),
   },
 
+  /** Gomulu ses tanima. */
+  stt: {
+    status: () => call("dra:stt:status"),
+    install: () => call("dra:stt:install"),
+    useFolder: (path) => call("dra:stt:use-folder", { path }),
+    start: () => call("dra:stt:start"),
+    stop: () => call("dra:stt:stop"),
+    /** Ses parcasi gonderir (16 kHz, tek kanal, 16-bit). */
+    feed: (int16) => ipcRenderer.send("dra:stt:feed", int16),
+    /** Tanima sonuclarina abone olur. */
+    onResult: (handler) => {
+      const listener = (_e, data) => handler(data);
+      ipcRenderer.on("dra:stt:result", listener);
+      return () => ipcRenderer.removeListener("dra:stt:result", listener);
+    },
+    /** Model indirme ilerlemesi. */
+    onProgress: (handler) => {
+      const listener = (_e, data) => handler(data);
+      ipcRenderer.on("dra:stt:progress", listener);
+      return () => ipcRenderer.removeListener("dra:stt:progress", listener);
+    },
+  },
+
   window: {
     minimize: () => ipcRenderer.send("dra:window:minimize"),
     close: () => ipcRenderer.send("dra:window:close"),

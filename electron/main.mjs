@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import * as apps from "../server/apps.mjs";
 import * as kick from "../server/kick.mjs";
+import * as stt from "./speech-engine.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -198,6 +199,40 @@ function registerIpc() {
     if (!fn) throw new Error("Bilinmeyen moderasyon islemi.");
     const message = await fn(...(args || []));
     return { message: typeof message === "string" ? message : JSON.stringify(message) };
+  });
+
+  /* --------------------------------------------- gomulu ses tanima -- */
+
+  handle("dra:stt:status", async () => ({ status: await stt.status() }));
+
+  handle("dra:stt:install", async () => {
+    // Ilerleme arayuze canli bildirilir; indirme birkac dakika surebilir.
+    const result = await stt.installModel((percent) => {
+      mainWindow?.webContents.send("dra:stt:progress", { percent });
+    });
+    return result;
+  });
+
+  handle("dra:stt:use-folder", async ({ path }) => stt.useModelFrom(path));
+
+  handle("dra:stt:start", async () => ({ status: await stt.start() }));
+
+  handle("dra:stt:stop", async () => {
+    stt.stop();
+    return {};
+  });
+
+  /**
+   * Ses parcasi. Cok sik geldigi icin `handle` yerine tek yonlu `on`
+   * kullaniliyor; sonuc ayri bir olayla geri gonderiliyor.
+   */
+  ipcMain.on("dra:stt:feed", (_event, chunk) => {
+    try {
+      const result = stt.feed(Buffer.from(chunk));
+      if (result) mainWindow?.webContents.send("dra:stt:result", result);
+    } catch (err) {
+      console.error("[dra] ses tanima:", err?.message || err);
+    }
   });
 
   handle("dra:autostart", async ({ enabled }) => {

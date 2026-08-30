@@ -12,6 +12,8 @@ const DEFAULTS = {
   // Varsayilan olarak ses cihazdan cikmaz. Tarayici cihaz ustu tanima
   // sunmuyorsa mikrofon acilmaz; kullanici bilerek kapatabilir.
   localSpeechOnly: true,
+  // "gomulu" = uygulamanin kendi motoru (Vosk), "tarayici" = Web Speech.
+  speechEngine: "gomulu",
   speechRate: 1.05,
   bootSequence: true,
   autoSleepMinutes: 2.5, // 0 = otomatik uyku kapali
@@ -41,6 +43,9 @@ function coerce(saved) {
   if (typeof saved.voiceEnabled === "boolean") store.voiceEnabled = saved.voiceEnabled;
   if (typeof saved.bootSequence === "boolean") store.bootSequence = saved.bootSequence;
   if (typeof saved.localSpeechOnly === "boolean") store.localSpeechOnly = saved.localSpeechOnly;
+  if (saved.speechEngine === "gomulu" || saved.speechEngine === "tarayici") {
+    store.speechEngine = saved.speechEngine;
+  }
   if (typeof saved.webSearch === "boolean") store.webSearch = saved.webSearch;
   if (typeof saved.streamerMode === "boolean") store.streamerMode = saved.streamerMode;
   if (typeof saved.kickToken === "string") store.kickToken = saved.kickToken.slice(0, 400);

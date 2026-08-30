@@ -49,9 +49,37 @@ export async function run(_page, _base, t) {
     t.ok(!bridge.nodeSizinti, "Node arayuze sizmiyor (yalitim acik)");
     t.eq(
       bridge.anahtarlar,
-      ["apps", "desktop", "health", "kick", "on", "search", "version", "window"],
+      ["apps", "desktop", "health", "kick", "on", "search", "stt", "version", "window"],
       "kopru yalnizca beklenen yuzeyi aciyor",
     );
+
+    /* ------------------------------------------- gomulu ses motoru --- */
+    const stt = await window.evaluate(() => window.dra.stt.status());
+    t.ok(stt.ok, "gomulu motor durumu okunabiliyor");
+    t.eq(stt.status.engine, "vosk", "motor Vosk");
+    t.eq(stt.status.modelReady, false, "model kurulu degilken oyle raporluyor");
+    t.eq(stt.status.running, false, "motor kendiliginden calismiyor");
+
+    // Model yokken baslatma anlasilir bir hata vermeli, cokmemelidir.
+    const noModel = await window.evaluate(() =>
+      window.dra.stt.start().then(
+        () => ({ hata: null }),
+        (err) => ({ hata: err.message }),
+      ),
+    );
+    t.has(noModel.hata || "", "model", "model yokken anlasilir hata veriyor");
+
+    // Arayuz de bunu bilmeli.
+    const arayuz = await window.evaluate(async () => {
+      const sp = await import("./js/speech.js");
+      const st = await import("./js/store.js");
+      return {
+        gomuluVar: sp.embeddedAvailable(),
+        varsayilanMotor: st.store.speechEngine,
+      };
+    });
+    t.ok(arayuz.gomuluVar, "arayuz gomulu motoru goruyor");
+    t.eq(arayuz.varsayilanMotor, "gomulu", "uygulamada varsayilan motor gomulu");
 
     /* ---------------------------------------------------------- IPC -- */
     const health = await window.evaluate(() => window.dra.health());

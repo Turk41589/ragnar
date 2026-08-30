@@ -32,7 +32,8 @@
       "electron/**/*",
       "server/**/*",
       "web/**/*",
-      "package.json"
+      "package.json",
+      "node_modules/**/*"
     ],
     "win": {
       "target": [
@@ -58,6 +59,13 @@
         "dmg"
       ],
       "category": "public.app-category.utilities"
-    }
+    },
+    "asarUnpack": [
+      "**/node_modules/vosk-koffi/**",
+      "**/node_modules/koffi/**"
+    ]
+  },
+  "dependencies": {
+    "vosk-koffi": "^1.1.1"
   }
 }

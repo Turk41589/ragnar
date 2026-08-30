@@ -7,6 +7,7 @@
 
 import { store, saveStore, resetStore } from "./store.js";
 import * as system from "./system.js";
+import * as speech from "./speech.js";
 import {
   listAlarms, addAlarm, removeAlarm, toggleAlarm, clearAlarms,
   isValidTime, describeUntil,
@@ -235,6 +236,14 @@ export function syncSettings() {
   syncSwitch($("set-local"), store.localSpeechOnly);
   syncSwitch($("set-search"), store.webSearch);
 
+  // Gomulu motor yalnizca uygulama surumunde var.
+  const engineRow = $("row-engine");
+  engineRow.hidden = !speech.embeddedAvailable();
+  if (speech.embeddedAvailable()) {
+    $("set-engine").value = store.speechEngine;
+    refreshModelStatus();
+  }
+
   // Acilista baslatma yalnizca masaustu surumunde anlamli.
   const autostartRow = $("row-autostart");
   autostartRow.hidden = !system.isDesktop();
@@ -252,6 +261,27 @@ export function syncSettings() {
   $("set-sleep").value = String(store.autoSleepMinutes);
   $("set-wake").value = store.extraWakeWords.join(", ");
   renderSwatches();
+}
+
+/* -------------------------------------------------------------- ses modeli */
+
+/** Model durumunu ayar panelinde gosterir. */
+async function refreshModelStatus() {
+  const el = $("model-status");
+  const button = $("set-model-install");
+  if (!el) return;
+  try {
+    const info = await speech.embeddedStatus();
+    if (info.modelReady) {
+      el.textContent = "Turkce model kurulu — ses cihazdan cikmiyor";
+      button.hidden = true;
+    } else {
+      el.textContent = "Turkce model kurulu degil";
+      button.hidden = false;
+    }
+  } catch {
+    el.textContent = "Model durumu okunamadi";
+  }
 }
 
 /* ------------------------------------------------------------------ sekmeler */
@@ -460,6 +490,38 @@ export function mountPanel(context) {
       ctx.toast(applied ? "Bilgisayar acilinca DRA baslayacak" : "Acilista baslatma kapatildi");
     } catch (err) {
       ctx.toast(`Ayarlanamadi: ${err.message}`, 5000);
+    }
+  });
+
+  $("set-engine").addEventListener("change", (event) => {
+    store.speechEngine = event.target.value;
+    saveStore();
+    ctx.toast(
+      store.speechEngine === "gomulu"
+        ? "Gomulu motor secildi — ses cihazda kalir"
+        : "Tarayici motoru secildi",
+    );
+    ctx.onSpeechModeChanged();
+  });
+
+  $("set-model-install").addEventListener("click", async () => {
+    const button = $("set-model-install");
+    button.disabled = true;
+    ctx.log("system", "Turkce ses modeli indiriliyor (yaklasik 45 MB). Bu bir kerelik.");
+    try {
+      await speech.installEmbeddedModel((percent) => {
+        button.textContent = `Indiriliyor… %${percent}`;
+        $("model-status").textContent = `Indiriliyor… %${percent}`;
+      });
+      ctx.log("system", "Ses modeli kuruldu. Artik mikrofonu acabilirsiniz; ses cihazdan cikmayacak.");
+      ctx.toast("Ses modeli kuruldu");
+    } catch (err) {
+      ctx.log("error", `Model kurulamadi: ${err.message}`);
+      ctx.toast("Model kurulamadi", 6000);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Ses modelini kur";
+      refreshModelStatus();
     }
   });
 

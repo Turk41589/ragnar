@@ -391,6 +391,7 @@ const ctx = {
   runDiagnostics: async () => {
     hud.log("system", "Ses tanima siniyor…");
 
+    const gomulu = speech.embeddedAvailable() ? await speech.embeddedStatus() : null;
     const localStatus = await speech.probeLocalRecognition();
     const statusText = {
       available: "hazir (ses cihazdan cikmaz)",
@@ -409,6 +410,10 @@ const ctx = {
     const trVoice = voices.find((v) => v.lang?.toLowerCase().startsWith("tr"));
 
     const lines = [
+      gomulu
+        ? `Gomulu motor (Vosk): ${gomulu.modelReady ? "model hazir" : "MODEL KURULU DEGIL"}`
+        : "Gomulu motor: yok (tarayici surumu)",
+      `Secili motor: ${store.speechEngine === "tarayici" ? "tarayici" : "gomulu"}`,
       `Tarayici ses tanima destegi: ${speech.speechSupported ? "var" : "YOK"}`,
       `Cihaz ustu Turkce tanima: ${statusText}`,
       `Su anki mod: ${
@@ -663,6 +668,36 @@ async function enableMic() {
 }
 
 async function enableMicInner() {
+  /* --- Gomulu motor: uygulama surumunun varsayilan yolu --------------
+   * Tarayicinin motoruna hic dokunmaz. Ses cihazdan cikmaz, internet
+   * gerekmez, Chrome'un dil modeline bagimli degildir. */
+  if (speech.embeddedAvailable() && store.speechEngine !== "tarayici") {
+    const info = await speech.embeddedStatus();
+
+    if (!info.modelReady) {
+      hud.sleepStatus("Ses modeli kurulu degil", "warn");
+      hud.log(
+        "system",
+        "Gomulu ses motoru icin Turkce model gerekiyor (bir kerelik, yaklasik 45 MB). " +
+          "Ayar sekmesindeki \"Ses modelini kur\" dugmesine basin. Kurulduktan sonra " +
+          "ses tamamen cihazinizda islenir, internet gerekmez.",
+      );
+      hud.toast("Ses modeli kurulu degil — Ayar sekmesine bakin", 8000);
+      return;
+    }
+
+    hud.sleepStatus("Mikrofon izni bekleniyor…", null);
+    const metered = await audio.startMeter();
+    resetRecognitionHealth();
+    speech.startListening();
+    state.micEnabled = true;
+    dom.btnEnable.textContent = "Mikrofon acik";
+    dom.btnEnable.disabled = true;
+    hud.setPrivacyPill("local");
+    if (metered) pollLevel();
+    return;
+  }
+
   const wantLocal = store.localSpeechOnly;
   let processLocally = false;
 

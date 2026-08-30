@@ -9,11 +9,92 @@
 
 import { emit, state } from "./state.js";
 import { store } from "./store.js";
+import { startCapture, stopCapture, capturing } from "./mic-capture.js";
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 export const speechSupported = Boolean(SpeechRecognition);
 export const voiceSupported = "speechSynthesis" in window;
+
+/* ------------------------------------------------------- gomulu motor */
+
+/**
+ * Uygulama surumunde kendi ses tanima motorumuz calisir (Vosk).
+ * Tarayicinin motoruna hic dokunmaz: ses cihazdan cikmaz, internet
+ * gerekmez ve Chrome'un dil modeline bagimli degildir.
+ */
+const embedded = typeof window !== "undefined" && Boolean(window.dra?.stt);
+
+export const embeddedAvailable = () => embedded;
+
+let embeddedRunning = false;
+let unsubscribeResult = null;
+
+/** Gomulu motorun ve modelin durumu. */
+export async function embeddedStatus() {
+  if (!embedded) return { engine: "yok", modelReady: false };
+  const { status } = await window.dra.stt.status();
+  return status;
+}
+
+/** Modeli indirir; ilerlemeyi `onProgress` ile bildirir. */
+export async function installEmbeddedModel(onProgress) {
+  if (!embedded) throw new Error("Gomulu motor yalnizca uygulama surumunde var.");
+  const off = onProgress ? window.dra.stt.onProgress(({ percent }) => onProgress(percent)) : null;
+  try {
+    return await window.dra.stt.install();
+  } finally {
+    off?.();
+  }
+}
+
+/** Gomulu motorla dinlemeyi baslatir. */
+async function startEmbedded() {
+  await window.dra.stt.start();
+
+  unsubscribeResult?.();
+  unsubscribeResult = window.dra.stt.onResult(({ partial, final }) => {
+    if (Date.now() < deafUntil) return;
+    const text = (final || partial || "").trim();
+    if (!text) return;
+
+    lastResultAt = Date.now();
+    stats.results += 1;
+    emit("heard", {
+      text,
+      alternatives: [text],
+      final: Boolean(final),
+      confidence: 1,
+    });
+  });
+
+  const started = await startCapture((pcm) => {
+    // Kopyanin sahibi IPC oldugu icin altta yatan tamponu gonderiyoruz.
+    window.dra.stt.feed(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
+  });
+
+  if (!started) {
+    emit("mic", { status: "error", message: "Mikrofona erisilemedi." });
+    return false;
+  }
+
+  embeddedRunning = true;
+  localActive = true;
+  stats.starts += 1;
+  lastResultAt = Date.now();
+  emit("mic", { status: "on" });
+  return true;
+}
+
+function stopEmbedded() {
+  unsubscribeResult?.();
+  unsubscribeResult = null;
+  stopCapture();
+  window.dra?.stt?.stop?.();
+  embeddedRunning = false;
+  stats.ends += 1;
+  emit("mic", { status: "off" });
+}
 
 /* ------------------------------------------------- cihaz uzerinde tanima */
 
@@ -207,6 +288,18 @@ let currentOptions = null;
 
 /** Surekli dinlemeyi verilen profil ile baslatir. */
 export function startListening(profile = PROFILES[0]) {
+  // Gomulu motor varsa ve secilmisse tarayicinin motoruna hic gidilmez.
+  if (embedded && store.speechEngine !== "tarayici") {
+    if (embeddedRunning) return true;
+    startEmbedded().catch((err) => {
+      emit("mic", {
+        status: err?.message?.includes("model") ? "warn" : "error",
+        message: err?.message || "Gomulu ses motoru baslatilamadi.",
+      });
+    });
+    return true;
+  }
+
   if (!speechSupported) {
     emit("mic", {
       status: "unsupported",
@@ -242,6 +335,10 @@ export const currentProfile = () => currentOptions;
 
 /** Dinlemeyi tamamen durdurur. */
 export function stopListening() {
+  if (embeddedRunning) {
+    stopEmbedded();
+    return;
+  }
   wantRunning = false;
   clearTimeout(restartTimer);
   if (recognition && running) {
@@ -256,8 +353,11 @@ export function stopListening() {
 }
 
 export function isListening() {
-  return wantRunning;
+  return wantRunning || embeddedRunning;
 }
+
+/** Su an gomulu motor mu calisiyor? */
+export const embeddedRunningNow = () => embeddedRunning;
 
 /** DRA konusurken mikrofonu gecici olarak sagirlastirir. */
 export function deafen(ms) {

@@ -116,7 +116,8 @@ npm run test:tam               # alarmın gerçekten çalmasını da bekler, ~2 
   komutların doğru yönlendirildiği
 * **Masaüstü uygulaması** — Electron gerçekten açılıyor mu, arayüz yükleniyor
   mu, IPC çalışıyor mu, Node arayüze sızmıyor mu, köprü yalnızca beklenen
-  yüzeyi mi açıyor, beyaz liste uygulamada da geçerli mi
+  yüzeyi mi açıyor, beyaz liste uygulamada da geçerli mi, gömülü ses motoru
+  yükleniyor ve model olmadan düzgün hata veriyor mu
 * **Alarm (yavaş)** — bir sonraki dakikaya alarm kurup gerçekten çalmasını,
   DRA'yı uykudan uyandırmasını ve kendini kapatmasını bekler
 
@@ -157,14 +158,33 @@ Kapattığınızda rozet `tarayıcı servisi` olur — gizlenmez.
 
 Konuşma sentezi (DRA'nın sesi) işletim sisteminizin Türkçe sesini kullanır.
 
-**Masaüstü sürümünde ses:** Electron mikrofon iznini kendiliğinden vermez —
-uygulama bunu açıkça açar (`electron/main.mjs` içindeki izin işleyicisi).
-Electron 44, cihaz üstü ses tanıma API'sini (`SpeechRecognition.available` /
-`install`) içeriyor. Ancak bu geliştirme ortamında hiç mikrofon olmadığı için
-**tanımanın uygulamada gerçekten sonuç ürettiği doğrulanamadı.** İlk açılışta
-Ayar → **"Ses tanımayı sına"** ile kontrol edin. Çalışmazsa tarayıcı sürümü
-(`npm run web`) yedek olarak durmaya devam ediyor; kalıcı çözüm olarak
-uygulamanın içine gömülü bir ses motoru (Vosk) eklenebilir.
+### Masaüstü sürümünde ses: gömülü motor
+
+Uygulama sürümü tarayıcının ses tanımasını **kullanmaz.** Kendi motoru vardır
+(Vosk) ve model diskte durur.
+
+Bunun sebebi ölçülmüş bir sonuç: Chrome'un cihaz üstü Türkçe modelini Chrome
+kendi bileşen güncelleyicisiyle yönetiyor, Electron'da o mekanizma yok. Uygulama
+o modeli indiremiyor. Yani tarayıcı motoruna bel bağlamak uygulamada çalışmıyor.
+
+Gömülü motorun sonuçları:
+
+* Ses **hiçbir yere gitmiyor** — ne Google'a, ne başka bir yere
+* İnternet gerekmiyor (model kurulduktan sonra)
+* Chrome'un keyfine bağlı değil
+
+**İlk kurulum:** Ayar → **"Ses modelini kur"**. Türkçe model bir kerelik
+indirilir (yaklaşık 45 MB). Bu, uygulamanın dışarıya çıkan tek isteğidir ve
+bir daha tekrarlanmaz.
+
+Ayar → **Ses tanıma motoru** ile tarayıcı motoruna geçebilirsiniz, ama uygulama
+sürümünde bunun çalışması beklenmiyor.
+
+> **Doğrulanamayan kısım:** Bu geliştirme ortamında ne mikrofon var ne de
+> model indirilebiliyor. Motorun yüklendiği, model olmadan düzgün hata verdiği
+> ve arayüze doğru bağlandığı test ediliyor; ama **gerçek sesle tanıma
+> yaptığı doğrulanmadı.** İlk kullanımda Ayar → "Ses tanımayı sına" ile
+> kontrol edin.
 
 ---
 
@@ -312,6 +332,8 @@ web/js/audio.js      görselleri besleyen mikrofon analizörü
 web/js/hud.js        sohbet, göstergeler, açılış dizisi
 web/js/state.js      durum makinesi ve olay yolu
 electron/main.mjs    masaüstü uygulaması: pencere, tepsi, kısayol, IPC, izinler
+electron/speech-engine.mjs  gömülü ses tanıma (Vosk) + model kurulumu
+web/js/mic-capture.js       mikrofondan ham ses alıp motora aktarma
 electron/preload.cjs yalıtım köprüsü (arayüzün gördüğü tek yüzey)
 server/index.mjs     statik dosya servisi + yerel uçlar (bağımlılıksız)
 server/guard.mjs     yerel istek koruması (jeton, köken, içerik türü)
