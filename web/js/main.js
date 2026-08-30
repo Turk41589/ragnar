@@ -437,6 +437,15 @@ const ctx = {
     hud.log("system", lines.join("\n"));
 
     // Yorum: en olasi sorunu isaret et.
+    // Gomulu motor secili ve model eksikse, klasorde ne oldugunu goster.
+    if (gomulu && !gomulu.modelReady) {
+      const detay = await speech.inspectEmbeddedModel();
+      hud.log(
+        "system",
+        `Model klasoru: ${detay?.root || "bilinmiyor"}\nIcerik:\n${detay?.tree || "(yok)"}`,
+      );
+    }
+
     if (!speech.speechSupported) {
       hud.log("system", "Bu tarayicida ses tanima yok. Chrome ya da Edge deneyin; yazarak kullanmaya devam edebilirsiniz.");
     } else if (speech.isListening() && sinceResult > 20) {

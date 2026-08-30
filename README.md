@@ -177,6 +177,11 @@ Gömülü motorun sonuçları:
 indirilir (yaklaşık 45 MB). Bu, uygulamanın dışarıya çıkan tek isteğidir ve
 bir daha tekrarlanmaz.
 
+**İndirme çalışmazsa:** Modeli tarayıcıdan elle indirin
+(`alphacephei.com/vosk/models` → `vosk-model-small-tr-0.3.zip`), bir klasöre
+çıkarın, sonra Ayar → **"Model klasörünü seç"** ile gösterin. Model tanıma
+`conf` klasörüne bakar, dosya düzeninin ayrıntısına takılmaz.
+
 Ayar → **Ses tanıma motoru** ile tarayıcı motoruna geçebilirsiniz, ama uygulama
 sürümünde bunun çalışması beklenmiyor.
 
@@ -247,10 +252,10 @@ Açıkken sesli moderasyon:
 
 | Sekme | İçerik |
 |---|---|
-| Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm |
+| Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm; **modlar** (açılışta başlat, web araması, yayıncı desteği); uygulama taraması |
 | Not | not ekle, tek tek sil, hepsini temizle |
 | Alarm | saatli alarm kur, etiket ver, her gün tekrarla, aç/kapa, sil |
-| Ayar | ses, mikrofon, sesi cihazda tut, açılış dizisi, konuşma hızı, otomatik uyku, tema rengi, ek uyandırma sözcükleri, sıfırlama |
+| Ayar | ses, mikrofon, ses tanıma motoru ve modeli, sesi cihazda tut, açılış dizisi, konuşma hızı, otomatik uyku, tema rengi, ek uyandırma sözcükleri, sıfırlama |
 
 **Orta** — reaktör. Dönen halkalar, glif şeridi ve yörüngedeki parçalar;
 mikrofon sesiyle ve duruma göre canlanır.

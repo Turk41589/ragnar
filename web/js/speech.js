@@ -48,6 +48,19 @@ export async function installEmbeddedModel(onProgress) {
   }
 }
 
+/** Kullaniciya model klasoru sectirir (indirme engellenirse). */
+export async function pickEmbeddedModel() {
+  if (!embedded) throw new Error("Gomulu motor yalnizca uygulama surumunde var.");
+  return window.dra.stt.pickFolder();
+}
+
+/** Model klasorunun icerigi — teshis icin. */
+export async function inspectEmbeddedModel() {
+  if (!embedded) return null;
+  const { info } = await window.dra.stt.inspect();
+  return info;
+}
+
 /** Gomulu motorla dinlemeyi baslatir. */
 async function startEmbedded() {
   await window.dra.stt.start();

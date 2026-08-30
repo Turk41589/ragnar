@@ -76,6 +76,13 @@ export async function run(page, base, t, { external }) {
     "'sesi cihazda tut' varsayilan olarak acik",
   );
 
+  // Web aramasi ve yayinci destegi artik Sistem sekmesinde.
+  await page.click('.tab[data-tab="sistem"]');
+  await page.waitForTimeout(150);
+  t.ok(await page.locator("#set-search").isVisible(), "web aramasi Sistem sekmesinde");
+  t.ok(await page.locator("#set-streamer").isVisible(), "yayinci destegi Sistem sekmesinde");
+  await page.click('.tab[data-tab="ayar"]');
+
   await page.click("#set-boot");
   await page.selectOption("#set-sleep", "5");
   await page.fill("#set-wake", "dıra, drah");

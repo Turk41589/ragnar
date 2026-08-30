@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld("dra", {
     status: () => call("dra:stt:status"),
     install: () => call("dra:stt:install"),
     useFolder: (path) => call("dra:stt:use-folder", { path }),
+    pickFolder: () => call("dra:stt:pick-folder"),
+    inspect: () => call("dra:stt:inspect"),
     start: () => call("dra:stt:start"),
     stop: () => call("dra:stt:stop"),
     /** Ses parcasi gonderir (16 kHz, tek kanal, 16-bit). */

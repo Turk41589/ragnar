@@ -525,6 +525,20 @@ export function mountPanel(context) {
     }
   });
 
+  $("set-model-pick").addEventListener("click", async () => {
+    try {
+      const result = await speech.pickEmbeddedModel();
+      if (result.canceled) return;
+      ctx.log("system", `Ses modeli tanindi: ${result.modelPath}`);
+      ctx.toast("Ses modeli hazir");
+    } catch (err) {
+      ctx.log("error", `Model tanimadi: ${err.message}`);
+      ctx.toast("Model tanimadi — sohbete bakin", 6000);
+    } finally {
+      refreshModelStatus();
+    }
+  });
+
   $("set-diag").addEventListener("click", () => ctx.runDiagnostics());
 
   $("set-clear-log").addEventListener("click", () => {

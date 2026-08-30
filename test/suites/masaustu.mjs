@@ -79,6 +79,11 @@ export async function run(_page, _base, t) {
       };
     });
     t.ok(arayuz.gomuluVar, "arayuz gomulu motoru goruyor");
+
+    // Model klasoru incelenebilmeli — hata ayiklamanin tek yolu bu.
+    const inceleme = await window.evaluate(() => window.dra.stt.inspect());
+    t.ok(inceleme.ok, "model klasoru incelenebiliyor");
+    t.ok(typeof inceleme.info.root === "string", "model klasoru yolu biliniyor");
     t.eq(arayuz.varsayilanMotor, "gomulu", "uygulamada varsayilan motor gomulu");
 
     /* ---------------------------------------------------------- IPC -- */

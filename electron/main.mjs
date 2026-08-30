@@ -9,7 +9,7 @@
  */
 
 import {
-  app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, shell, nativeImage, session,
+  app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, shell, nativeImage, session, dialog,
 } from "electron";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -214,6 +214,18 @@ function registerIpc() {
   });
 
   handle("dra:stt:use-folder", async ({ path }) => stt.useModelFrom(path));
+
+  /** Kullaniciya klasor sectirir; indirme engellenirse elle kurmanin yolu. */
+  handle("dra:stt:pick-folder", async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: "Vosk model klasorunu secin",
+      properties: ["openDirectory"],
+    });
+    if (result.canceled || !result.filePaths[0]) return { canceled: true };
+    return { canceled: false, ...(await stt.useModelFrom(result.filePaths[0])) };
+  });
+
+  handle("dra:stt:inspect", async () => ({ info: await stt.inspect() }));
 
   handle("dra:stt:start", async () => ({ status: await stt.start() }));
 

@@ -12,7 +12,7 @@
 import { app } from "electron";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, open, readdir, rm, stat } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -38,22 +38,66 @@ function modelRoot() {
 
 /**
  * Klasorde gecerli bir Vosk modeli var mi?
- * Vosk modelleri "am" ve "conf" alt klasorleriyle gelir.
+ *
+ * Model dosya duzeni surumden surume degisebiliyor: bazi modellerde "am",
+ * bazilarinda "am-onnx" var, bazilarinda arsiv bir alt klasore aciliyor.
+ * Bu yuzden tek bir duzene bel baglamak yerine, her Vosk modelinde bulunan
+ * "conf" klasorunu belirli bir derinlige kadar ariyoruz.
  */
-async function findModel(root) {
+async function findModel(root, depth = 3) {
   if (!existsSync(root)) return null;
-  const candidates = [root];
-  try {
-    for (const entry of await readdir(root, { withFileTypes: true })) {
-      if (entry.isDirectory()) candidates.push(join(root, entry.name));
+
+  const queue = [[root, 0]];
+  while (queue.length) {
+    const [dir, level] = queue.shift();
+
+    // Vosk modelinin degismeyen isareti: conf klasoru.
+    if (existsSync(join(dir, "conf"))) return dir;
+
+    if (level >= depth) continue;
+    try {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) queue.push([join(dir, entry.name), level + 1]);
+      }
+    } catch {
+      /* okunamayan klasoru atla */
     }
-  } catch {
-    return null;
-  }
-  for (const dir of candidates) {
-    if (existsSync(join(dir, "am")) && existsSync(join(dir, "conf"))) return dir;
   }
   return null;
+}
+
+/** Teshis icin: klasorde gercekte ne var? */
+async function describeTree(root, depth = 2) {
+  const lines = [];
+  async function walk(dir, level, prefix) {
+    if (level > depth) return;
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries.slice(0, 12)) {
+      lines.push(`${prefix}${entry.isDirectory() ? "[" + entry.name + "]" : entry.name}`);
+      if (entry.isDirectory()) await walk(join(dir, entry.name), level + 1, prefix + "  ");
+    }
+  }
+  await walk(root, 0, "");
+  return lines.length ? lines.join("\n") : "(bos)";
+}
+
+/** Indirilen dosya gercekten zip mi? Sunucular hata sayfasini 200 ile de donebiliyor. */
+async function looksLikeZip(path) {
+  try {
+    const handle = await open(path, "r");
+    const buf = Buffer.alloc(4);
+    await handle.read(buf, 0, 4, 0);
+    await handle.close();
+    // ZIP dosyalari "PK\x03\x04" ile baslar.
+    return buf[0] === 0x50 && buf[1] === 0x4b;
+  } catch {
+    return false;
+  }
 }
 
 /** Motorun ve modelin durumu. */
@@ -125,21 +169,55 @@ export async function installModel(onProgress = () => {}) {
     await pipeline(body, createWriteStream(zipPath));
     onProgress(100);
 
+    // Indirilen sey gercekten zip mi? Degilse acmayi denemek anlamsiz.
+    if (!(await looksLikeZip(zipPath))) {
+      const size = (await stat(zipPath)).size;
+      await rm(zipPath, { force: true });
+      throw new Error(
+        `Inen dosya bir arsiv degil (${size} bayt). Baglantiniz indirmeyi engelliyor ` +
+          "olabilir. Modeli tarayicidan elle indirip \"Model klasorunu sec\" ile " +
+          "gosterebilirsiniz.",
+      );
+    }
+
     await unzip(zipPath, root);
     await rm(zipPath, { force: true });
 
     modelDir = await findModel(root);
-    if (!modelDir) throw new Error("Indirilen dosyada gecerli bir model bulunamadi.");
+    if (!modelDir) {
+      // Tahmin yurutmek yerine klasorde ne oldugunu bildir.
+      const tree = await describeTree(root);
+      throw new Error(
+        "Arsiv acildi ama icinde Vosk modeli bulunamadi. Klasorde su var:\n" + tree,
+      );
+    }
     return { modelPath: modelDir };
   } finally {
     busy = false;
   }
 }
 
+/** Model klasorunun icerigini dondurur (teshis dugmesi icin). */
+export async function inspect() {
+  const root = modelRoot();
+  return {
+    root,
+    exists: existsSync(root),
+    tree: existsSync(root) ? await describeTree(root) : "(klasor yok)",
+    modelPath: modelDir || (await findModel(root)),
+  };
+}
+
 /** Elle indirilmis bir model klasorunu kullanir. */
 export async function useModelFrom(path) {
   const found = await findModel(path);
-  if (!found) throw new Error("Bu klasorde gecerli bir Vosk modeli yok.");
+  if (!found) {
+    throw new Error(
+      "Bu klasorde Vosk modeli bulunamadi. Icinde \"conf\" klasoru olan " +
+        "klasoru secin (ya da onu iceren ust klasoru).\nSecilen klasorde:\n" +
+        (await describeTree(path, 1)),
+    );
+  }
   modelDir = found;
   return { modelPath: modelDir };
 }
