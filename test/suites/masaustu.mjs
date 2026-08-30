@@ -23,23 +23,50 @@ async function createFakeModels() {
   const { tmpdir } = await import("node:os");
   const base = await mkdtemp(join(tmpdir(), "dra-model-"));
 
-  const kur = async (rel, confYolu) => {
+  /** Klasik duzen: am/ conf/ graph/ ivector/ */
+  const kurKlasik = async (rel, ic) => {
     const kok = join(base, rel);
-    if (confYolu) {
-      await mkdir(join(kok, confYolu, "conf"), { recursive: true });
-      await writeFile(join(kok, confYolu, "conf", "model.conf"), "--min-active=200\n");
-    } else {
-      await mkdir(kok, { recursive: true });
+    await mkdir(join(kok, ic, "conf"), { recursive: true });
+    await mkdir(join(kok, ic, "am"), { recursive: true });
+    await writeFile(join(kok, ic, "conf", "model.conf"), "--min-active=200\n");
+    return kok;
+  };
+
+  /**
+   * Kompakt duzen: kucuk modellerin gercek hali.
+   * Dosya adlari vosk-model-small-tr-0.3 arsivinden birebir alindi —
+   * bu duzen taninmadigi icin kurulum basarisiz oluyordu.
+   */
+  const kurKompakt = async (rel, ic) => {
+    const kok = join(base, rel);
+    const dir = join(kok, ic);
+    await mkdir(join(dir, "ivector"), { recursive: true });
+    for (const f of ["final.mdl", "HCLr.fst", "Gr.fst", "mfcc.conf",
+                     "disambig_tid.int", "word_boundary.int", "README"]) {
+      await writeFile(join(dir, f), "x");
     }
+    for (const f of ["final.dubm", "final.ie", "final.mat", "global_cmvn.stats",
+                     "online_cmvn.conf", "splice.conf"]) {
+      await writeFile(join(dir, "ivector", f), "x");
+    }
+    return kok;
+  };
+
+  const bos = async (rel) => {
+    const kok = join(base, rel);
+    await mkdir(kok, { recursive: true });
+    await writeFile(join(kok, "okuma.txt"), "x");
     return kok;
   };
 
   return [
     // [ad, klasor, bulunmali mi]
-    ["kokte conf", await kur("duz", "."), true],
-    ["bir alt klasorde (arsivin normal hali)", await kur("nested", "vosk-model-small-tr-0.3"), true],
-    ["iki alt klasorde", await kur("derin", join("a", "b")), true],
-    ["conf yok", await kur("bos", null), false],
+    ["klasik duzen, kokte", await kurKlasik("k1", "."), true],
+    ["klasik duzen, bir alt klasorde", await kurKlasik("k2", "vosk-model-tr"), true],
+    ["klasik duzen, iki alt klasorde", await kurKlasik("k3", join("a", "b")), true],
+    ["kompakt duzen, kokte", await kurKompakt("m1", "."), true],
+    ["kompakt duzen, bir alt klasorde (gercek arsiv)", await kurKompakt("m2", "vosk-model-small-tr-0.3"), true],
+    ["model yok", await bos("bos"), false],
   ];
 }
 
@@ -132,7 +159,7 @@ export async function run(_page, _base, t) {
       );
       t.eq(sonuc.bulundu, beklenen, `model tespiti: ${ad}`);
       if (!beklenen && sonuc.hata) {
-        t.has(sonuc.hata, "conf", `${ad}: hata neye bakildigini soyluyor`);
+        t.has(sonuc.hata, "final.mdl", `${ad}: hata neye bakildigini soyluyor`);
       }
     }
     t.eq(arayuz.varsayilanMotor, "gomulu", "uygulamada varsayilan motor gomulu");

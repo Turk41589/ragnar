@@ -37,13 +37,28 @@ function modelRoot() {
 }
 
 /**
- * Klasorde gecerli bir Vosk modeli var mi?
+ * Klasor gecerli bir Vosk modeli mi?
  *
- * Model dosya duzeni surumden surume degisebiliyor: bazi modellerde "am",
- * bazilarinda "am-onnx" var, bazilarinda arsiv bir alt klasore aciliyor.
- * Bu yuzden tek bir duzene bel baglamak yerine, her Vosk modelinde bulunan
- * "conf" klasorunu belirli bir derinlige kadar ariyoruz.
+ * Vosk'un iki farkli dosya duzeni var ve ikisini de tanimak gerekiyor:
+ *
+ *  Klasik (buyuk modeller):  am/  conf/  graph/  ivector/
+ *  Kompakt (kucuk modeller): final.mdl, HCLr.fst, Gr.fst, mfcc.conf, ivector/
+ *
+ * Turkce kucuk model (vosk-model-small-tr-0.3) kompakt duzende geliyor —
+ * icinde hic "conf" klasoru yok. Yalnizca klasik duzeni aramak, gercek
+ * modelin taninmamasina yol aciyordu.
  */
+function isModelDir(dir) {
+  // Klasik duzen
+  if (existsSync(join(dir, "conf"))) return true;
+  // Kompakt duzen: akustik model + ya oznitelik ayari ya da graf dosyasi
+  return (
+    existsSync(join(dir, "final.mdl")) &&
+    (existsSync(join(dir, "mfcc.conf")) || existsSync(join(dir, "HCLr.fst")))
+  );
+}
+
+/** Verilen kokun altinda modeli belirli bir derinlige kadar arar. */
 async function findModel(root, depth = 3) {
   if (!existsSync(root)) return null;
 
@@ -51,8 +66,7 @@ async function findModel(root, depth = 3) {
   while (queue.length) {
     const [dir, level] = queue.shift();
 
-    // Vosk modelinin degismeyen isareti: conf klasoru.
-    if (existsSync(join(dir, "conf"))) return dir;
+    if (isModelDir(dir)) return dir;
 
     if (level >= depth) continue;
     try {
@@ -188,7 +202,8 @@ export async function installModel(onProgress = () => {}) {
       // Tahmin yurutmek yerine klasorde ne oldugunu bildir.
       const tree = await describeTree(root);
       throw new Error(
-        "Arsiv acildi ama icinde Vosk modeli bulunamadi. Klasorde su var:\n" + tree,
+        "Arsiv acildi ama icinde Vosk modeli bulunamadi. " +
+          "(Aranan: \"conf\" klasoru ya da \"final.mdl\" dosyasi.)\nKlasorde su var:\n" + tree,
       );
     }
     return { modelPath: modelDir };
@@ -213,9 +228,9 @@ export async function useModelFrom(path) {
   const found = await findModel(path);
   if (!found) {
     throw new Error(
-      "Bu klasorde Vosk modeli bulunamadi. Icinde \"conf\" klasoru olan " +
-        "klasoru secin (ya da onu iceren ust klasoru).\nSecilen klasorde:\n" +
-        (await describeTree(path, 1)),
+      "Bu klasorde Vosk modeli bulunamadi. Icinde \"final.mdl\" dosyasi ya da " +
+        "\"conf\" klasoru olan klasoru secin (ya da onu iceren ust klasoru)." +
+        "\nSecilen klasorde:\n" + (await describeTree(path, 1)),
     );
   }
   modelDir = found;
