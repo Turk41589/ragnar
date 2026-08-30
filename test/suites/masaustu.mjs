@@ -14,6 +14,35 @@ import { ROOT } from "../helpers.mjs";
 export const name = "Masaustu uygulamasi";
 export const standalone = true;
 
+/**
+ * Gercek Vosk arsivlerinin acildigi farkli duzenleri taklit eder.
+ * Dosya sistemi uzerinde kurulur; Electron tarafi bunlari okur.
+ */
+async function createFakeModels() {
+  const { mkdtemp, mkdir, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const base = await mkdtemp(join(tmpdir(), "dra-model-"));
+
+  const kur = async (rel, confYolu) => {
+    const kok = join(base, rel);
+    if (confYolu) {
+      await mkdir(join(kok, confYolu, "conf"), { recursive: true });
+      await writeFile(join(kok, confYolu, "conf", "model.conf"), "--min-active=200\n");
+    } else {
+      await mkdir(kok, { recursive: true });
+    }
+    return kok;
+  };
+
+  return [
+    // [ad, klasor, bulunmali mi]
+    ["kokte conf", await kur("duz", "."), true],
+    ["bir alt klasorde (arsivin normal hali)", await kur("nested", "vosk-model-small-tr-0.3"), true],
+    ["iki alt klasorde", await kur("derin", join("a", "b")), true],
+    ["conf yok", await kur("bos", null), false],
+  ];
+}
+
 export async function run(_page, _base, t) {
   let electron;
   try {
@@ -84,6 +113,28 @@ export async function run(_page, _base, t) {
     const inceleme = await window.evaluate(() => window.dra.stt.inspect());
     t.ok(inceleme.ok, "model klasoru incelenebiliyor");
     t.ok(typeof inceleme.info.root === "string", "model klasoru yolu biliniyor");
+
+    /* ------------------------------------------- model tespiti ------ *
+     * Kullanicida kurulum "gecerli bir model bulunamadi" ile dusmustu:
+     * tespit hem "am" hem "conf" ariyor ve yalnizca bir alt seviyeye
+     * bakiyordu. Vosk arsivleri farkli derinlige acilabiliyor ve bazi
+     * modellerde "am" yerine "am-onnx" var. Asagidaki vakalar duzeltmenin
+     * gercekten calistigini dogruluyor.                                */
+    const kokler = await createFakeModels();
+
+    for (const [ad, yol, beklenen] of kokler) {
+      const sonuc = await window.evaluate(
+        (p) => window.dra.stt.useFolder(p).then(
+          (r) => ({ bulundu: true, path: r.modelPath }),
+          (e) => ({ bulundu: false, hata: e.message }),
+        ),
+        yol,
+      );
+      t.eq(sonuc.bulundu, beklenen, `model tespiti: ${ad}`);
+      if (!beklenen && sonuc.hata) {
+        t.has(sonuc.hata, "conf", `${ad}: hata neye bakildigini soyluyor`);
+      }
+    }
     t.eq(arayuz.varsayilanMotor, "gomulu", "uygulamada varsayilan motor gomulu");
 
     /* ---------------------------------------------------------- IPC -- */
