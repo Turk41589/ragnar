@@ -122,7 +122,14 @@ export async function run(_page, _base, t) {
       /* pencere kapandi — asagidaki dogrulamalar bunu bildirir */
     }
     t.has(acilisUrl, "splash.html", "once acilis ekrani aciliyor");
-    t.has(studyo || "", "RAGNAR", "acilis ekraninda studyo adi var");
+    t.has(studyo || "", "RAGNAR", "acilis ekraninda studyo adi yaziyor");
+
+    // Uygulamanin KIMLIGI her yerde DRA; studyo adi yalnizca ekranda
+    // gorunen bir yazi. Pencere basligi ve isletim sistemi adi karismamali.
+    let acilisBaslik = "";
+    try { acilisBaslik = await acilis.title(); } catch { /* kapanmis olabilir */ }
+    t.eq(acilisBaslik, "DRA", "acilis penceresinin basligi DRA");
+    t.eq(await app.evaluate(({ app }) => app.getName()), "DRA", "uygulama adi DRA");
 
     /* --------------------------------------------------- ana pencere - */
     const window = await mainWindowOf(app);

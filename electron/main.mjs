@@ -69,6 +69,9 @@ function createSplash() {
   splashWindow = new BrowserWindow({
     width: 420,
     height: 280,
+    // Uygulamanin adi her yerde DRA; "Ragnar Studyo" yalnizca ekranda
+    // gorunen bir yazi, kimlik degil.
+    title: "DRA",
     frame: false,
     transparent: true,
     resizable: false,
@@ -338,6 +341,9 @@ function registerIpc() {
 /* ------------------------------------------------------------- yasam */
 
 // Tek ornek: ikinci kez calistirilirsa var olan pencere one gelir.
+// Isletim sisteminin gordugu ad: DRA.
+app.setName("DRA");
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
