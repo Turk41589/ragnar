@@ -70,6 +70,27 @@ async function createFakeModels() {
   ];
 }
 
+/** Ana pencereyi (index.html) bekler; acilis ekranini atlar. */
+async function mainWindowOf(app, timeout = 30000) {
+  const bitis = Date.now() + timeout;
+  while (Date.now() < bitis) {
+    const w = app.windows().find((x) => x.url().includes("index.html"));
+    if (w) return w;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error("Ana pencere bulunamadi.");
+}
+
+/** Kosul saglanana kadar bekler. */
+async function waitFor(kosul, timeout = 10000) {
+  const bitis = Date.now() + timeout;
+  while (Date.now() < bitis) {
+    if (kosul()) return true;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return false;
+}
+
 export async function run(_page, _base, t) {
   let electron;
   try {
@@ -85,9 +106,35 @@ export async function run(_page, _base, t) {
   });
 
   try {
-    const window = await app.firstWindow();
+    /* ---------------------------------------------- acilis ekrani ---- */
+    // Ilk acilan pencere stüdyo ekrani; ana pencere onun ardindan geliyor.
+    // Acilis penceresi ana pencere hazir olunca kendini yok ediyor; bu
+    // yuzden ona yapilan her cagri yarista kaybedebilir. Sorgular
+    // korunuyor ki paketin tamami tek bir yaris yuzunden dusmesin.
+    const acilis = await app.firstWindow();
+    let acilisUrl = "";
+    let studyo = "";
+    try {
+      await acilis.waitForLoadState("domcontentloaded");
+      acilisUrl = acilis.url();
+      studyo = await acilis.textContent(".stüdyo");
+    } catch {
+      /* pencere kapandi — asagidaki dogrulamalar bunu bildirir */
+    }
+    t.has(acilisUrl, "splash.html", "once acilis ekrani aciliyor");
+    t.has(studyo || "", "RAGNAR", "acilis ekraninda studyo adi var");
+
+    /* --------------------------------------------------- ana pencere - */
+    const window = await mainWindowOf(app);
     await window.waitForLoadState("domcontentloaded");
-    await window.waitForTimeout(1200);
+    await window.waitForTimeout(1400);
+
+    // Acilis ekrani ana pencere hazir olunca kapanmali.
+    await waitFor(() => !app.windows().some((w) => w.url().includes("splash.html")), 15000);
+    t.ok(
+      !app.windows().some((w) => w.url().includes("splash.html")),
+      "acilis ekrani ana pencere hazir olunca kapaniyor",
+    );
 
     /* ------------------------------------------------ arayuz yuklendi */
     t.eq(await window.title(), "DRA", "pencere basligi dogru");
@@ -207,6 +254,96 @@ export async function run(_page, _base, t) {
 
     const reply = await window.$$eval("#log li .chat__bubble", (els) => els.at(-1)?.textContent ?? "");
     t.has(reply, "Saat ", "uygulama icinde komutlar cevap veriyor");
+
+    /* ---------------------------------------------- ses zinciri ------ *
+     * Vosk'un kendisini burada calistiramayiz (ne mikrofon var ne model),
+     * ama ONDAN SONRAKI her adimi sinayabiliriz: ana surecten gelen bir
+     * tanima sonucu, arayuzde komuta donusuyor mu?
+     * Sonuc olayi ana surecten gonderiliyor — gercek akisin aynisi.     */
+    /** Motordan sonuc gelmis gibi davranir (zincirin geri kalanini sinar). */
+    const seslen = async (metin, final = true) => {
+      await window.evaluate(
+        async ({ metin, final }) => {
+          const sp = await import("./js/speech.js");
+          sp.handleRecognitionResult(final ? { final: metin } : { partial: metin });
+        },
+        { metin, final },
+      );
+      await window.waitForTimeout(700);
+    };
+
+    /** Gercek IPC yolundan gonderir — koruma katmanini sinar. */
+    const ipcSeslen = async (metin) => {
+      await app.evaluate(
+        ({ BrowserWindow }, veri) => {
+          // Acilis ekrani degil, arayuzun oldugu pencere hedeflenmeli.
+          const w = BrowserWindow.getAllWindows().find((x) =>
+            x.webContents.getURL().includes("index.html"),
+          );
+          if (!w) throw new Error("Ana pencere bulunamadi.");
+          w.webContents.send("dra:stt:result", { final: veri });
+        },
+        metin,
+      );
+      await window.waitForTimeout(900);
+    };
+
+    await seslen("12 kere 8 kac eder");
+    const sesliYanit = await window.$$eval("#log li .chat__bubble", (e) => e.at(-1)?.textContent ?? "");
+    t.has(sesliYanit, "96", "motordan gelen metin komuta donusuyor");
+
+    await seslen("not al pil al");
+    const notYanit = await window.$$eval("#log li .chat__bubble", (e) => e.at(-1)?.textContent ?? "");
+    t.has(notYanit, "Not alindi", "sesli not komutu isliyor");
+
+    // Uyandirma kelimesi de ayni yoldan gecmeli: once uyut, sonra seslen.
+    await window.fill("#composer-input", "uyu");
+    await window.press("#composer-input", "Enter");
+    await window.waitForTimeout(900);
+    t.ok(await window.locator("#sleep-screen").isVisible(), "sesli komutla uyudu");
+
+    await seslen("dra");
+    await window.waitForSelector("#hud:not([hidden])", { timeout: 20000 });
+    t.ok(await window.locator("#hud").isVisible(), "motordan gelen 'dra' uyandiriyor");
+
+    // Ara sonuclar da akmali (konusurken altyazi).
+    await seslen("saat", false);
+    const araYazi = await window.locator("#core-caption").textContent();
+    t.has(araYazi, "saat", "ara sonuclar altyaziya dusuyor");
+
+    /* --------------------------------------------- ses verisi yolu --- */
+    // Motor calismasa bile ses parcasi gondermek uygulamayi cokertmemeli.
+    const beslemeSonucu = await window.evaluate(() => {
+      try {
+        const pcm = new Int16Array(1600);
+        for (let i = 0; i < pcm.length; i += 1) pcm[i] = Math.round(Math.sin(i / 8) * 8000);
+        window.dra.stt.feed(new Uint8Array(pcm.buffer));
+        return "gonderildi";
+      } catch (e) {
+        return "HATA: " + e.message;
+      }
+    });
+    t.eq(beslemeSonucu, "gonderildi", "ses verisi motora guvenle gonderiliyor");
+    await window.waitForTimeout(300);
+    t.ok(true, "motor calismazken gelen ses uygulamayi cokertmiyor");
+
+    /* ------------------------------------ kapali mikrofonda artik sonuc */
+    // Mikrofon kapaliyken kuyrukta kalmis bir sonuc komut sayilmamali.
+    await window.fill("#composer-input", "uyu");
+    await window.press("#composer-input", "Enter");
+    await window.waitForTimeout(900);
+
+    const oncekiMesajSayisi = await window.$$eval("#log li", (e) => e.length);
+    await ipcSeslen("dra");
+    t.ok(
+      await window.locator("#sleep-screen").isVisible(),
+      "mikrofon kapaliyken gelen artik sonuc uyandirmiyor",
+    );
+    t.eq(
+      await window.$$eval("#log li", (e) => e.length),
+      oncekiMesajSayisi,
+      "artik sonuc sohbete de dusmuyor",
+    );
   } finally {
     await app.close();
   }

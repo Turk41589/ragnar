@@ -28,7 +28,6 @@ const embedded = typeof window !== "undefined" && Boolean(window.dra?.stt);
 export const embeddedAvailable = () => embedded;
 
 let embeddedRunning = false;
-let unsubscribeResult = null;
 
 /** Gomulu motorun ve modelin durumu. */
 export async function embeddedStatus() {
@@ -61,25 +60,47 @@ export async function inspectEmbeddedModel() {
   return info;
 }
 
+/**
+ * Tanima sonuclarini karsilar.
+ *
+ * Abonelik motor baslatilirken degil, modul yuklenirken bir kez kuruluyor.
+ * Boylece sonuc yolu motorun durumundan bagimsiz ve tek parca kaliyor;
+ * motor calismiyorsa zaten sonuc gelmiyor.
+ */
+/**
+ * Motordan gelen bir tanima sonucunu isler.
+ * Ses tanimadan gelen metin buradan sonra uygulamanin geri kalanina
+ * "heard" olayi olarak akar — tarayici motoruyla ayni yol.
+ */
+export function handleRecognitionResult({ partial, final }) {
+  if (Date.now() < deafUntil) return false;
+  const text = (final || partial || "").trim();
+  if (!text) return false;
+
+  lastResultAt = Date.now();
+  stats.results += 1;
+  emit("heard", {
+    text,
+    alternatives: [text],
+    final: Boolean(final),
+    confidence: 1,
+  });
+  return true;
+}
+
+if (embedded) {
+  window.dra.stt.onResult((data) => {
+    // Mikrofon kapatildiktan sonra da kuyruktaki ses parcalarindan sonuc
+    // gelebilir. O sonuclar komut sayilmamali; aksi halde kapali mikrofonla
+    // gecikmeli bir "dra" uygulamayi uyandirabiliyor.
+    if (!embeddedRunning) return;
+    handleRecognitionResult(data);
+  });
+}
+
 /** Gomulu motorla dinlemeyi baslatir. */
 async function startEmbedded() {
   await window.dra.stt.start();
-
-  unsubscribeResult?.();
-  unsubscribeResult = window.dra.stt.onResult(({ partial, final }) => {
-    if (Date.now() < deafUntil) return;
-    const text = (final || partial || "").trim();
-    if (!text) return;
-
-    lastResultAt = Date.now();
-    stats.results += 1;
-    emit("heard", {
-      text,
-      alternatives: [text],
-      final: Boolean(final),
-      confidence: 1,
-    });
-  });
 
   const started = await startCapture((pcm) => {
     // Kopyanin sahibi IPC oldugu icin altta yatan tamponu gonderiyoruz.
@@ -100,8 +121,6 @@ async function startEmbedded() {
 }
 
 function stopEmbedded() {
-  unsubscribeResult?.();
-  unsubscribeResult = null;
   stopCapture();
   window.dra?.stt?.stop?.();
   embeddedRunning = false;

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ragnar Stüdyo</title>
+    <style>
+      /* Açılış ekranı kendi içinde tam: dış dosya yüklemesi yok, bu yüzden
+         uygulama açılırken bir an bile boş/beyaz kalmıyor. */
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body {
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+        -webkit-font-smoothing: antialiased;
+        user-select: none;
+        cursor: default;
+      }
+
+      .kart {
+        position: relative;
+        height: 100%;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(60% 60% at 50% 45%, rgb(53 230 255 / 0.10), transparent 70%),
+          #04070c;
+        border: 1px solid rgb(53 230 255 / 0.22);
+        border-radius: 6px;
+        overflow: hidden;
+        animation: ac 420ms ease both;
+      }
+
+      /* İnce tarama çizgileri — ana arayüzle aynı görsel dil */
+      .kart::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(
+          to bottom, rgb(255 255 255 / 0.022) 0 1px, transparent 1px 3px
+        );
+        pointer-events: none;
+      }
+
+      .icerik {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .halka {
+        position: relative;
+        width: 92px;
+        height: 92px;
+      }
+
+      .halka svg { width: 100%; height: 100%; overflow: visible; }
+
+      .dis {
+        fill: none;
+        stroke: #35e6ff;
+        stroke-width: 1;
+        opacity: 0.35;
+        stroke-dasharray: 3 10;
+        transform-origin: 50px 50px;
+        animation: don 9s linear infinite;
+      }
+
+      .yay {
+        fill: none;
+        stroke: #35e6ff;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-dasharray: 70 190;
+        transform-origin: 50px 50px;
+        animation: don 2.2s linear infinite reverse;
+        filter: drop-shadow(0 0 6px rgb(53 230 255 / 0.7));
+      }
+
+      .cekirdek {
+        fill: #35e6ff;
+        opacity: 0.85;
+        transform-origin: 50px 50px;
+        animation: nefes 2s ease-in-out infinite;
+        filter: drop-shadow(0 0 14px #35e6ff);
+      }
+
+      .stüdyo {
+        font-size: 20px;
+        letter-spacing: 0.42em;
+        text-indent: 0.42em;
+        color: #eafcff;
+        text-shadow: 0 0 24px rgb(53 230 255 / 0.55);
+        white-space: nowrap;
+      }
+
+      .alt {
+        font-size: 9px;
+        letter-spacing: 0.34em;
+        text-indent: 0.34em;
+        text-transform: uppercase;
+        color: rgb(207 239 255 / 0.34);
+        white-space: nowrap;
+      }
+
+      /* İlerleme şeridi: sabit süreli değil, pencere hazır olunca kapanır */
+      .serit {
+        width: 190px;
+        height: 1px;
+        background: rgb(53 230 255 / 0.16);
+        overflow: hidden;
+      }
+
+      .serit i {
+        display: block;
+        height: 100%;
+        width: 38%;
+        background: #35e6ff;
+        box-shadow: 0 0 10px #35e6ff;
+        animation: kay 1.25s ease-in-out infinite;
+      }
+
+      @keyframes don { to { transform: rotate(360deg); } }
+      @keyframes nefes {
+        0%, 100% { transform: scale(1); opacity: 0.85; }
+        50% { transform: scale(1.18); opacity: 1; }
+      }
+      @keyframes kay {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(360%); }
+      }
+      @keyframes ac { from { opacity: 0; } to { opacity: 1; } }
+
+      @media (prefers-reduced-motion: reduce) {
+        * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="kart">
+      <div class="icerik">
+        <div class="halka">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <circle class="dis" cx="50" cy="50" r="44" />
+            <circle class="yay" cx="50" cy="50" r="34" />
+            <circle class="cekirdek" cx="50" cy="50" r="8" />
+          </svg>
+        </div>
+
+        <div class="stüdyo">RAGNAR STÜDYO</div>
+        <div class="alt">DRA yükleniyor</div>
+
+        <div class="serit"><i></i></div>
+      </div>
+    </div>
+  </body>
+</html>

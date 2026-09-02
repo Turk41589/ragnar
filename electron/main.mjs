@@ -22,6 +22,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 
 let mainWindow = null;
+let splashWindow = null;
 let tray = null;
 let searchEnabled = false;
 let quitting = false;
@@ -49,6 +50,67 @@ function setupPermissions() {
   ses.setDevicePermissionHandler(({ deviceType }) => deviceType === "audioInput");
 }
 
+/* --------------------------------------------------------- acilis ekrani */
+
+/** Acilis ekrani en az bu kadar gorunur — yoksa bir an parlayip kayboluyor. */
+const SPLASH_MIN_MS = 1600;
+/** Ana pencere hic acilmasa bile acilis ekrani bu sureden fazla kalmaz. */
+const SPLASH_MAX_MS = 20000;
+
+let splashShownAt = 0;
+let splashGuard = null;
+
+function createSplash() {
+  // Sayac olusturma aninda baslar. Yalnizca "ready-to-show" anina bakmak,
+  // ana pencere daha once hazir olursa gecen sureyi epoch buyuklugunde
+  // gosteriyor ve en az gorunme suresi sessizce atlaniyordu.
+  splashShownAt = Date.now();
+
+  splashWindow = new BrowserWindow({
+    width: 420,
+    height: 280,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
+    center: true,
+    // Acilis ekrani statik bir sayfa; hicbir koprüye ihtiyaci yok.
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  });
+
+  splashWindow.loadFile(join(ROOT, "web", "splash.html"));
+  splashWindow.once("ready-to-show", () => splashWindow?.show());
+
+  // Guvenlik agi: ana pencere bir sebeple hic hazir olmazsa, cerceve siz ve
+  // her zaman ustte duran bu pencere ekranda kilitli kalmasin.
+  splashGuard = setTimeout(() => {
+    if (splashWindow) {
+      console.warn("[dra] ana pencere zamaninda hazir olmadi; acilis ekrani kapatiliyor.");
+      destroySplash();
+      mainWindow?.show();
+    }
+  }, SPLASH_MAX_MS);
+}
+
+function destroySplash() {
+  clearTimeout(splashGuard);
+  splashGuard = null;
+  splashWindow?.destroy();
+  splashWindow = null;
+}
+
+/** Ana pencere hazir olunca acilis ekranini kapatir. */
+function closeSplash() {
+  if (!splashWindow) return 0;
+  const gecen = Date.now() - splashShownAt;
+  const bekle = Math.max(0, SPLASH_MIN_MS - gecen);
+  setTimeout(destroySplash, bekle);
+  return bekle;
+}
+
 /* ------------------------------------------------------------- pencere */
 
 function createWindow() {
@@ -72,7 +134,19 @@ function createWindow() {
 
   mainWindow.loadFile(join(ROOT, "web", "index.html"));
 
-  mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.once("ready-to-show", () => {
+    // Acilis ekrani en az sure kadar kaldiktan sonra yerini ana pencereye birakir.
+    const bekle = closeSplash();
+    setTimeout(() => mainWindow?.show(), bekle);
+  });
+
+  // Arayuz yuklenemezse kullaniciyi bos ekranla birakma: acilis ekranini
+  // kapat, pencereyi goster ki en azindan durum gorulebilsin.
+  mainWindow.webContents.on("did-fail-load", (_e, code, desc) => {
+    console.error(`[dra] arayuz yuklenemedi (${code}): ${desc}`);
+    destroySplash();
+    mainWindow?.show();
+  });
 
   // Disari acilan baglantilar varsayilan tarayiciya gitsin,
   // uygulamanin icinde acilmasin.
@@ -90,6 +164,7 @@ function createWindow() {
 }
 
 function showWindow() {
+  // Tepsiden geri cagirmada acilis ekrani gosterilmez; o yalnizca ilk acilista.
   if (!mainWindow) createWindow();
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
@@ -271,6 +346,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     setupPermissions();
     registerIpc();
+    createSplash();
     createWindow();
     createTray();
 

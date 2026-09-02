@@ -41,6 +41,10 @@ Kurulabilir bir `.exe` üretmek için:
 npm run paket:win  # dist/ altında DRA-Kurulum-3.0.0.exe
 ```
 
+Uygulama açılırken **Ragnar Stüdyo** açılış ekranı görünür; ana pencere hazır
+olunca yerini ona bırakır. Ana pencere bir sebeple yüklenemezse açılış ekranı
+kilitli kalmaz — hem yükleme hatasında hem de zaman aşımında kapanır.
+
 Uygulama sürümünde ek olarak: sistem tepsisi simgesi, **Alt+Space** ile her
 yerden çağırma, açılışta başlatma, ve tek pencere garantisi. Kapatma düğmesi
 uygulamayı sonlandırmaz — tepside beklemeye devam eder.
@@ -114,10 +118,15 @@ npm run test:tam               # alarmın gerçekten çalmasını da bekler, ~2 
   çapraz site ve form istekleri reddediliyor mu), listede olmayan uygulamanın
   başlatılamadığı, kapalı özelliklerin gerçekten kapalı olduğu ve yeni
   komutların doğru yönlendirildiği
-* **Masaüstü uygulaması** — Electron gerçekten açılıyor mu, arayüz yükleniyor
-  mu, IPC çalışıyor mu, Node arayüze sızmıyor mu, köprü yalnızca beklenen
-  yüzeyi mi açıyor, beyaz liste uygulamada da geçerli mi, gömülü ses motoru
-  yükleniyor ve model olmadan düzgün hata veriyor mu
+* **Kick moderasyonu** — ağ katmanı taklit edilerek köprünün tamamı: doğru uç,
+  doğru gövde, jetonun `Authorization` başlığına konması, süre çevrimi,
+  401/403 hatalarının anlaşılır Türkçeye çevrilmesi, jetonsuzken hiç istek
+  atılmaması
+* **Masaüstü uygulaması** — açılış ekranı görünüp kapanıyor mu, Electron
+  açılıyor mu, IPC çalışıyor mu, Node arayüze sızmıyor mu, köprü yalnızca
+  beklenen yüzeyi mi açıyor, beyaz liste geçerli mi, gömülü motor model
+  olmadan düzgün hata veriyor mu, **motordan gelen metin komuta dönüşüyor mu**,
+  mikrofon kapalıyken gelen artık sonuçlar yok sayılıyor mu
 * **Alarm (yavaş)** — bir sonraki dakikaya alarm kurup gerçekten çalmasını,
   DRA'yı uykudan uyandırmasını ve kendini kapatmasını bekler
 
