@@ -334,6 +334,37 @@ export async function run(_page, _base, t) {
     await window.waitForTimeout(300);
     t.ok(true, "motor calismazken gelen ses uygulamayi cokertmiyor");
 
+    /* --------------------------------------- motor yalitimi ---------- *
+     * Vosk yerel kod calistiriyor; oradaki bir cokme JavaScript hatasi
+     * degil ve try/catch ile yakalanamaz. Kullanicida mikrofonu acmaya
+     * calisirken UYGULAMANIN TAMAMI kapaniyordu. Motor artik ayri bir
+     * surecte; asagidaki testler cokmenin uygulamayi olduremedigini
+     * dogruluyor.                                                       */
+    const yalitim = await window.evaluate(() => window.dra.stt.status());
+    t.eq(yalitim.status.isolated, true, "ses motoru ayri surecte calisiyor");
+
+    // Bu noktada motor GECERSIZ bir modele isaret ediyor (yukaridaki sahte
+    // klasorler). Yani kullanicinin yasadigi senaryonun aynisi: bozuk model
+    // ile baslatma denemesi. Eskiden bu, uygulamanin tamamini kapatirdi.
+    for (let i = 0; i < 2; i += 1) {
+      await window.evaluate(() =>
+        window.dra.stt.start().then(() => null, () => null),
+      );
+      await window.waitForTimeout(300);
+    }
+    t.ok(!window.isClosed(), "tekrarli baslatma denemeleri uygulamayi kapatmiyor");
+    t.ok(
+      (await window.evaluate(() => window.dra.health())).ok,
+      "basarisiz baslatmalardan sonra uygulama saglikli",
+    );
+
+    // Arayuz hala calisiyor mu?
+    await window.fill("#composer-input", "saat kac");
+    await window.press("#composer-input", "Enter");
+    await window.waitForTimeout(700);
+    const halaCalisiyor = await window.$$eval("#log li .chat__bubble", (e) => e.at(-1)?.textContent ?? "");
+    t.has(halaCalisiyor, "Saat ", "motor basarisiz olduktan sonra komutlar calisiyor");
+
     /* ------------------------------------ kapali mikrofonda artik sonuc */
     // Mikrofon kapaliyken kuyrukta kalmis bir sonuc komut sayilmamali.
     await window.fill("#composer-input", "uyu");

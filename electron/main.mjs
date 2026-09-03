@@ -224,6 +224,12 @@ function handle(channel, work) {
 }
 
 function registerIpc() {
+  // Ses motoru ayri bir surecte; coktugunde uygulama olmuyor ama
+  // kullanicinin bunu bilmesi gerekiyor.
+  stt.onEngineEvent((olay) => {
+    mainWindow?.webContents.send("dra:stt:engine", olay);
+  });
+
   handle("dra:health", async () => ({
     platform: process.platform,
     desktop: true,
@@ -305,7 +311,13 @@ function registerIpc() {
 
   handle("dra:stt:inspect", async () => ({ info: await stt.inspect() }));
 
-  handle("dra:stt:start", async () => ({ status: await stt.start() }));
+  handle("dra:stt:start", async () => {
+    // Sonuclar isci surecinden gelip dogrudan arayuze aktariliyor.
+    const durum = await stt.start((sonuc) => {
+      mainWindow?.webContents.send("dra:stt:result", sonuc);
+    });
+    return { status: durum };
+  });
 
   handle("dra:stt:stop", async () => {
     stt.stop();
@@ -317,12 +329,8 @@ function registerIpc() {
    * kullaniliyor; sonuc ayri bir olayla geri gonderiliyor.
    */
   ipcMain.on("dra:stt:feed", (_event, chunk) => {
-    try {
-      const result = stt.feed(Buffer.from(chunk));
-      if (result) mainWindow?.webContents.send("dra:stt:result", result);
-    } catch (err) {
-      console.error("[dra] ses tanima:", err?.message || err);
-    }
+    // Isci surecine aktariliyor; sonuc oradan olay olarak donuyor.
+    stt.feed(chunk);
   });
 
   handle("dra:autostart", async ({ enabled }) => {

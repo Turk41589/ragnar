@@ -176,6 +176,14 @@ Bunun sebebi ölçülmüş bir sonuç: Chrome'un cihaz üstü Türkçe modelini 
 kendi bileşen güncelleyicisiyle yönetiyor, Electron'da o mekanizma yok. Uygulama
 o modeli indiremiyor. Yani tarayıcı motoruna bel bağlamak uygulamada çalışmıyor.
 
+**Motor ayrı bir süreçte çalışır.** Vosk yerel (native) kod çalıştırıyor;
+oradaki bir çökme JavaScript hatası değildir ve `try/catch` ile yakalanamaz —
+içinde bulunduğu sürecin tamamını öldürür. Motor uygulamanın içinde çalışsaydı
+bozuk bir model DRA'nın tamamını kapatırdı (ve kapatıyordu). Artık çökerse
+yalnızca motor ölür; uygulama ayakta kalır, durumu sohbete yazar ve yazılı
+komutlar çalışmaya devam eder. Bu, testlerde kasten bozuk model verilerek
+doğrulanıyor.
+
 Gömülü motorun sonuçları:
 
 * Ses **hiçbir yere gitmiyor** — ne Google'a, ne başka bir yere

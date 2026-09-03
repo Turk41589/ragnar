@@ -89,6 +89,22 @@ export function handleRecognitionResult({ partial, final }) {
 }
 
 if (embedded) {
+  // Motor ayri surecte; coktugunde ya da hata verdiginde dinlemeyi
+  // duzgunce sonlandirip kullaniciya bildiriyoruz.
+  window.dra.stt.onEngine?.(({ type, message }) => {
+    if (type !== "crashed" && type !== "error") return;
+    embeddedRunning = false;
+    stopCapture();
+    emit("mic", {
+      status: "error",
+      message:
+        type === "crashed"
+          ? "Ses motoru coktu. Uygulama calismaya devam ediyor; yazarak kullanabilirsiniz. " +
+            "Model bozuk olabilir — Ayar'dan yeniden kurmayi deneyin."
+          : `Ses motoru hata verdi: ${message}`,
+    });
+  });
+
   window.dra.stt.onResult((data) => {
     // Mikrofon kapatildiktan sonra da kuyruktaki ses parcalarindan sonuc
     // gelebilir. O sonuclar komut sayilmamali; aksi halde kapali mikrofonla

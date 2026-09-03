@@ -56,6 +56,12 @@ contextBridge.exposeInMainWorld("dra", {
       ipcRenderer.on("dra:stt:result", listener);
       return () => ipcRenderer.removeListener("dra:stt:result", listener);
     },
+    /** Motor olaylari (cokme, hata). */
+    onEngine: (handler) => {
+      const listener = (_e, data) => handler(data);
+      ipcRenderer.on("dra:stt:engine", listener);
+      return () => ipcRenderer.removeListener("dra:stt:engine", listener);
+    },
     /** Model indirme ilerlemesi. */
     onProgress: (handler) => {
       const listener = (_e, data) => handler(data);
