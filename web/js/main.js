@@ -220,6 +220,9 @@ async function wakeUp(spokenRest = "", { silent = false } = {}) {
   waking = true;
   setState(S.WAKING);
 
+  // Arka planda calisiyorsa once kendini goster, sonra acil.
+  if (arkaPlandaMi()) system.showWindow();
+
   if (store.bootSequence) await hud.playBoot();
   hud.showHud();
   // Klavyeyle gelen kullanici hemen yazmaya devam edebilsin.
@@ -252,6 +255,10 @@ function goToSleep(farewell) {
   speech.shutUp();
   setState(S.SLEEPING);
   hud.showSleep();
+
+  // Arka plan kipinde uyurken pencere de tepsiye iner; DRA dinlemeye
+  // devam eder ve adini duyunca yeniden gorunur.
+  if (arkaPlandaMi()) setTimeout(() => system.hideWindow(), 400);
   hud.sleepStatus(
     state.micEnabled ? "Dinliyorum — «DRA» deyin" : "Mikrofon kapali",
     state.micEnabled ? "ok" : "warn",
@@ -382,6 +389,10 @@ const ctx = {
   toggleMic: () => dom.btnMic.click(),
   onAutoSleepChanged: () => touch(),
   onWakeWordsChanged: () => rebuildWakeWords(),
+  onBackgroundChanged: () => {
+    // Arka plan dinleme acildiysa mikrofonu hemen baslat.
+    if (store.backgroundListen && !speech.isListening()) enableMic();
+  },
 
   /**
    * Ses tanima teshisi.
@@ -496,6 +507,14 @@ const ctx = {
 /* ============================================================ masaustu */
 
 /**
+ * Arka plan kipinde miyiz?
+ * Yalnizca uygulama gizli baslatildiysa VE kullanici bunu actiysa.
+ */
+function arkaPlandaMi() {
+  return system.isDesktop() && system.hiddenLaunch() && store.backgroundListen;
+}
+
+/**
  * Masaustu surumunde tepsi menusu ve kisayol tusu (Alt+Space) ana surecten
  * olay gonderir. Tarayici surumunde bu abonelikler sessizce bos doner.
  */
@@ -524,6 +543,13 @@ async function connectServer() {
     await system.connect();
     await system.loadApps();
     panel.renderApps();
+
+    // Bilgisayar acilisinda gizli baslatildiysa ve arka plan dinleme
+    // aciksa mikrofonu kendimiz aciyoruz — kullanicinin tiklamasi gerekmez.
+    if (arkaPlandaMi()) {
+      hud.log("system", "Arka planda dinliyorum. Adimi soyleyince gorunecegim.");
+      enableMic();
+    }
 
     // Ayarlar tarayicida saklaniyor; sunucu her acilista bilgilendirilir.
     if (store.webSearch) await system.setSearchEnabled(true);

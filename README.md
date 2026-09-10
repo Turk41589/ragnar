@@ -49,6 +49,24 @@ Uygulama sürümünde ek olarak: sistem tepsisi simgesi, **Alt+Space** ile her
 yerden çağırma, açılışta başlatma, ve tek pencere garantisi. Kapatma düğmesi
 uygulamayı sonlandırmaz — tepside beklemeye devam eder.
 
+### Arka planda çalışma
+
+Sistem sekmesindeki **arka planda dinle** anahtarı açıkken DRA, bilgisayar
+açıldığında görünmez başlar: ne pencere ne açılış ekranı çıkar. Arayüz arka
+planda çalışır, mikrofonu kendisi açar ve adını bekler. «DRA» dediğinizde
+pencere kendini gösterir; uyuduğunda yine tepsiye iner ve dinlemeye devam
+eder. Anahtar açıldığında *açılışta başlat* da kendiliğinden açılır — biri
+olmadan diğeri anlamsız.
+
+Bu mod açılışa `--gizli` argümanıyla girer; uygulamayı elle açtığınızda
+pencere her zaman normal biçimde görünür.
+
+Pencere gizliyken Chromium sayfayı normalde kısar — zamanlayıcılar dakikada
+bire düşer, `requestAnimationFrame` tamamen durur. Bu, arka planda dinlemeyi
+de tepsideki alarmları da işlevsiz bırakırdı; bu yüzden ana pencerede
+`backgroundThrottling` kapalı. Testler bunu hem ayar hem de ölçülen gecikme
+üzerinden doğruluyor.
+
 **Uygulamada makineye erişim HTTP yerine doğrudan IPC ile yapılır.** Yani
 dinlenecek bir port ve korunacak bir oturum jetonu yoktur; saldırı yüzeyi
 tarayıcı sürümünden daha küçüktür. Arayüz Node'a erişemez (`contextIsolation`
@@ -269,7 +287,7 @@ Açıkken sesli moderasyon:
 
 | Sekme | İçerik |
 |---|---|
-| Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm; **modlar** (açılışta başlat, web araması, yayıncı desteği); uygulama taraması |
+| Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm; **modlar** (açılışta başlat, arka planda dinle, web araması, yayıncı desteği); uygulama taraması |
 | Not | not ekle, tek tek sil, hepsini temizle |
 | Alarm | saatli alarm kur, etiket ver, her gün tekrarla, aç/kapa, sil |
 | Ayar | ses, mikrofon, ses tanıma motoru ve modeli, sesi cihazda tut, açılış dizisi, konuşma hızı, otomatik uyku, tema rengi, ek uyandırma sözcükleri, sıfırlama |

@@ -23,6 +23,8 @@ const DEFAULTS = {
   webSearch: false,
   // Yayinci destegi: Kick moderasyon komutlari.
   streamerMode: false,
+  // Bilgisayar acilinca DRA pencere gostermeden dinlemeye baslasin.
+  backgroundListen: false,
   kickToken: "",
   kickChannel: "",
   notes: [],
@@ -48,6 +50,7 @@ function coerce(saved) {
   }
   if (typeof saved.webSearch === "boolean") store.webSearch = saved.webSearch;
   if (typeof saved.streamerMode === "boolean") store.streamerMode = saved.streamerMode;
+  if (typeof saved.backgroundListen === "boolean") store.backgroundListen = saved.backgroundListen;
   if (typeof saved.kickToken === "string") store.kickToken = saved.kickToken.slice(0, 400);
   if (typeof saved.kickChannel === "string") store.kickChannel = saved.kickChannel.slice(0, 80);
 

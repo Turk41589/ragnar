@@ -21,6 +21,15 @@ import * as stt from "./speech-engine.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 
+/**
+ * Gizli acilis: bilgisayar acilirken DRA pencere gostermeden baslar,
+ * tepside bekler ve adini duyunca kendini gosterir.
+ *
+ * Windows'ta oturum acilis kaydina bu bayrak yaziliyor; kullanici
+ * uygulamayi elle actiginda bayrak olmadigi icin pencere normal aciliyor.
+ */
+const GIZLI_BASLAT = process.argv.includes("--gizli");
+
 let mainWindow = null;
 let splashWindow = null;
 let tray = null;
@@ -132,13 +141,20 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // Pencere gizliyken Chromium sayfayi kisar: zamanlayicilar dakikada
+      // bire duser, requestAnimationFrame ise tamamen durur. DRA gizli
+      // baslayip tepside dinledigi icin bu, uyandirma sozcugunu, alarmlari
+      // ve yanitlari felce ugratirdi. Kisma kapali.
+      backgroundThrottling: false,
     },
   });
 
   mainWindow.loadFile(join(ROOT, "web", "index.html"));
 
   mainWindow.once("ready-to-show", () => {
-    // Acilis ekrani en az sure kadar kaldiktan sonra yerini ana pencereye birakir.
+    // Gizli acilista pencere gosterilmez; arayuz arka planda calisir,
+    // mikrofonu dinler ve adi duyulunca kendini gosterir.
+    if (GIZLI_BASLAT) return;
     const bekle = closeSplash();
     setTimeout(() => mainWindow?.show(), bekle);
   });
@@ -233,6 +249,8 @@ function registerIpc() {
   handle("dra:health", async () => ({
     platform: process.platform,
     desktop: true,
+    // Arayuz gizli mi baslatildigini bilmeli: o zaman mikrofonu kendisi acar.
+    hiddenLaunch: GIZLI_BASLAT,
     search: { enabled: searchEnabled },
     kick: kick.status(),
     apps: await apps.scanInfo(),
@@ -334,7 +352,12 @@ function registerIpc() {
   });
 
   handle("dra:autostart", async ({ enabled }) => {
-    app.setLoginItemSettings({ openAtLogin: Boolean(enabled), openAsHidden: true });
+    // "--gizli" bayragi sayesinde acilista pencere gosterilmiyor.
+    app.setLoginItemSettings({
+      openAtLogin: Boolean(enabled),
+      openAsHidden: true,
+      args: ["--gizli"],
+    });
     return { enabled: Boolean(enabled) };
   });
 
@@ -344,6 +367,10 @@ function registerIpc() {
 
   ipcMain.on("dra:window:minimize", () => mainWindow?.minimize());
   ipcMain.on("dra:window:close", () => mainWindow?.hide());
+
+  /** Arayuz, adini duyunca kendini gosterebilsin. */
+  ipcMain.on("dra:window:show", () => showWindow());
+  ipcMain.on("dra:window:hide", () => mainWindow?.hide());
 }
 
 /* ------------------------------------------------------------- yasam */
@@ -360,7 +387,8 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     setupPermissions();
     registerIpc();
-    createSplash();
+    // Acilis ekrani yalnizca kullanici uygulamayi elle actiginda gosterilir.
+    if (!GIZLI_BASLAT) createSplash();
     createWindow();
     createTray();
 

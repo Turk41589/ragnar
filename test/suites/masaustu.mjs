@@ -81,11 +81,13 @@ async function mainWindowOf(app, timeout = 30000) {
   throw new Error("Ana pencere bulunamadi.");
 }
 
-/** Kosul saglanana kadar bekler. */
+/** Kosul saglanana kadar bekler. Kosul async olabilir. */
 async function waitFor(kosul, timeout = 10000) {
   const bitis = Date.now() + timeout;
   while (Date.now() < bitis) {
-    if (kosul()) return true;
+    // await, senkron kosullarda da dogru calisir; async olanlarda ise
+    // Promise'in kendisi (her zaman dogru) yerine sonucu okunur.
+    if (await kosul()) return true;
     await new Promise((r) => setTimeout(r, 150));
   }
   return false;
@@ -382,6 +384,118 @@ export async function run(_page, _base, t) {
       oncekiMesajSayisi,
       "artik sonuc sohbete de dusmuyor",
     );
+  } finally {
+    await app.close();
+  }
+
+  /* ------------------------------------------- gizli acilis --------- *
+   * Bilgisayar acildiginda DRA arka planda baslar: pencere yok, acilis
+   * ekrani yok, ama arayuz calisiyor ve mikrofonu dinliyor. Adi
+   * duyulunca kendini gosteriyor. Ikinci bir ornek gerekiyor cunku
+   * "--gizli" yalnizca acilista okunuyor.                              */
+  await gizliAcilis(electron, t);
+}
+
+/** "--gizli" ile baslatilan ornegi sinar. */
+async function gizliAcilis(electron, t) {
+  const app = await electron.launch({
+    args: [ROOT, "--gizli", "--no-sandbox", "--disable-gpu"],
+    env: { ...process.env, DRA_TEST: "1" },
+  });
+
+  try {
+    const window = await mainWindowOf(app);
+    await window.waitForLoadState("domcontentloaded");
+    await window.waitForTimeout(1600);
+
+    /** Ana pencerenin isletim sistemi tarafindaki gorunurlugu. */
+    const gorunur = () =>
+      app.evaluate(({ BrowserWindow }) => {
+        const w = BrowserWindow.getAllWindows().find((x) =>
+          x.webContents.getURL().includes("index.html"),
+        );
+        return w ? w.isVisible() : null;
+      });
+
+    // Gizli acilista acilis ekrani da gosterilmemeli — kullanici
+    // bilgisayarini actiginda ekrana hicbir sey ciktirmiyoruz.
+    t.ok(
+      !app.windows().some((w) => w.url().includes("splash.html")),
+      "gizli acilista acilis ekrani cikmiyor",
+    );
+    t.eq(await gorunur(), false, "gizli acilista pencere gorunmuyor");
+
+    // Pencere gizli ama arayuz gercekten calisiyor olmali.
+    const health = await window.evaluate(() => window.dra.health());
+    t.eq(health.hiddenLaunch, true, "arayuz gizli baslatildigini biliyor");
+    t.eq(
+      await window.evaluate(async () => {
+        const s = await import("./js/system.js");
+        return s.hiddenLaunch();
+      }),
+      true,
+      "sistem katmani gizli acilisi bildiriyor",
+    );
+    t.ok(await window.locator("#sleep-screen").isVisible(), "arka planda uyku kipinde");
+
+    /* ------------------------------------------ kisma kapali olmali - *
+     * Chromium gizli pencerelerde sayfayi kisar: zamanlayicilar dakikada
+     * bire duser, rAF durur. DRA gizliyken de dinledigi icin bu, arka
+     * plan kipini islevsiz birakirdi.                                   */
+    t.eq(
+      await app.evaluate(({ BrowserWindow }) => {
+        const w = BrowserWindow.getAllWindows().find((x) =>
+          x.webContents.getURL().includes("index.html"),
+        );
+        return w ? w.webContents.getBackgroundThrottling() : null;
+      }),
+      false,
+      "gizli pencerede kisma kapali",
+    );
+
+    // Ayarin gercekten ise yaradigini olcelim: gizli pencerede kisa bir
+    // zamanlayici hemen calismali (kisma acikken dakikalarca beklerdi).
+    const gecikme = await window.evaluate(
+      () =>
+        new Promise((cozumle) => {
+          const t0 = Date.now();
+          setTimeout(() => cozumle(Date.now() - t0), 50);
+        }),
+    );
+    t.ok(gecikme < 3000, `gizli pencerede zamanlayicilar calisiyor (${gecikme}ms)`);
+
+    /* --------------------------------------- adini duyunca goruntule - */
+    // Arka plan dinleme acikken gelen "dra" pencereyi one cikarmali.
+    await window.evaluate(async () => {
+      const { store, saveStore } = await import("./js/store.js");
+      store.backgroundListen = true;
+      store.voiceEnabled = false;
+      store.bootSequence = false;
+      saveStore();
+    });
+
+    await window.evaluate(async () => {
+      const sp = await import("./js/speech.js");
+      sp.handleRecognitionResult({ final: "dra" });
+    });
+    await window.waitForSelector("#hud:not([hidden])", { timeout: 20000 });
+    await waitFor(async () => (await gorunur()) === true, 8000);
+    t.eq(await gorunur(), true, "adini duyunca pencere kendini gosteriyor");
+
+    /* ------------------------------------------- uyuyunca geri cekil - */
+    // Uyku, arka plan kipinde pencereyi de tepsiye indirmeli.
+    await window.fill("#composer-input", "uyu");
+    await window.press("#composer-input", "Enter");
+    await waitFor(async () => (await gorunur()) === false, 8000);
+    t.eq(await gorunur(), false, "uyuyunca pencere tekrar arka plana cekiliyor");
+
+    // Ve oradan yeniden uyandirilabilmeli — dongu kapanmali.
+    await window.evaluate(async () => {
+      const sp = await import("./js/speech.js");
+      sp.handleRecognitionResult({ final: "dra" });
+    });
+    await waitFor(async () => (await gorunur()) === true, 8000);
+    t.eq(await gorunur(), true, "arka plandan tekrar uyandirilabiliyor");
   } finally {
     await app.close();
   }

@@ -160,6 +160,21 @@ export async function setAutoStart(enabled) {
   return (await window.dra.window.setAutoStart(enabled)).enabled;
 }
 
+/** Uygulama gizli mi baslatildi? (bilgisayar acilisinda) */
+export const hiddenLaunch = () => Boolean(serverInfo.hiddenLaunch);
+
+/** Pencereyi gosterir — DRA adini duyunca kendini one cikarir. */
+export function showWindow() {
+  if (!desktop) return;
+  window.dra.window.show();
+}
+
+/** Pencereyi tepsiye indirir. */
+export function hideWindow() {
+  if (!desktop) return;
+  window.dra.window.hide();
+}
+
 /** Ana surecten gelen olaylara abone olur (kisayol tusu, tepsi menusu). */
 export function onDesktopEvent(event, handler) {
   if (!desktop) return () => {};

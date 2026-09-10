@@ -247,6 +247,9 @@ export function syncSettings() {
   // Acilista baslatma yalnizca masaustu surumunde anlamli.
   const autostartRow = $("row-autostart");
   autostartRow.hidden = !system.isDesktop();
+  $("row-background").hidden = !system.isDesktop();
+  $("row-background-hint").hidden = !system.isDesktop();
+  syncSwitch($("set-background"), store.backgroundListen);
   if (system.isDesktop()) {
     system.getAutoStart().then((on) => syncSwitch($("set-autostart"), on)).catch(() => {});
   }
@@ -537,6 +540,32 @@ export function mountPanel(context) {
     } finally {
       refreshModelStatus();
     }
+  });
+
+  $("set-background").addEventListener("click", async () => {
+    store.backgroundListen = !store.backgroundListen;
+    saveStore();
+    syncSettings();
+
+    if (store.backgroundListen) {
+      // Arka planda dinlemenin anlami olmasi icin acilista baslatma da acik
+      // olmali; kullaniciyi ayri bir adima zorlamak yerine birlikte aciyoruz.
+      try {
+        await system.setAutoStart(true);
+        syncSettings();
+      } catch {
+        /* ayarlanamadiysa asagidaki mesaj yine de yol gosterir */
+      }
+      ctx.log(
+        "system",
+        "Arka planda dinleme acildi. Bilgisayar acildiginda DRA pencere " +
+          "gostermeden baslayacak ve adini duyunca kendini gosterecek.",
+      );
+      ctx.toast("Arka planda dinleme acik");
+    } else {
+      ctx.toast("Arka planda dinleme kapatildi");
+    }
+    ctx.onBackgroundChanged();
   });
 
   $("set-diag").addEventListener("click", () => ctx.runDiagnostics());

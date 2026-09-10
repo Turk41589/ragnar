@@ -73,6 +73,8 @@ contextBridge.exposeInMainWorld("dra", {
   window: {
     minimize: () => ipcRenderer.send("dra:window:minimize"),
     close: () => ipcRenderer.send("dra:window:close"),
+    show: () => ipcRenderer.send("dra:window:show"),
+    hide: () => ipcRenderer.send("dra:window:hide"),
     setAutoStart: (enabled) => call("dra:autostart", { enabled }),
     getAutoStart: () => call("dra:autostart:get"),
   },
