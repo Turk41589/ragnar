@@ -194,9 +194,38 @@ export async function run(page, base, t, { external }) {
     "ElevenLabs dusunce kullaniciya haber veriliyor",
   );
 
+  // "Sesi dinle" de ayni sekilde takilmamali: servis yokken anlasilir
+  // bir hata vermeli, sessizce yutulmamali.
+  const dinlet = await page.evaluate(async () => {
+    const speech = await import("/js/speech.js");
+    try {
+      await speech.previewVoice("deneme");
+      return "sessiz";
+    } catch (err) {
+      return err.message;
+    }
+  });
+  t.ok(dinlet !== "sessiz", "ses dinletilemeyince hata veriliyor");
+  t.has(dinlet, "ElevenLabs", "dinletme hatasi neden oldugunu soyluyor");
+
+  // Anahtar girilince sesler kendiliginden gelmeli — ayri bir dugmeye
+  // basmak gerekmemeli. Servis yok, ama denemenin yapildigini goruyoruz.
+  await page.fill("#set-eleven-key", "sk-sahte-anahtar");
+  await page.dispatchEvent("#set-eleven-key", "change");
+  await page.waitForTimeout(1200);
+  t.has(
+    await page.textContent("#eleven-status"),
+    "Sesler alinamadi",
+    "anahtar girilince sesler kendiliginden cekilmeye calisiliyor",
+  );
+
   // Anahtari geri cekiyoruz ki sonraki testler etkilenmesin.
   await page.evaluate(async () => {
+    const { store, saveStore } = await import("/js/store.js");
     const system = await import("/js/system.js");
+    store.elevenKey = "";
+    store.elevenVoice = "";
+    saveStore();
     await system.configureTts("", "", "eleven_flash_v2_5");
   });
 

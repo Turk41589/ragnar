@@ -269,9 +269,9 @@
                 <option value="elevenlabs">ElevenLabs</option>
               </select>
               <small class="hint" id="tts-hint">
-                Varsayilan ses bilgisayarinizdan gelir ve disariya hicbir sey
-                gitmez. ElevenLabs secilirse DRA'nin SOYLEDIGI metin ElevenLabs
-                sunucularina gider &mdash; duydugu ses degil, yalnizca yaniti.
+                ElevenLabs daha dogal konusur. Secildiginde DRA'nin soyledigi
+                metin ElevenLabs'a gider; duydugu ses gitmez &mdash; mikrofon
+                her zaman cihazinizda islenir.
               </small>
             </li>
 
@@ -281,7 +281,7 @@
 
               <label for="set-eleven-voice">Ses</label>
               <select id="set-eleven-voice">
-                <option value="">&mdash; once anahtari girip sesleri yukleyin &mdash;</option>
+                <option value="">&mdash; anahtari girin, sesler gelsin &mdash;</option>
               </select>
 
               <label for="set-eleven-model">Model</label>
@@ -289,18 +289,23 @@
                 <option value="eleven_flash_v2_5">eleven_flash_v2_5 (hizli)</option>
               </select>
 
+              <button class="btn btn--icon btn--wide" type="button" id="set-eleven-preview">
+                Sesi dinle
+              </button>
               <button class="btn btn--icon btn--wide" type="button" id="set-eleven-load">
-                Sesleri yukle
+                Sesleri yenile
               </button>
               <button class="btn btn--icon btn--wide" type="button" id="set-eleven-test">
                 Baglantiyi sina
               </button>
               <p class="nextalarm" id="eleven-status">Anahtar girilmedi</p>
               <small class="hint">
-                Anahtar bu bilgisayarda kalir; istekler DRA'nin kendi surecinden
-                gider. ElevenLabs cevap vermezse DRA susmaz, bilgisayarin
-                sesine doner. Ayni cumleler tekrar seslendirilmez &mdash;
-                onbellekte tutulur, kotaniz bosa gitmez.
+                Anahtari yapistirdiginizda sesler kendiliginden gelir. Begenene
+                kadar &laquo;Sesi dinle&raquo; ile deneyin. Anahtar bu
+                bilgisayarda kalir; istekler DRA'nin kendi surecinden gider.
+                ElevenLabs cevap vermezse DRA susmaz, bilgisayarin sesine doner.
+                Ayni cumleler tekrar seslendirilmez &mdash; onbellekte tutulur,
+                kotaniz bosa gitmez.
               </small>
             </li>
 

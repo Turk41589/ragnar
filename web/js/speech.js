@@ -654,6 +654,20 @@ async function sayWithEleven(text, nesil) {
   await playBlob(blob, text.length);
 }
 
+/**
+ * Secilen sesi dinletir (ayar ekranindaki "Sesi dinle").
+ *
+ * Onbellege yazmaz ve saglayici secimine bakmaz: kullanici sesleri
+ * karsilastirirken her seferinde gercekten o sesi duymali.
+ */
+export async function previewVoice(text) {
+  const clean = (text || "").trim();
+  if (!clean) return;
+  shutUp();
+  const { blob } = await system.ttsSpeak(clean);
+  await playBlob(blob, clean.length);
+}
+
 /** Ses baytlarini calar; bitince (ya da hata verince) coz. */
 function playBlob(blob, textLength) {
   return new Promise((resolve, reject) => {

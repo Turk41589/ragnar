@@ -300,6 +300,44 @@ async function pushEleven() {
   }
 }
 
+/** Ornek cumle: kisa, Turkce ve sesin tonunu belli eden bir sey. */
+const ELEVEN_ORNEK = "Merhaba efendim, ben DRA. Sizi dinliyorum.";
+
+/**
+ * Sesleri (ve varsa modelleri) cekip secim kutularini doldurur.
+ * Hem anahtar girilince kendiliginden, hem de "Sesleri yenile" ile calisir.
+ */
+async function loadElevenVoices({ sessiz = false } = {}) {
+  if (!store.elevenKey) return false;
+  $("eleven-status").textContent = "Sesler yukleniyor…";
+  try {
+    await pushEleven();
+    const [sesler, modeller] = await Promise.all([
+      system.ttsVoices(),
+      system.ttsModels().catch(() => []),
+    ]);
+
+    fillVoices(sesler);
+    if (modeller.length) fillModels(modeller);
+
+    // Hic ses secilmediyse ilkini secip kullaniciyi bir adimdan kurtaralim.
+    if (!store.elevenVoice && sesler.length) {
+      store.elevenVoice = sesler[0].id;
+      saveStore();
+      $("set-eleven-voice").value = store.elevenVoice;
+      await pushEleven();
+    }
+
+    if (!sessiz) ctx.toast(`${sesler.length} ses hazir`);
+    refreshElevenStatus();
+    return true;
+  } catch (err) {
+    $("eleven-status").textContent = `Sesler alinamadi: ${err.message}`;
+    if (!sessiz) ctx.toast(`Sesler alinamadi: ${err.message}`, 6000);
+    return false;
+  }
+}
+
 function fillVoices(list) {
   const select = $("set-eleven-voice");
   select.innerHTML = "";
@@ -334,7 +372,7 @@ function refreshElevenStatus() {
   } else if (!store.elevenKey) {
     el.textContent = "Anahtar girilmedi";
   } else if (!store.elevenVoice) {
-    el.textContent = "Ses secilmedi — «Sesleri yukle» deyin";
+    el.textContent = "Ses secilmedi";
   } else if (system.ttsReady()) {
     el.textContent = "Hazir";
   } else {
@@ -553,12 +591,15 @@ export function mountPanel(context) {
     speech.resetElevenCache();
 
     if (store.ttsProvider === "elevenlabs") {
-      ctx.log(
-        "system",
-        "DRA'nin sesi ElevenLabs'a alindi. Bundan sonra SOYLEDIGIM metin " +
-          "ElevenLabs sunucularina gidecek; duydugum ses degil.",
-      );
+      ctx.log("system", "DRA'nin sesi ElevenLabs'a alindi.");
       await pushEleven();
+      // Anahtar zaten kayitliysa sesleri hemen getir; kullanici ayara
+      // ikinci kez ugramak zorunda kalmasin. Yukleme durumu kendi yazar,
+      // asagidaki tazeleme onu ezmesin.
+      if (store.elevenKey) {
+        await loadElevenVoices({ sessiz: true });
+        return;
+      }
     } else {
       // Anahtari da geri cekiyoruz ki kapaliyken ortada durmasin.
       try {
@@ -576,7 +617,11 @@ export function mountPanel(context) {
     saveStore();
     speech.resetElevenCache();
     await pushEleven();
-    refreshElevenStatus();
+    // Anahtar girilir girilmez sesleri getiriyoruz; kullanicinin ayrica
+    // bir dugmeye basmasi gerekmesin. Yukleme basarisiz olursa sebebini
+    // yazar — bunun uzerine durum tazelemek o sebebi silerdi.
+    if (store.elevenKey) await loadElevenVoices();
+    else refreshElevenStatus();
   });
 
   for (const id of ["set-eleven-voice", "set-eleven-model"]) {
@@ -596,29 +641,31 @@ export function mountPanel(context) {
       ctx.toast("Once API anahtarini girin");
       return;
     }
-    $("eleven-status").textContent = "Sesler yukleniyor…";
+    await loadElevenVoices();
+  });
+
+  $("set-eleven-preview").addEventListener("click", async () => {
+    if (!store.elevenKey) {
+      ctx.toast("Once API anahtarini girin");
+      return;
+    }
+    if (!store.elevenVoice) {
+      ctx.toast("Once bir ses secin");
+      return;
+    }
+    const dugme = $("set-eleven-preview");
+    dugme.disabled = true;
+    $("eleven-status").textContent = "Dinleniyor…";
     try {
       await pushEleven();
-      const [sesler, modeller] = await Promise.all([
-        system.ttsVoices(),
-        system.ttsModels().catch(() => []),
-      ]);
-
-      fillVoices(sesler);
-      if (modeller.length) fillModels(modeller);
-
-      ctx.toast(`${sesler.length} ses bulundu`);
-      // Hic ses secilmediyse ilkini secip kullaniciyi bir adimdan kurtaralim.
-      if (!store.elevenVoice && sesler.length) {
-        store.elevenVoice = sesler[0].id;
-        saveStore();
-        syncSettings();
-        await pushEleven();
-      }
+      await speech.previewVoice(ELEVEN_ORNEK);
+      refreshElevenStatus();
     } catch (err) {
-      ctx.toast(`Sesler alinamadi: ${err.message}`, 6000);
+      $("eleven-status").textContent = `Dinletilemedi: ${err.message}`;
+      ctx.toast(`Ses dinletilemedi: ${err.message}`, 6000);
+    } finally {
+      dugme.disabled = false;
     }
-    refreshElevenStatus();
   });
 
   $("set-eleven-test").addEventListener("click", async () => {

@@ -188,9 +188,8 @@ Kapattığınızda rozet `tarayıcı servisi` olur — gizlenmez.
 Varsayılan olarak konuşma sentezi **işletim sisteminizin** Türkçe sesini
 kullanır; dışarıya hiçbir şey gitmez.
 
-İsterseniz Ayar sekmesindeki **"DRA'nın sesi"** listesinden **ElevenLabs**
-seçebilirsiniz. Bu bilinçli bir istisnadır ve ne anlama geldiğini açıkça
-söylemek gerekir:
+Ayar sekmesindeki **"DRA'nın sesi"** listesinden **ElevenLabs** seçerseniz
+DRA belirgin biçimde daha doğal konuşur. Ne anlama geldiği açık olsun:
 
 * Açtığınızda DRA'nın **söylediği** metin ElevenLabs sunucularına gider.
   **Duyduğu ses gitmez** — mikrofonunuz hâlâ tamamen cihazınızda işlenir.
@@ -207,11 +206,13 @@ söylemek gerekir:
 * Ayarı kapattığınızda anahtar süreçten silinir ve o uca bir daha istek
   gitmez.
 
-Kurulum: anahtarı yapıştırın → **"Sesleri yükle"** → listeden bir ses seçin →
-**"Bağlantıyı sına"**. Sınama ses üretmez, yani kotanızdan harcamaz; yalnızca
-anahtarın geçerli olduğunu, seçtiğiniz sesin hesapta bulunduğunu ve kalan
-karakter hakkınızı söyler. Model listesinde Türkçe destekleyenler başa alınır —
-desteklemeyen bir model seçerseniz DRA anlaşılmaz konuşur.
+Kurulum: anahtarı yapıştırın — sesler kendiliğinden gelir ve ilki seçilir.
+Beğenene kadar **"Sesi dinle"** ile deneyin; her basışta DRA o sesle kısa bir
+cümle söyler. İsterseniz **"Bağlantıyı sına"** anahtarın geçerli olduğunu,
+seçtiğiniz sesin hesapta bulunduğunu ve kalan karakter hakkınızı söyler —
+sınama ses üretmez, yani kotanızdan harcamaz. Model listesinde Türkçe
+destekleyenler başa alınır; desteklemeyen bir model seçerseniz DRA anlaşılmaz
+konuşur.
 
 > Not: Geliştirme ortamında ElevenLabs anahtarı ve dışarı çıkış yok. Köprü
 > mock'lanmış isteklerle sınandı (46 test), canlı doğrulanmadı. İlk kullanımda
