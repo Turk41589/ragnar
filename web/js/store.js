@@ -27,6 +27,13 @@ const DEFAULTS = {
   backgroundListen: false,
   kickToken: "",
   kickChannel: "",
+  // DRA'nin sesi: "yerel" = isletim sisteminin kendi sentezi (disari
+  // hicbir sey gitmez), "elevenlabs" = ElevenLabs (kullanici acarsa;
+  // o zaman SOYLENEN metin ElevenLabs'a gider).
+  ttsProvider: "yerel",
+  elevenKey: "",
+  elevenVoice: "",
+  elevenModel: "eleven_flash_v2_5",
   notes: [],
   alarms: [],
 };
@@ -53,6 +60,15 @@ function coerce(saved) {
   if (typeof saved.backgroundListen === "boolean") store.backgroundListen = saved.backgroundListen;
   if (typeof saved.kickToken === "string") store.kickToken = saved.kickToken.slice(0, 400);
   if (typeof saved.kickChannel === "string") store.kickChannel = saved.kickChannel.slice(0, 80);
+
+  if (saved.ttsProvider === "yerel" || saved.ttsProvider === "elevenlabs") {
+    store.ttsProvider = saved.ttsProvider;
+  }
+  if (typeof saved.elevenKey === "string") store.elevenKey = saved.elevenKey.slice(0, 300);
+  if (typeof saved.elevenVoice === "string") store.elevenVoice = saved.elevenVoice.slice(0, 100);
+  if (typeof saved.elevenModel === "string" && saved.elevenModel.trim()) {
+    store.elevenModel = saved.elevenModel.trim().slice(0, 80);
+  }
 
   if (Number.isFinite(saved.speechRate)) {
     store.speechRate = Math.min(1.6, Math.max(0.6, saved.speechRate));

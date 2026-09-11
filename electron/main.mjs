@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import * as apps from "../server/apps.mjs";
 import * as kick from "../server/kick.mjs";
+import * as tts from "../server/tts.mjs";
 import * as stt from "./speech-engine.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -253,6 +254,7 @@ function registerIpc() {
     hiddenLaunch: GIZLI_BASLAT,
     search: { enabled: searchEnabled },
     kick: kick.status(),
+    tts: tts.status(),
     apps: await apps.scanInfo(),
   }));
 
@@ -301,6 +303,22 @@ function registerIpc() {
     if (!fn) throw new Error("Bilinmeyen moderasyon islemi.");
     const message = await fn(...(args || []));
     return { message: typeof message === "string" ? message : JSON.stringify(message) };
+  });
+
+  /* ------------------------------------------------ seslendirme ---- */
+
+  handle("dra:tts:configure", async ({ apiKey, voiceId, model }) => ({
+    status: tts.configure({ apiKey, voiceId, model }),
+  }));
+
+  handle("dra:tts:voices", async () => ({ voices: await tts.voices() }));
+  handle("dra:tts:models", async () => ({ models: await tts.models() }));
+  handle("dra:tts:test", async () => await tts.test());
+
+  handle("dra:tts:speak", async ({ text }) => {
+    const { audio, type, chars, truncated } = await tts.speak(text);
+    // Ses baytlari base64 olarak arayuze gecer; anahtar ana surecte kalir.
+    return { audio: audio.toString("base64"), type, chars, truncated };
   });
 
   /* --------------------------------------------- gomulu ses tanima -- */

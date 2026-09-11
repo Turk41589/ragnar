@@ -259,11 +259,87 @@ export function syncSettings() {
   $("set-kick-channel").value = store.kickChannel;
   $("set-kick-token").value = store.kickToken;
 
+  $("set-tts").value = store.ttsProvider;
+  $("row-eleven").hidden = store.ttsProvider !== "elevenlabs";
+  $("set-eleven-key").value = store.elevenKey;
+  syncElevenOption($("set-eleven-voice"), store.elevenVoice);
+  syncElevenOption($("set-eleven-model"), store.elevenModel);
+  refreshElevenStatus();
+
   $("set-rate").value = String(store.speechRate);
   $("set-rate-val").textContent = `${store.speechRate.toFixed(2)}×`;
   $("set-sleep").value = String(store.autoSleepMinutes);
   $("set-wake").value = store.extraWakeWords.join(", ");
   renderSwatches();
+}
+
+/* -------------------------------------------------------------- ElevenLabs */
+
+/**
+ * Secim kutusunda kayitli deger yoksa onu gecici bir secenek olarak ekler.
+ * Boylece sesler henuz yuklenmemisken de secili ses gorunur kalir.
+ */
+function syncElevenOption(select, value) {
+  if (!select) return;
+  if (value && !Array.from(select.options).some((o) => o.value === value)) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = value;
+    select.appendChild(opt);
+  }
+  select.value = value || "";
+}
+
+/** Ayarlari sunucuya/ana surece bildirir (anahtar arayuzde birakilmaz). */
+async function pushEleven() {
+  if (store.ttsProvider !== "elevenlabs") return;
+  try {
+    await system.configureTts(store.elevenKey, store.elevenVoice, store.elevenModel);
+  } catch (err) {
+    ctx.toast(`ElevenLabs ayarlanamadi: ${err.message}`, 5000);
+  }
+}
+
+function fillVoices(list) {
+  const select = $("set-eleven-voice");
+  select.innerHTML = "";
+  if (!list.length) {
+    select.appendChild(new Option("— hesapta ses bulunamadi —", ""));
+    return;
+  }
+  for (const v of list) {
+    // Etiketler hangi sesin ne oldugunu anlatir (cinsiyet, tarz, aksan).
+    const etiket = Object.values(v.labels || {}).filter(Boolean).join(", ");
+    select.appendChild(new Option(etiket ? `${v.name} (${etiket})` : v.name, v.id));
+  }
+  select.value = store.elevenVoice || "";
+}
+
+function fillModels(list) {
+  const select = $("set-eleven-model");
+  select.innerHTML = "";
+  for (const m of list) {
+    // Turkce desteklemeyen model secilirse DRA anlasilmaz konusur.
+    select.appendChild(new Option(m.turkish ? `${m.name} — Turkce` : m.name, m.id));
+  }
+  syncElevenOption(select, store.elevenModel);
+}
+
+/** Ayar panelindeki tek satirlik durum yazisi. */
+function refreshElevenStatus() {
+  const el = $("eleven-status");
+  if (!el) return;
+  if (store.ttsProvider !== "elevenlabs") {
+    el.textContent = "Kapali — bilgisayarin kendi sesi kullaniliyor";
+  } else if (!store.elevenKey) {
+    el.textContent = "Anahtar girilmedi";
+  } else if (!store.elevenVoice) {
+    el.textContent = "Ses secilmedi — «Sesleri yukle» deyin";
+  } else if (system.ttsReady()) {
+    el.textContent = "Hazir";
+  } else {
+    el.textContent = "Ayarlar henuz bildirilmedi";
+  }
 }
 
 /* -------------------------------------------------------------- ses modeli */
@@ -467,6 +543,111 @@ export function mountPanel(context) {
       }
     });
   }
+
+  /* ------------------------------------------------------ ElevenLabs -- */
+
+  $("set-tts").addEventListener("change", async (event) => {
+    store.ttsProvider = event.target.value === "elevenlabs" ? "elevenlabs" : "yerel";
+    saveStore();
+    syncSettings();
+    speech.resetElevenCache();
+
+    if (store.ttsProvider === "elevenlabs") {
+      ctx.log(
+        "system",
+        "DRA'nin sesi ElevenLabs'a alindi. Bundan sonra SOYLEDIGIM metin " +
+          "ElevenLabs sunucularina gidecek; duydugum ses degil.",
+      );
+      await pushEleven();
+    } else {
+      // Anahtari da geri cekiyoruz ki kapaliyken ortada durmasin.
+      try {
+        await system.configureTts("", "", store.elevenModel);
+      } catch {
+        /* onemli degil: kapaliyken zaten istek gitmiyor */
+      }
+      ctx.log("system", "DRA yeniden bilgisayarin kendi sesiyle konusuyor.");
+    }
+    refreshElevenStatus();
+  });
+
+  $("set-eleven-key").addEventListener("change", async (event) => {
+    store.elevenKey = event.target.value.trim();
+    saveStore();
+    speech.resetElevenCache();
+    await pushEleven();
+    refreshElevenStatus();
+  });
+
+  for (const id of ["set-eleven-voice", "set-eleven-model"]) {
+    $(id).addEventListener("change", async (event) => {
+      if (id === "set-eleven-voice") store.elevenVoice = event.target.value;
+      else store.elevenModel = event.target.value;
+      saveStore();
+      // Ses ya da model degistiyse onbellekteki eski ses artik yanlis.
+      speech.resetElevenCache();
+      await pushEleven();
+      refreshElevenStatus();
+    });
+  }
+
+  $("set-eleven-load").addEventListener("click", async () => {
+    if (!store.elevenKey) {
+      ctx.toast("Once API anahtarini girin");
+      return;
+    }
+    $("eleven-status").textContent = "Sesler yukleniyor…";
+    try {
+      await pushEleven();
+      const [sesler, modeller] = await Promise.all([
+        system.ttsVoices(),
+        system.ttsModels().catch(() => []),
+      ]);
+
+      fillVoices(sesler);
+      if (modeller.length) fillModels(modeller);
+
+      ctx.toast(`${sesler.length} ses bulundu`);
+      // Hic ses secilmediyse ilkini secip kullaniciyi bir adimdan kurtaralim.
+      if (!store.elevenVoice && sesler.length) {
+        store.elevenVoice = sesler[0].id;
+        saveStore();
+        syncSettings();
+        await pushEleven();
+      }
+    } catch (err) {
+      ctx.toast(`Sesler alinamadi: ${err.message}`, 6000);
+    }
+    refreshElevenStatus();
+  });
+
+  $("set-eleven-test").addEventListener("click", async () => {
+    if (!store.elevenKey) {
+      ctx.toast("Once API anahtarini girin");
+      return;
+    }
+    ctx.log("system", "ElevenLabs baglantisi sinaniyor…");
+    $("eleven-status").textContent = "Sinaniyor…";
+    try {
+      await pushEleven();
+      const sonuc = await system.ttsTest();
+      const parcalar = [`${sonuc.voiceCount} ses erisilebilir`];
+      if (sonuc.voice) parcalar.push(`secili ses: ${sonuc.voice}`);
+      if (sonuc.quota) {
+        parcalar.push(
+          `kalan karakter: ${sonuc.quota.remaining.toLocaleString("tr")}`,
+        );
+      }
+      const ozet = parcalar.join(" — ");
+      $("eleven-status").textContent = ozet;
+      ctx.log("system", `ElevenLabs calisiyor: ${ozet}`);
+      ctx.toast("ElevenLabs baglantisi calisiyor");
+    } catch (err) {
+      $("eleven-status").textContent = `Hata: ${err.message}`;
+      ctx.log("system", `ElevenLabs baglantisi kurulamadi: ${err.message}`);
+      ctx.toast("ElevenLabs baglantisi kurulamadi", 5000);
+    }
+  });
 
   $("set-kick-test").addEventListener("click", async () => {
     if (!store.kickToken) {

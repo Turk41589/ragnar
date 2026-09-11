@@ -161,7 +161,7 @@ export async function run(_page, _base, t) {
     t.ok(!bridge.nodeSizinti, "Node arayuze sizmiyor (yalitim acik)");
     t.eq(
       bridge.anahtarlar,
-      ["apps", "desktop", "health", "kick", "on", "search", "stt", "version", "window"],
+      ["apps", "desktop", "health", "kick", "on", "search", "stt", "tts", "version", "window"],
       "kopru yalnizca beklenen yuzeyi aciyor",
     );
 
@@ -226,6 +226,8 @@ export async function run(_page, _base, t) {
     t.eq(health.desktop, true, "masaustu bayragi dogru");
     t.eq(health.search.enabled, false, "web aramasi varsayilan kapali");
     t.eq(health.kick.ready, false, "Kick varsayilan kapali");
+    t.eq(health.tts.ready, false, "ElevenLabs varsayilan kapali");
+    t.ok(!("apiKey" in health.tts), "ElevenLabs anahtari IPC'de tasinmiyor");
 
     // Tarayici surumunun aksine ortada jeton yok — IPC'de gerek de yok.
     t.ok(!("token" in health), "masaustunde oturum jetonu tasinmiyor");

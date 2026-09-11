@@ -10,6 +10,7 @@
 import { emit, state } from "./state.js";
 import { store } from "./store.js";
 import { startCapture, stopCapture, capturing } from "./mic-capture.js";
+import * as system from "./system.js";
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -417,6 +418,12 @@ export function deafen(ms) {
 let voices = [];
 let currentUtterances = [];
 
+/**
+ * Her susturma bu sayaci arttirir. Yolda olan bir seslendirme donunce
+ * kendi neslini karsilastirir; eskiyse calmadan vazgecer.
+ */
+let speakGeneration = 0;
+
 function loadVoices() {
   if (!voiceSupported) return;
   voices = window.speechSynthesis.getVoices() || [];
@@ -467,8 +474,24 @@ function splitForSpeech(text, maxLen = 180) {
   return chunks.length ? chunks : [text];
 }
 
-/** Konusmayi hemen keser. */
+/** Konusmayi hemen keser — hangi ses kaynagi olursa olsun. */
 export function shutUp() {
+  // Devam eden her seslendirme gecersizlesir. ElevenLabs'ta ses ag
+  // uzerinden geldigi icin "sus" komutu istek HENUZ YOLDAYKEN de
+  // gelebilir; nesil sayaci o sesin donunce calmasini engeller.
+  speakGeneration += 1;
+
+  // ElevenLabs calarken de susmali; yoksa "sus" komutu ise yaramaz.
+  if (elevenAudio) {
+    try {
+      elevenAudio.pause();
+      elevenAudio.currentTime = 0;
+    } catch {
+      /* yok say */
+    }
+    elevenAudio = null;
+  }
+
   if (!voiceSupported) return;
   currentUtterances = [];
   try {
@@ -480,13 +503,39 @@ export function shutUp() {
 
 /**
  * Metni sesli okur. Okuma bitince (veya ses kapaliysa hemen) coz.
+ *
+ * Iki kaynak var: isletim sisteminin kendi sentezi (varsayilan, disari
+ * hicbir sey gitmez) ve ElevenLabs (kullanici acarsa). ElevenLabs bir
+ * sebeple cevap vermezse DRA susmaz — yerel sese duser.
  */
-export function say(text) {
+export async function say(text) {
+  const clean = (text || "").trim();
+  if (!clean) return;
+  if (!store.voiceEnabled) return;
+
+  // Once susalim: yeni bir cumle, eskisinin ustune binmemeli.
+  shutUp();
+
+  if (store.ttsProvider === "elevenlabs" && system.ttsReady()) {
+    try {
+      return await sayWithEleven(clean, speakGeneration);
+    } catch (err) {
+      // Kota bitti, ag koptu, anahtar bozuldu… hangisi olursa olsun
+      // DRA'nin dilsiz kalmasindansa bilgisayarin sesiyle konusmasi iyidir.
+      elevenFailed(err);
+    }
+  }
+
+  return sayLocal(clean);
+}
+
+/** Isletim sisteminin kendi sentezi. */
+function sayLocal(text) {
   return new Promise((resolve) => {
     const clean = (text || "").trim();
     if (!clean) return resolve();
 
-    if (!voiceSupported || !store.voiceEnabled) {
+    if (!voiceSupported) {
       // Ses kapaliyken de okuma suresi kadar bekliyormus gibi yapmayiz;
       // gorsel durum yonetimi main.js'te hallediliyor.
       return resolve();
@@ -537,5 +586,107 @@ export function say(text) {
     // Konusma boyunca kendi sesimizi duymayalim.
     deafen(Math.min(90000, 2000 + clean.length * 90));
     for (const u of currentUtterances) window.speechSynthesis.speak(u);
+  });
+}
+
+/* ------------------------------------------------------- ElevenLabs sesi */
+
+/**
+ * Ayni cumleler surekli tekrar ediyor ("Sizi dinliyorum efendim",
+ * "Not alindi"…). Bunlari onbellekte tutmak hem kotayi korur hem de
+ * yaniti aninda verir.
+ */
+const elevenCache = new Map();
+const ELEVEN_CACHE_MAX = 60;
+
+let elevenAudio = null;
+/** Ust uste hata verip her seferinde uyarmamak icin. */
+let elevenWarned = false;
+
+/** Ayar degisince onbellek gecersizlesir (baska ses, baska model). */
+export function resetElevenCache() {
+  elevenCache.clear();
+  elevenWarned = false;
+}
+
+function elevenFailed(err) {
+  console.warn("[dra] ElevenLabs sesi kullanilamadi:", err?.message || err);
+  if (elevenWarned) return;
+  elevenWarned = true;
+  emit("tts", {
+    status: "fallback",
+    message: `ElevenLabs sesi kullanilamadi (${err?.message || "bilinmeyen hata"}). ` +
+      "Bilgisayarin kendi sesine gecildi.",
+  });
+}
+
+/** Onbellege yazar; en eski kayitlari atarak sinirda tutar. */
+function cacheAudio(key, blob) {
+  if (elevenCache.has(key)) elevenCache.delete(key);
+  elevenCache.set(key, blob);
+  while (elevenCache.size > ELEVEN_CACHE_MAX) {
+    elevenCache.delete(elevenCache.keys().next().value);
+  }
+}
+
+async function sayWithEleven(text, nesil) {
+  const key = `${store.elevenVoice}|${store.elevenModel}|${text}`;
+
+  let blob = elevenCache.get(key);
+  if (blob) {
+    // En son kullanilan one alinsin ki sik kullanilanlar dusmesin.
+    elevenCache.delete(key);
+    elevenCache.set(key, blob);
+  } else {
+    const sonuc = await system.ttsSpeak(text);
+    blob = sonuc.blob;
+    cacheAudio(key, blob);
+    if (sonuc.truncated) {
+      emit("tts", {
+        status: "truncated",
+        message: "Metin uzun oldugu icin seslendirirken kisaltildi.",
+      });
+    }
+  }
+
+  // Ses gelene kadar susturulduysak calma.
+  if (nesil !== speakGeneration) return;
+  await playBlob(blob, text.length);
+}
+
+/** Ses baytlarini calar; bitince (ya da hata verince) coz. */
+function playBlob(blob, textLength) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    // ElevenLabs'ta hiz parametresi yok; ayardaki hiz calmada uygulanir.
+    audio.playbackRate = Math.min(4, Math.max(0.5, store.speechRate || 1));
+    elevenAudio = audio;
+
+    let settled = false;
+    const bitir = (hata) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(guard);
+      URL.revokeObjectURL(url);
+      if (elevenAudio === audio) elevenAudio = null;
+      // Hoparlorden gelen sesin kuyrugunu komut sanmamak icin kisa tampon.
+      deafen(600);
+      if (hata) reject(hata);
+      else resolve();
+    };
+
+    // Ses takilirsa DRA sonsuza kadar "konusuyor" durumunda kalmasin.
+    const guard = setTimeout(() => bitir(), Math.min(120000, 5000 + textLength * 120));
+
+    audio.addEventListener("ended", () => bitir());
+    audio.addEventListener("error", () =>
+      bitir(new Error("Ses calinamadi.")),
+    );
+
+    // Konusma boyunca kendi sesimizi duymayalim.
+    deafen(Math.min(120000, 2000 + textLength * 120));
+
+    audio.play().catch((err) => bitir(err));
   });
 }

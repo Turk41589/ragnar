@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { SESSION_TOKEN, rejectReason } from "./guard.mjs";
 import * as apps from "./apps.mjs";
 import * as kick from "./kick.mjs";
+import * as tts from "./tts.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -122,6 +123,7 @@ const server = createServer(async (req, res) => {
       token: SESSION_TOKEN,
       search: { enabled: searchEnabled },
       kick: kick.status(),
+      tts: tts.status(),
       apps: await apps.scanInfo(),
     });
   }
@@ -197,6 +199,39 @@ const server = createServer(async (req, res) => {
       if (!fn) throw new Error("Bilinmeyen moderasyon islemi.");
       const message = await fn(...(body.args || []));
       return { message: typeof message === "string" ? message : JSON.stringify(message) };
+    });
+  }
+
+  /* ------------------------------------------------ seslendirme (TTS) */
+
+  if (url.pathname === "/api/tts/configure" && req.method === "POST") {
+    return handleAction(req, res, async (body) => ({
+      status: tts.configure({
+        apiKey: body.apiKey,
+        voiceId: body.voiceId,
+        model: body.model,
+      }),
+    }));
+  }
+
+  if (url.pathname === "/api/tts/voices" && req.method === "POST") {
+    return handleAction(req, res, async () => ({ voices: await tts.voices() }));
+  }
+
+  if (url.pathname === "/api/tts/models" && req.method === "POST") {
+    return handleAction(req, res, async () => ({ models: await tts.models() }));
+  }
+
+  if (url.pathname === "/api/tts/test" && req.method === "POST") {
+    return handleAction(req, res, async () => await tts.test());
+  }
+
+  if (url.pathname === "/api/tts/speak" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      const { audio, type, chars, truncated } = await tts.speak(body.text);
+      // Ses, ayni korumali uctan base64 olarak doner; arayuz ElevenLabs
+      // ile hic konusmaz, anahtari hic gormez.
+      return { audio: audio.toString("base64"), type, chars, truncated };
     });
   }
 

@@ -326,6 +326,16 @@ on("mic", ({ status, message }) => {
   hud.setGauge("mic", state.micEnabled ? 8 : 0, state.micEnabled ? "acik" : "kapali");
 });
 
+/**
+ * Seslendirme uyarilari. ElevenLabs cevap vermediginde DRA susmaz,
+ * bilgisayarin sesine doner — ama kullanici bunu bilsin.
+ */
+on("tts", ({ message }) => {
+  if (!message) return;
+  hud.log("system", message);
+  hud.toast(message, 6000);
+});
+
 /* ============================================================ komut baglami */
 
 const ctx = {
@@ -555,6 +565,11 @@ async function connectServer() {
     if (store.webSearch) await system.setSearchEnabled(true);
     if (store.streamerMode && store.kickToken) {
       await system.configureKick(store.kickToken, store.kickChannel);
+    }
+    // Ses ElevenLabs'a alinmissa anahtari her acilista yeniden bildiriyoruz;
+    // anahtar sunucuda/ana surecte tutulmaz, surec kapaninca kaybolur.
+    if (store.ttsProvider === "elevenlabs" && store.elevenKey) {
+      await system.configureTts(store.elevenKey, store.elevenVoice, store.elevenModel);
     }
     panel.syncSettings();
   } catch (err) {

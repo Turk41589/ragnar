@@ -137,6 +137,73 @@ export async function run(page, base, t, { external }) {
   t.has(diagChat.at(-1).text, "mikrofonu acin", "teshis mikrofon kapaliyken yol gosteriyor");
   await page.click('.tab[data-tab="ayar"]');
 
+  /* ------------------------------------------------------ DRA'nin sesi */
+  // Varsayilan ses bilgisayarindan gelir; ElevenLabs ancak kullanici
+  // acarsa devreye girer ve o zaman bile arayuz ElevenLabs'la konusmaz.
+  t.eq(
+    await page.evaluate(async () => (await import("/js/store.js")).store.ttsProvider),
+    "yerel",
+    "varsayilan ses yerel (disari cikmiyor)",
+  );
+  t.ok(await page.locator("#row-eleven").isHidden(), "ElevenLabs alanlari varsayilan gizli");
+
+  await page.selectOption("#set-tts", "elevenlabs");
+  await page.waitForTimeout(400);
+  t.ok(await page.locator("#row-eleven").isVisible(), "ElevenLabs secilince alanlar aciliyor");
+  t.eq(
+    await page.evaluate(async () => (await import("/js/store.js")).store.ttsProvider),
+    "elevenlabs",
+    "secim kaydediliyor",
+  );
+
+  // Anahtar girilmeden hazir sayilmamali.
+  t.eq(
+    await page.evaluate(async () => (await import("/js/system.js")).ttsReady()),
+    false,
+    "anahtarsizken ElevenLabs hazir degil",
+  );
+
+  // EN ONEMLISI: ElevenLabs secili ve HAZIR gorunuyorken bile istek
+  // basarisiz olabilir (kota, ag, gecersiz anahtar). O zaman DRA DILSIZ
+  // KALMAMALI. Sahte bir anahtarla hazir duruma gecip gercek bir
+  // basarisizlik uretiyoruz: ElevenLabs'a ulasilamiyor.
+  const hazirMi = await page.evaluate(async () => {
+    const system = await import("/js/system.js");
+    await system.configureTts("sk-sahte-anahtar", "sahte-ses", "eleven_flash_v2_5");
+    return system.ttsReady();
+  });
+  t.eq(hazirMi, true, "anahtar girilince hazir duruma geciyor");
+
+  const konusma = await page.evaluate(async () => {
+    const speech = await import("/js/speech.js");
+    const { store } = await import("/js/store.js");
+    store.voiceEnabled = true;
+    const t0 = Date.now();
+    // Basarisiz olursa bile cozmeli; takilirsa bu satir hic donmez.
+    await speech.say("deneme");
+    return Date.now() - t0;
+  });
+  t.ok(konusma < 25000, `ElevenLabs cevap vermeyince konusma cozuluyor (${konusma}ms)`);
+
+  // Kullanici sessizce yerel sese dusuruldugunu ogrenmeli.
+  const uyari = await page.$$eval("#log li", (els) =>
+    els.map((e) => e.textContent || "").filter((x) => /ElevenLabs/i.test(x)),
+  );
+  t.ok(
+    uyari.some((x) => /kullanilamadi/i.test(x)),
+    "ElevenLabs dusunce kullaniciya haber veriliyor",
+  );
+
+  // Anahtari geri cekiyoruz ki sonraki testler etkilenmesin.
+  await page.evaluate(async () => {
+    const system = await import("/js/system.js");
+    await system.configureTts("", "", "eleven_flash_v2_5");
+  });
+
+  await page.selectOption("#set-tts", "yerel");
+  await page.waitForTimeout(300);
+  t.ok(await page.locator("#row-eleven").isHidden(), "yerele donunce alanlar kapaniyor");
+
   /* --------------------------------------------------------- kalicilik */
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForTimeout(600);

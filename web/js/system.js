@@ -23,7 +23,13 @@ export const isDesktop = () => desktop;
 
 let token = null;
 let apps = [];
-let serverInfo = { platform: null, search: { enabled: false }, kick: { ready: false }, apps: {} };
+let serverInfo = {
+  platform: null,
+  search: { enabled: false },
+  kick: { ready: false },
+  tts: { ready: false },
+  apps: {},
+};
 
 /** Baglantiyi kurar ve ortam bilgisini alir. */
 export async function connect() {
@@ -145,6 +151,58 @@ export async function kickAction(action, args = []) {
     ? await window.dra.kick.action(action, args)
     : await post("/api/kick/action", { action, args });
   return data.message;
+}
+
+/* ----------------------------------------------------- seslendirme (TTS) */
+
+/**
+ * ElevenLabs ayarlarini sunucuya/ana surece bildirir.
+ * Anahtar burada birakilmaz: istek yapan taraf her zaman o taraftir.
+ */
+export async function configureTts(apiKey, voiceId, model) {
+  const data = desktop
+    ? await window.dra.tts.configure(apiKey, voiceId, model)
+    : await post("/api/tts/configure", { apiKey, voiceId, model });
+  serverInfo.tts = data.status;
+  return data.status;
+}
+
+export const ttsReady = () => Boolean(serverInfo.tts?.ready);
+
+export async function ttsVoices() {
+  const data = desktop
+    ? await window.dra.tts.voices()
+    : await post("/api/tts/voices");
+  return data.voices || [];
+}
+
+export async function ttsModels() {
+  const data = desktop
+    ? await window.dra.tts.models()
+    : await post("/api/tts/models");
+  return data.models || [];
+}
+
+export async function ttsTest() {
+  return desktop ? await window.dra.tts.test() : await post("/api/tts/test");
+}
+
+/**
+ * Metni seslendirir; ses baytlarini Blob olarak dondurur.
+ * ElevenLabs ile konusan taraf hep sunucu/ana surec — arayuz degil.
+ */
+export async function ttsSpeak(text) {
+  const data = desktop
+    ? await window.dra.tts.speak(text)
+    : await post("/api/tts/speak", { text });
+
+  const ikili = atob(data.audio);
+  const bytes = new Uint8Array(ikili.length);
+  for (let i = 0; i < ikili.length; i += 1) bytes[i] = ikili.charCodeAt(i);
+  return {
+    blob: new Blob([bytes], { type: data.type || "audio/mpeg" }),
+    truncated: Boolean(data.truncated),
+  };
 }
 
 /* --------------------------------------------------- masaustu ozellikleri */

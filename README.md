@@ -183,7 +183,39 @@ tarayıcının kendi servisini deneyebilirsiniz.
 Bulut tanımayı bilerek kullanmak isterseniz Ayar'dan bu anahtarı kapatın.
 Kapattığınızda rozet `tarayıcı servisi` olur — gizlenmez.
 
-Konuşma sentezi (DRA'nın sesi) işletim sisteminizin Türkçe sesini kullanır.
+### DRA'nın sesi
+
+Varsayılan olarak konuşma sentezi **işletim sisteminizin** Türkçe sesini
+kullanır; dışarıya hiçbir şey gitmez.
+
+İsterseniz Ayar sekmesindeki **"DRA'nın sesi"** listesinden **ElevenLabs**
+seçebilirsiniz. Bu bilinçli bir istisnadır ve ne anlama geldiğini açıkça
+söylemek gerekir:
+
+* Açtığınızda DRA'nın **söylediği** metin ElevenLabs sunucularına gider.
+  **Duyduğu ses gitmez** — mikrofonunuz hâlâ tamamen cihazınızda işlenir.
+  Yani "DRA beni dinliyor mu" sorusunun cevabı değişmez; değişen yalnızca
+  cevabın nasıl seslendirildiğidir.
+* API anahtarı bu bilgisayarda kalır. İstekleri arayüz değil, DRA'nın kendi
+  süreci (uygulamada ana süreç, tarayıcıda yerel sunucu) atar; anahtar
+  sayfaya hiç verilmez.
+* **ElevenLabs cevap vermezse DRA susmaz.** Kota bitti, ağ koptu, anahtar
+  bozuldu — hangisi olursa olsun bilgisayarın kendi sesine döner ve bunu
+  sohbette söyler.
+* Aynı cümleler ("Sizi dinliyorum efendim", "Not alındı") yeniden
+  seslendirilmez; önbellekte tutulur. Kotanız her tekrar için harcanmaz.
+* Ayarı kapattığınızda anahtar süreçten silinir ve o uca bir daha istek
+  gitmez.
+
+Kurulum: anahtarı yapıştırın → **"Sesleri yükle"** → listeden bir ses seçin →
+**"Bağlantıyı sına"**. Sınama ses üretmez, yani kotanızdan harcamaz; yalnızca
+anahtarın geçerli olduğunu, seçtiğiniz sesin hesapta bulunduğunu ve kalan
+karakter hakkınızı söyler. Model listesinde Türkçe destekleyenler başa alınır —
+desteklemeyen bir model seçerseniz DRA anlaşılmaz konuşur.
+
+> Not: Geliştirme ortamında ElevenLabs anahtarı ve dışarı çıkış yok. Köprü
+> mock'lanmış isteklerle sınandı (46 test), canlı doğrulanmadı. İlk kullanımda
+> "Bağlantıyı sına" ile doğrulayın.
 
 ### Masaüstü sürümünde ses: gömülü motor
 
@@ -290,7 +322,7 @@ Açıkken sesli moderasyon:
 | Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm; **modlar** (açılışta başlat, arka planda dinle, web araması, yayıncı desteği); uygulama taraması |
 | Not | not ekle, tek tek sil, hepsini temizle |
 | Alarm | saatli alarm kur, etiket ver, her gün tekrarla, aç/kapa, sil |
-| Ayar | ses, mikrofon, ses tanıma motoru ve modeli, sesi cihazda tut, açılış dizisi, konuşma hızı, otomatik uyku, tema rengi, ek uyandırma sözcükleri, sıfırlama |
+| Ayar | ses, mikrofon, ses tanıma motoru ve modeli, sesi cihazda tut, açılış dizisi, **DRA'nın sesi** (yerel / ElevenLabs), konuşma hızı, otomatik uyku, tema rengi, ek uyandırma sözcükleri, sıfırlama |
 
 **Orta** — reaktör. Dönen halkalar, glif şeridi ve yörüngedeki parçalar;
 mikrofon sesiyle ve duruma göre canlanır.
@@ -380,6 +412,7 @@ server/guard.mjs     yerel istek koruması (jeton, köken, içerik türü)
 server/apps.mjs      uygulama/oyun tarama, başlatma, kapatma
 server/search.mjs    web araması (kapalıyken hiç yüklenmez)
 server/kick.mjs      Kick moderasyon köprüsü
+server/tts.mjs       ElevenLabs seslendirmesi (anahtar girilmeden istek atmaz)
 web/js/system.js     sunucu köprüsü (istemci tarafı)
 ```
 

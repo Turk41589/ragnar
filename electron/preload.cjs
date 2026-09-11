@@ -39,6 +39,15 @@ contextBridge.exposeInMainWorld("dra", {
     action: (action, args) => call("dra:kick:action", { action, args }),
   },
 
+  /** ElevenLabs seslendirmesi (istege bagli). */
+  tts: {
+    configure: (apiKey, voiceId, model) => call("dra:tts:configure", { apiKey, voiceId, model }),
+    voices: () => call("dra:tts:voices"),
+    models: () => call("dra:tts:models"),
+    test: () => call("dra:tts:test"),
+    speak: (text) => call("dra:tts:speak", { text }),
+  },
+
   /** Gomulu ses tanima. */
   stt: {
     status: () => call("dra:stt:status"),
