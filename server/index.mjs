@@ -24,6 +24,7 @@ import { SESSION_TOKEN, rejectReason } from "./guard.mjs";
 import * as apps from "./apps.mjs";
 import * as kick from "./kick.mjs";
 import * as tts from "./tts.mjs";
+import * as piper from "./piper.mjs";
 import * as permissions from "./permissions.mjs";
 import * as report from "./report.mjs";
 import * as mail from "./mail.mjs";
@@ -145,6 +146,7 @@ const server = createServer(async (req, res) => {
       search: { enabled: searchEnabled },
       kick: kick.status(),
       tts: tts.status(),
+    piper: piper.status(),
     mail: mail.status(),
     youtube: youtube.status(),
       apps: await apps.scanInfo(),
@@ -519,6 +521,25 @@ const server = createServer(async (req, res) => {
     return handleAction(req, res, async (body) => ({
       report: await business.report({ days: Number(body.days) || 30 }),
     }));
+  }
+
+  /* --------------------------------------------------------- piper -- */
+
+  if (url.pathname === "/api/piper/configure" && req.method === "POST") {
+    return handleAction(req, res, async (body) => ({
+      status: piper.configure({ bin: body.bin, voice: body.voice }),
+    }));
+  }
+
+  if (url.pathname === "/api/piper/test" && req.method === "POST") {
+    return handleAction(req, res, async () => await piper.test());
+  }
+
+  if (url.pathname === "/api/piper/speak" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      const { audio, type, truncated } = await piper.speak(body.text);
+      return { audio: audio.toString("base64"), type, truncated };
+    });
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {

@@ -486,12 +486,35 @@
               <label for="set-tts">DRA'nin sesi</label>
               <select id="set-tts">
                 <option value="yerel">Bilgisayarin kendi sesi (internetsiz)</option>
+                <option value="piper">Piper &mdash; cihazda, ucretsiz</option>
                 <option value="elevenlabs">ElevenLabs</option>
               </select>
               <small class="hint" id="tts-hint">
                 ElevenLabs daha dogal konusur. Secildiginde DRA'nin soyledigi
                 metin ElevenLabs'a gider; duydugu ses gitmez &mdash; mikrofon
                 her zaman cihazinizda islenir.
+              </small>
+            </li>
+
+            <li class="settings__stack" id="row-piper" hidden>
+              <button class="btn btn--icon btn--wide" type="button" id="pick-piper-bin">
+                Piper programini sec
+              </button>
+              <p class="nextalarm" id="piper-bin-info">Secilmedi</p>
+              <button class="btn btn--icon btn--wide" type="button" id="pick-piper-voice">
+                Ses modelini sec (.onnx)
+              </button>
+              <p class="nextalarm" id="piper-voice-info">Secilmedi</p>
+              <button class="btn btn--icon btn--wide" type="button" id="piper-preview">
+                Sesi dinle
+              </button>
+              <p class="nextalarm" id="piper-status">Hazir degil</p>
+              <small class="hint">
+                Piper acik kaynak ve ucretsiz; ses tamamen bu bilgisayarda
+                uretilir, internet ve anahtar gerekmez. piper programini ve
+                Turkce ses paketini bir kez indirip buradan gosterin.
+                Ses paketi IKI dosyadir: <code>.onnx</code> ve
+                <code>.onnx.json</code> &mdash; ikisi ayni klasorde olmali.
               </small>
             </li>
 

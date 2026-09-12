@@ -22,7 +22,11 @@ export async function startMeter() {
         autoGainControl: true,
       },
     });
-  } catch {
+  } catch (err) {
+    // Seviye gostergesi sustuysa is durmaz; asil yakalama ayri aciliyor
+    // ve orada hata SEBEBIYLE birlikte bildiriliyor. Yine de sessiz
+    // kalmayalim: konsola yazilsin.
+    console.warn("[dra] ses seviyesi olculemiyor:", err?.name || err?.message || err);
     return false;
   }
 

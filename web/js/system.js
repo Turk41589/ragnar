@@ -28,6 +28,7 @@ let serverInfo = {
   search: { enabled: false },
   kick: { ready: false },
   tts: { ready: false },
+  piper: { ready: false },
   mail: { ready: false },
   youtube: { ready: false },
   apps: {},
@@ -433,6 +434,40 @@ export async function mailSummary(days = 2) {
     ? await bridge(() => window.dra.mail.summary(days))
     : await post("/api/mail/summary", { days });
   return data.summary;
+}
+
+/* --------------------------------------------------------------- piper */
+
+export async function configurePiper(bin, voice) {
+  const d = desktop
+    ? await bridge(() => window.dra.piper.configure(bin, voice))
+    : await post("/api/piper/configure", { bin, voice });
+  serverInfo.piper = d.status;
+  return d.status;
+}
+
+export const piperReady = () => Boolean(serverInfo.piper?.ready);
+
+export async function piperTest() {
+  return desktop ? await bridge(() => window.dra.piper.test()) : await post("/api/piper/test");
+}
+
+export async function piperPick(kind) {
+  if (!desktop) return null;
+  const { path } = await bridge(() => window.dra.piper.pick(kind));
+  return path;
+}
+
+/** Metni seslendirir; ses baytlarini Blob olarak dondurur. */
+export async function piperSpeak(text) {
+  const d = desktop
+    ? await bridge(() => window.dra.piper.speak(text))
+    : await post("/api/piper/speak", { text });
+
+  const ikili = atob(d.audio);
+  const bytes = new Uint8Array(ikili.length);
+  for (let i = 0; i < ikili.length; i += 1) bytes[i] = ikili.charCodeAt(i);
+  return { blob: new Blob([bytes], { type: d.type || "audio/wav" }), truncated: d.truncated };
 }
 
 /* ----------------------------------------------------- seslendirme (TTS) */

@@ -336,7 +336,15 @@ on("mic", ({ status, message }) => {
     dom.btnMic?.setAttribute("aria-pressed", "false");
     hud.sleepStatus(message || "Mikrofon hatasi", status === "warn" ? "warn" : "error");
     hud.sleepMeter(false, 0);
-    if (message) hud.toast(message, 5000);
+    if (message) {
+      // Uyku ekranindaki yazi HUD acikken gorunmuyor, toast da birkac
+      // saniyede kayboluyor. Kalici yer sohbet kaydi.
+      hud.log(status === "warn" ? "system" : "error", message);
+      hud.toast(message, 9000);
+      // Dugme yanlis bilgi vermesin.
+      dom.btnEnable.disabled = false;
+      dom.btnEnable.textContent = "Mikrofonu baslat";
+    }
   }
   hud.setGauge("mic", state.micEnabled ? 8 : 0, state.micEnabled ? "acik" : "kapali");
 });
@@ -1518,7 +1526,26 @@ async function enableMicInner() {
     hud.sleepStatus("Mikrofon izni bekleniyor…", null);
     const metered = await audio.startMeter();
     resetRecognitionHealth();
-    speech.startListening();
+
+    // ONEMLI: mikrofon GERCEKTEN acilmadan "acik" demiyoruz.
+    // Onceki hali baslatmayi ateşleyip hemen "Mikrofon acik" yaziyordu;
+    // izin reddedilse ya da cihaz olmasa bile dugme acik gorunuyor,
+    // kullaniciya hicbir sey soylenmiyordu.
+    try {
+      await speech.startEmbeddedAndWait();
+    } catch (err) {
+      const mesaj = err?.message || "Mikrofon acilamadi.";
+      hud.log("error", mesaj);
+      hud.sleepStatus("Mikrofon acilamadi", "error");
+      hud.toast(mesaj, 9000);
+      state.micEnabled = false;
+      dom.btnEnable.disabled = false;
+      dom.btnEnable.textContent = "Mikrofonu baslat";
+      hud.setPrivacyPill("off");
+      audio.stopMeter();
+      return;
+    }
+
     state.micEnabled = true;
     dom.btnEnable.textContent = "Mikrofon acik";
     dom.btnEnable.disabled = true;

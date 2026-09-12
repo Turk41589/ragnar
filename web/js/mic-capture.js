@@ -23,11 +23,49 @@ export function capturing() {
 }
 
 /**
+ * getUserMedia hatasini KULLANILABILIR bir cumleye cevirir.
+ *
+ * Onceki hali her hatayi yutup `false` donuyordu. Sonucu: mikrofon
+ * acilmiyor ama neden acilmadigi hicbir yerde yazmiyor — kullanicinin
+ * elinde hicbir sey kalmiyordu. Hangi hata oldugunu bilmek, ne
+ * yapilacagini da belirliyor; o yuzden her biri ayri anlatiliyor.
+ */
+export function micError(err) {
+  const ad = err?.name || "";
+
+  if (ad === "NotAllowedError" || ad === "SecurityError") {
+    return "Mikrofon izni verilmedi. Windows'ta Ayarlar → Gizlilik ve " +
+      "guvenlik → Mikrofon bolumunden masaustu uygulamalarina izin verin, " +
+      "sonra DRA'yi yeniden baslatin.";
+  }
+  if (ad === "NotFoundError" || ad === "DevicesNotFoundError") {
+    return "Mikrofon bulunamadi. Cihaz takili mi ve Windows ses ayarlarinda " +
+      "goruyor musunuz? Bluetooth kulaklik ise once baglanmasini bekleyin.";
+  }
+  if (ad === "NotReadableError" || ad === "TrackStartError") {
+    return "Mikrofona erisilemedi — baska bir uygulama kullaniyor olabilir " +
+      "(Zoom, Discord, OBS). Onu kapatip tekrar deneyin.";
+  }
+  if (ad === "OverconstrainedError") {
+    return "Mikrofon istenen ses ayarlarini desteklemiyor. Windows ses " +
+      "ayarlarindan baska bir giris cihazi secmeyi deneyin.";
+  }
+  return err?.message
+    ? `Mikrofon acilamadi: ${err.message}`
+    : "Mikrofon acilamadi (bilinmeyen sebep).";
+}
+
+/**
  * Yakalamayi baslatir. Her hazir parca icin `handler(Int16Array)` cagrilir.
  */
 export async function startCapture(handler) {
   if (node) return true;
-  if (!navigator.mediaDevices?.getUserMedia) return false;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw Object.assign(
+      new Error("Bu ortamda mikrofon erisimi yok."),
+      { code: "MIC" },
+    );
+  }
 
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -38,8 +76,9 @@ export async function startCapture(handler) {
         autoGainControl: true,
       },
     });
-  } catch {
-    return false;
+  } catch (err) {
+    // Sessizce false donmek yerine SEBEBI tasiyoruz.
+    throw Object.assign(new Error(micError(err)), { code: "MIC", cause: err });
   }
 
   const AudioCtx = window.AudioContext || window.webkitAudioContext;

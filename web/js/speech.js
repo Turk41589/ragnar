@@ -119,21 +119,29 @@ if (embedded) {
 async function startEmbedded() {
   await window.dra.stt.start();
 
-  const started = await startCapture((pcm) => {
+  // startCapture artik sebebi tasiyan bir hata atiyor; yutmuyoruz.
+  await startCapture((pcm) => {
     // Kopyanin sahibi IPC oldugu icin altta yatan tamponu gonderiyoruz.
     window.dra.stt.feed(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
   });
-
-  if (!started) {
-    emit("mic", { status: "error", message: "Mikrofona erisilemedi." });
-    return false;
-  }
 
   embeddedRunning = true;
   localActive = true;
   stats.starts += 1;
   lastResultAt = Date.now();
   emit("mic", { status: "on" });
+  return true;
+}
+
+/**
+ * Gomulu motoru baslatir ve GERCEKTEN acilana kadar bekler.
+ *
+ * `startListening` hemen donuyor (uyandirma yolunda beklemek istemiyoruz),
+ * ama mikrofon dugmesi "acildi" demeden once sonucu bilmek zorunda.
+ */
+export async function startEmbeddedAndWait() {
+  if (embeddedRunning) return true;
+  await startEmbedded();
   return true;
 }
 
@@ -349,6 +357,8 @@ export function startListening(profile = PROFILES[0]) {
     return true;
   }
 
+  /* Bu satira gelinmiyorsa gomulu motor kullanilmiyor demektir. */
+
   if (!speechSupported) {
     emit("mic", {
       status: "unsupported",
@@ -516,6 +526,15 @@ export async function say(text) {
   // Once susalim: yeni bir cumle, eskisinin ustune binmemeli.
   shutUp();
 
+  // Piper cihazda calisiyor: kota yok, internet yok, anahtar yok.
+  if (store.ttsProvider === "piper" && system.piperReady()) {
+    try {
+      return await sayWithPiper(clean, speakGeneration);
+    } catch (err) {
+      elevenFailed(err);
+    }
+  }
+
   if (store.ttsProvider === "elevenlabs" && system.ttsReady()) {
     try {
       return await sayWithEleven(clean, speakGeneration);
@@ -615,7 +634,7 @@ function elevenFailed(err) {
   elevenWarned = true;
   emit("tts", {
     status: "fallback",
-    message: `ElevenLabs sesi kullanilamadi (${err?.message || "bilinmeyen hata"}). ` +
+    message: `Secili ses kullanilamadi (${err?.message || "bilinmeyen hata"}). ` +
       "Bilgisayarin kendi sesine gecildi.",
   });
 }
@@ -627,6 +646,27 @@ function cacheAudio(key, blob) {
   while (elevenCache.size > ELEVEN_CACHE_MAX) {
     elevenCache.delete(elevenCache.keys().next().value);
   }
+}
+
+/**
+ * Piper ile seslendirme. ElevenLabs yolunun aynisi ama istek disariya
+ * degil, kendi bilgisayarimizdaki programa gidiyor.
+ */
+async function sayWithPiper(text, nesil) {
+  const key = `piper|${text}`;
+
+  let blob = elevenCache.get(key);
+  if (blob) {
+    elevenCache.delete(key);
+    elevenCache.set(key, blob);
+  } else {
+    const sonuc = await system.piperSpeak(text);
+    blob = sonuc.blob;
+    cacheAudio(key, blob);
+  }
+
+  if (nesil !== speakGeneration) return;
+  await playBlob(blob, text.length);
 }
 
 async function sayWithEleven(text, nesil) {
@@ -660,11 +700,13 @@ async function sayWithEleven(text, nesil) {
  * Onbellege yazmaz ve saglayici secimine bakmaz: kullanici sesleri
  * karsilastirirken her seferinde gercekten o sesi duymali.
  */
-export async function previewVoice(text) {
+export async function previewVoice(text, saglayici = "elevenlabs") {
   const clean = (text || "").trim();
   if (!clean) return;
   shutUp();
-  const { blob } = await system.ttsSpeak(clean);
+  const { blob } = saglayici === "piper"
+    ? await system.piperSpeak(clean)
+    : await system.ttsSpeak(clean);
   await playBlob(blob, clean.length);
 }
 

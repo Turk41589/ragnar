@@ -138,6 +138,14 @@ contextBridge.exposeInMainWorld("dra", {
     summary: (days) => call("dra:mail:summary", { days }),
   },
 
+  /** Piper: cihazda calisan ucretsiz seslendirme. */
+  piper: {
+    configure: (bin, voice) => call("dra:piper:configure", { bin, voice }),
+    test: () => call("dra:piper:test"),
+    speak: (text) => call("dra:piper:speak", { text }),
+    pick: (kind) => call("dra:piper:pick", { kind }),
+  },
+
   /** ElevenLabs seslendirmesi (istege bagli). */
   tts: {
     configure: (apiKey, voiceId, model) => call("dra:tts:configure", { apiKey, voiceId, model }),

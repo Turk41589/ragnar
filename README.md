@@ -440,6 +440,21 @@ Tarayıcıların varsayılan ses tanıması sesi **satıcının sunucusuna gönd
 * Üst bardaki rozet o an hangi modda olduğunuzu gösterir:
   `cihazda` · `tarayıcı servisi` · `yazı modu`.
 
+### Mikrofon açılmıyorsa
+
+DRA artık **neden** açılmadığını söyler — sohbete yazar, ekranda da gösterir:
+
+* **İzin verilmedi** → Windows: Ayarlar → Gizlilik ve güvenlik → Mikrofon →
+  masaüstü uygulamalarına izin verin, sonra DRA'yı yeniden başlatın
+* **Mikrofon bulunamadı** → cihaz takılı mı, Windows ses ayarlarında görünüyor
+  mu? Bluetooth kulaklıksa önce bağlanmasını bekleyin
+* **Başka uygulama kullanıyor** → Zoom, Discord, OBS gibi bir program mikrofonu
+  tutuyor olabilir
+
+Bir dönem bunların hiçbiri görünmüyordu: `getUserMedia` hatası yutuluyor,
+arayüz de mikrofon açılmamışken "Mikrofon açık" yazıyordu. Artık açılış
+**gerçekten doğrulanmadan** öyle yazmıyor.
+
 ### Ses tanıma çalışmıyorsa
 
 Ayar sekmesindeki **"Ses tanımayı sına"** düğmesine basın. Tarayıcının ne
@@ -458,6 +473,41 @@ Kapattığınızda rozet `tarayıcı servisi` olur — gizlenmez.
 
 Varsayılan olarak konuşma sentezi **işletim sisteminizin** Türkçe sesini
 kullanır; dışarıya hiçbir şey gitmez.
+
+### Ücretsiz ses: Piper (cihazda)
+
+Ayar → **DRA'nın sesi** → **Piper**. Açık kaynak, ücretsiz, **tamamen bu
+bilgisayarda** çalışır: internet yok, anahtar yok, kota yok. Projenin en
+baştaki "hiçbir şirkete bağlanmasın" kuralına geri dönüş — kaliteli ses için
+dışarı çıkmak şart değil.
+
+Kurulum tek seferlik, DRA kendi başına bir şey indirmez:
+
+1. [piper sürümleri](https://github.com/rhasspy/piper/releases) → Windows
+   paketini indirip bir klasöre açın
+2. [piper sesleri](https://huggingface.co/rhasspy/piper-voices/tree/main/tr/tr_TR)
+   → bir Türkçe ses seçin (`dfki` ya da `fahrettin`, `medium` kalitesi iyi bir
+   başlangıç)
+3. Ayar sekmesinde **piper programını** ve **ses modelini** gösterin →
+   **Sesi dinle**
+
+> Ses paketi **iki dosyadır**: `.onnx` ve `.onnx.json`. Çoğu kişi yalnızca
+> ilkini indiriyor ve piper sessizce çalışmıyor. DRA bunu önceden kontrol eder
+> ve eksikse açıkça söyler.
+
+**Diğer ücretsiz seçenekler:** Windows'un kendi Türkçe sesleri zaten
+kullanılıyor (varsayılan "yerel" seçeneği). Windows 11'de
+*Ayarlar → Saat ve dil → Konuşma → Ses ekle* ile daha doğal Türkçe sesler
+yükleyebilirsiniz; kurduğunuz anda listeye düşerler, kod değişikliği gerekmez.
+Google Cloud TTS, Azure ve Amazon Polly'nin de ücretsiz kotaları var ama
+üçü de hesap, anahtar ve dışarı bağlantı istiyor — Piper bunların hiçbirini
+istemiyor.
+
+> Not: Geliştirme ortamından piper indirilemedi (ağ kapalı). Çağrı biçimi,
+> argümanlar ve WAV okuma, piper'ı taklit eden sahte bir ikiliye karşı sınandı
+> (25 test); gerçek piper ile canlı doğrulanmadı.
+
+### ElevenLabs
 
 Ayar sekmesindeki **"DRA'nın sesi"** listesinden **ElevenLabs** seçerseniz
 DRA belirgin biçimde daha doğal konuşur. Ne anlama geldiği açık olsun:
@@ -686,6 +736,7 @@ server/apps.mjs      uygulama/oyun tarama, başlatma, kapatma
 server/search.mjs    web araması (kapalıyken hiç yüklenmez)
 server/kick.mjs      Kick moderasyon köprüsü
 server/tts.mjs       ElevenLabs seslendirmesi (anahtar girilmeden istek atmaz)
+server/piper.mjs     Piper: cihazda calisan ucretsiz seslendirme
 server/permissions.mjs  erisim izinleri — yetki denetiminin yapildigi yer
 server/report.mjs    bilgisayar raporu (disk, bellek, Windows guncellemeleri)
 server/mail.mjs      e-posta raporu (bagimliliksiz IMAP, yalnizca basliklar)

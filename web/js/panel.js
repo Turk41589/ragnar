@@ -294,6 +294,9 @@ export function syncSettings() {
 
   $("set-tts").value = store.ttsProvider;
   $("row-eleven").hidden = store.ttsProvider !== "elevenlabs";
+  $("row-piper").hidden = store.ttsProvider !== "piper";
+  $("piper-bin-info").textContent = store.piperBin || "Secilmedi";
+  $("piper-voice-info").textContent = store.piperVoice || "Secilmedi";
   $("set-eleven-key").value = store.elevenKey;
   syncElevenOption($("set-eleven-voice"), store.elevenVoice);
   syncElevenOption($("set-eleven-model"), store.elevenModel);
@@ -760,6 +763,33 @@ export async function renderPermissions() {
     }
 
     list.append(li);
+  }
+}
+
+/* ------------------------------------------------------------------- piper */
+
+async function pushPiper() {
+  if (store.ttsProvider !== "piper") return;
+  try {
+    await system.configurePiper(store.piperBin, store.piperVoice);
+  } catch (err) {
+    ctx.toast(`Piper ayarlanamadi: ${err.message}`, 5000);
+  }
+}
+
+async function refreshPiperStatus() {
+  const el = $("piper-status");
+  if (!el) return;
+  if (store.ttsProvider !== "piper") return;
+  if (!store.piperBin) { el.textContent = "Piper programi secilmedi"; return; }
+  if (!store.piperVoice) { el.textContent = "Ses modeli secilmedi"; return; }
+
+  el.textContent = "Deneniyor…";
+  try {
+    const sonuc = await system.piperTest();
+    el.textContent = `Calisiyor — ${sonuc.voice}`;
+  } catch (err) {
+    el.textContent = `Calismadi: ${err.message}`;
   }
 }
 
@@ -1390,13 +1420,62 @@ export function mountPanel(context) {
     }
   });
 
+  /* ----------------------------------------------------------- piper -- */
+
+  for (const [id, kind, alan] of [
+    ["pick-piper-bin", "bin", "piperBin"],
+    ["pick-piper-voice", "voice", "piperVoice"],
+  ]) {
+    $(id).addEventListener("click", async () => {
+      if (!system.isDesktop()) {
+        ctx.toast("Dosya secimi yalnizca uygulama surumunde");
+        return;
+      }
+      const yol = await system.piperPick(kind).catch(() => null);
+      if (!yol) return;
+      store[alan] = yol;
+      saveStore();
+      syncSettings();
+      await pushPiper();
+      refreshPiperStatus();
+    });
+  }
+
+  $("piper-preview").addEventListener("click", async () => {
+    if (!store.piperBin || !store.piperVoice) {
+      ctx.toast("Once piper programini ve ses modelini secin");
+      return;
+    }
+    $("piper-status").textContent = "Dinleniyor…";
+    try {
+      await pushPiper();
+      await speech.previewVoice(ELEVEN_ORNEK, "piper");
+      refreshPiperStatus();
+    } catch (err) {
+      $("piper-status").textContent = `Calismadi: ${err.message}`;
+      ctx.log("system", `Piper calismadi: ${err.message}`);
+    }
+  });
+
   /* ------------------------------------------------------ ElevenLabs -- */
 
   $("set-tts").addEventListener("change", async (event) => {
-    store.ttsProvider = event.target.value === "elevenlabs" ? "elevenlabs" : "yerel";
+    const secim = event.target.value;
+    store.ttsProvider = ["elevenlabs", "piper"].includes(secim) ? secim : "yerel";
     saveStore();
     syncSettings();
     speech.resetElevenCache();
+
+    if (store.ttsProvider === "piper") {
+      ctx.log(
+        "system",
+        "DRA'nin sesi Piper'a alindi — ses bu bilgisayarda uretilecek, " +
+          "disariya hicbir sey gitmeyecek.",
+      );
+      await pushPiper();
+      refreshPiperStatus();
+      return;
+    }
 
     if (store.ttsProvider === "elevenlabs") {
       ctx.log("system", "DRA'nin sesi ElevenLabs'a alindi.");

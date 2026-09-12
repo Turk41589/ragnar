@@ -34,6 +34,9 @@ const DEFAULTS = {
   elevenKey: "",
   elevenVoice: "",
   elevenModel: "eleven_flash_v2_5",
+  // Piper: cihazda calisan ucretsiz ses. Program ve ses modeli yolu.
+  piperBin: "",
+  piperVoice: "",
   // E-posta raporu: Gmail adresi + UYGULAMA SIFRESI (normal sifre degil).
   mailMode: false,
   mailUser: "",
@@ -84,8 +87,11 @@ function coerce(saved) {
   if (typeof saved.kickToken === "string") store.kickToken = saved.kickToken.slice(0, 400);
   if (typeof saved.kickChannel === "string") store.kickChannel = saved.kickChannel.slice(0, 80);
 
-  if (saved.ttsProvider === "yerel" || saved.ttsProvider === "elevenlabs") {
+  if (["yerel", "elevenlabs", "piper"].includes(saved.ttsProvider)) {
     store.ttsProvider = saved.ttsProvider;
+  }
+  for (const k of ["piperBin", "piperVoice"]) {
+    if (typeof saved[k] === "string") store[k] = saved[k].slice(0, 600);
   }
   if (typeof saved.elevenKey === "string") store.elevenKey = saved.elevenKey.slice(0, 300);
   if (typeof saved.elevenVoice === "string") store.elevenVoice = saved.elevenVoice.slice(0, 100);

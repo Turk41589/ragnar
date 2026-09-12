@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import * as apps from "../server/apps.mjs";
 import * as kick from "../server/kick.mjs";
 import * as tts from "../server/tts.mjs";
+import * as piper from "../server/piper.mjs";
 import * as permissions from "../server/permissions.mjs";
 import * as report from "../server/report.mjs";
 import * as mail from "../server/mail.mjs";
@@ -273,6 +274,7 @@ function registerIpc() {
     search: { enabled: searchEnabled },
     kick: kick.status(),
     tts: tts.status(),
+    piper: piper.status(),
     mail: mail.status(),
     youtube: youtube.status(),
     apps: await apps.scanInfo(),
@@ -505,6 +507,25 @@ function registerIpc() {
   handle("dra:mail:summary", async ({ days }) => {
     await permissions.require("eposta");
     return { summary: await mail.summary({ days: Number(days) || 2 }) };
+  });
+
+  /* ----------------------------------------------------- piper ----- */
+
+  handle("dra:piper:configure", async ({ bin, voice }) => ({
+    status: piper.configure({ bin, voice }),
+  }));
+  handle("dra:piper:test", async () => await piper.test());
+  handle("dra:piper:speak", async ({ text }) => {
+    const { audio, type, truncated } = await piper.speak(text);
+    return { audio: audio.toString("base64"), type, truncated };
+  });
+
+  handle("dra:piper:pick", async ({ kind }) => {
+    const secenek = kind === "voice"
+      ? { properties: ["openFile"], filters: [{ name: "Piper ses modeli", extensions: ["onnx"] }] }
+      : { properties: ["openFile"] };
+    const sonuc = await dialog.showOpenDialog(mainWindow, secenek);
+    return { path: sonuc.canceled ? null : sonuc.filePaths[0] };
   });
 
   /* ------------------------------------------------ seslendirme ---- */

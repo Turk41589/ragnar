@@ -162,8 +162,8 @@ export async function run(_page, _base, t) {
     t.eq(
       bridge.anahtarlar,
       ["apps", "autoreply", "business", "desktop", "health", "kick", "mail", "messages",
-       "montage", "on", "perm", "report", "search", "sources", "stt", "tts", "version",
-       "videos", "window", "youtube"],
+       "montage", "on", "perm", "piper", "report", "search", "sources", "stt", "tts",
+       "version", "videos", "window", "youtube"],
       "kopru yalnizca beklenen yuzeyi aciyor",
     );
 
@@ -456,6 +456,39 @@ export async function run(_page, _base, t) {
     await window.waitForTimeout(700);
     const halaCalisiyor = await window.$$eval("#log li .chat__bubble", (e) => e.at(-1)?.textContent ?? "");
     t.has(halaCalisiyor, "Saat ", "motor basarisiz olduktan sonra komutlar calisiyor");
+
+    /* ------------------------------------ mikrofon hatalari anlatiliyor *
+     * Kullanicida mikrofon acilmiyor ama EKRANDA HICBIR SEY YAZMIYORDU:
+     * getUserMedia hatasi yutuluyor, arayuz de "Mikrofon acik" diyordu.
+     * Artik her hata sebebiyle birlikte geliyor.                        */
+    const micHatalari = await window.evaluate(async () => {
+      const mc = await import("./js/mic-capture.js");
+      const gercek = navigator.mediaDevices.getUserMedia;
+      const cikti = {};
+      for (const ad of ["NotAllowedError", "NotFoundError", "NotReadableError", "Baska"]) {
+        navigator.mediaDevices.getUserMedia = async () => {
+          const e = new Error("deneme"); e.name = ad; throw e;
+        };
+        try {
+          await mc.startCapture(() => {});
+          cikti[ad] = null; // hata atmadi — kotu
+        } catch (err) {
+          cikti[ad] = err.message;
+        }
+      }
+      navigator.mediaDevices.getUserMedia = gercek;
+      return cikti;
+    });
+
+    t.has(micHatalari.NotAllowedError || "", "izin", "izin reddinde sebep soyleniyor");
+    t.has(micHatalari.NotAllowedError || "", "Ayarlar", "izin reddinde ne yapilacagi yaziyor");
+    t.has(micHatalari.NotFoundError || "", "bulunamadi", "cihaz yoksa soyleniyor");
+    t.has(micHatalari.NotReadableError || "", "baska bir uygulama", "cihaz mesgulse soyleniyor");
+    t.ok(micHatalari.Baska, "bilinmeyen hata da sessiz gecilmiyor");
+    t.ok(
+      Object.values(micHatalari).every(Boolean),
+      "hicbir mikrofon hatasi sessizce yutulmuyor",
+    );
 
     /* ------------------------------------ kapali mikrofonda artik sonuc */
     // Mikrofon kapaliyken kuyrukta kalmis bir sonuc komut sayilmamali.
