@@ -259,6 +259,16 @@ export function syncSettings() {
   $("set-kick-channel").value = store.kickChannel;
   $("set-kick-token").value = store.kickToken;
 
+  syncSwitch($("set-montage"), store.montageMode);
+  $("montage-fields").hidden = !store.montageMode;
+  $("set-montage-template").value = store.montageTemplate;
+  $("montage-project-row").hidden = store.montageTemplate !== "proje";
+  $("set-montage-title").value = store.montageTitle;
+  $("montage-clips-info").textContent = store.montageClips || "Klasor secilmedi";
+  $("montage-project-info").textContent = store.montageProject || "Proje secilmedi";
+  $("montage-image-info").textContent = store.montageImage || "Gorsel secilmedi";
+  $("montage-music-info").textContent = store.montageMusic || "Muzik secilmedi";
+
   syncSwitch($("set-mail"), store.mailMode);
   $("mail-fields").hidden = !store.mailMode;
   $("set-mail-user").value = store.mailUser;
@@ -277,6 +287,40 @@ export function syncSettings() {
   $("set-sleep").value = String(store.autoSleepMinutes);
   $("set-wake").value = store.extraWakeWords.join(", ");
   renderSwatches();
+}
+
+/* ------------------------------------------------------------------ montaj */
+
+/** ffmpeg var mi? Yoksa nasil kurulacagini yaziyoruz. */
+async function refreshMontageStatus() {
+  const el = $("montage-ffmpeg");
+  if (!el) return;
+  try {
+    const { ffmpeg } = await system.montageStatus();
+    el.textContent = ffmpeg.ready
+      ? `ffmpeg hazir (${ffmpeg.version})`
+      : ffmpeg.advice || "ffmpeg kurulu degil";
+    $("montage-run").disabled = !ffmpeg.ready;
+  } catch (err) {
+    el.textContent = `Denetlenemedi: ${err.message}`;
+  }
+}
+
+/** Secilen projeden cikarilan uslubu sohbete kart olarak basar. */
+async function showStyle(path) {
+  try {
+    const uslup = await ctx.withPermission(() => system.montageStyle(path));
+    if (!uslup) return;
+    ctx.showStyleCard(uslup);
+  } catch (err) {
+    ctx.toast(`Proje okunamadi: ${err.message}`, 6000);
+    $("montage-project-info").textContent = `Okunamadi: ${err.message}`;
+  }
+}
+
+export function setMontageStatus(text) {
+  const el = $("montage-status");
+  if (el) el.textContent = text;
 }
 
 /* ----------------------------------------------------------------- e-posta */
@@ -674,6 +718,59 @@ export function mountPanel(context) {
       }
     });
   }
+
+  /* ---------------------------------------------------------- montaj -- */
+
+  $("set-montage").addEventListener("click", async () => {
+    store.montageMode = !store.montageMode;
+    saveStore();
+    syncSettings();
+    if (store.montageMode) {
+      ctx.log("system", "Montaj modu acildi.");
+      await refreshMontageStatus();
+    }
+  });
+
+  $("set-montage-template").addEventListener("change", (event) => {
+    store.montageTemplate = event.target.value;
+    saveStore();
+    syncSettings();
+  });
+
+  $("set-montage-title").addEventListener("change", (event) => {
+    store.montageTitle = event.target.value.trim();
+    saveStore();
+  });
+
+  // Yollari kullanici elle yazmiyor: ana surec sectiriyor.
+  const secimler = [
+    ["pick-montage-clips", "folder", "montageClips"],
+    ["pick-montage-project", "project", "montageProject"],
+    ["pick-montage-image", "image", "montageImage"],
+    ["pick-montage-music", "music", "montageMusic"],
+  ];
+  for (const [id, kind, alan] of secimler) {
+    $(id).addEventListener("click", async () => {
+      if (!system.isDesktop()) {
+        ctx.toast("Dosya secimi yalnizca uygulama surumunde");
+        return;
+      }
+      try {
+        const yol = await system.montagePick(kind);
+        if (!yol) return;
+        store[alan] = yol;
+        saveStore();
+        syncSettings();
+
+        // Proje secildiyse usluğu hemen okuyup kullaniciya gosteriyoruz.
+        if (alan === "montageProject") await showStyle(yol);
+      } catch (err) {
+        ctx.toast(`Secilemedi: ${err.message}`, 5000);
+      }
+    });
+  }
+
+  $("montage-run").addEventListener("click", () => ctx.runMontage());
 
   /* --------------------------------------------------------- e-posta -- */
 

@@ -69,6 +69,19 @@ contextBridge.exposeInMainWorld("dra", {
     system: () => call("dra:report:system"),
   },
 
+  /** Video montaji (izin gerektirir). */
+  montage: {
+    status: () => call("dra:montage:status"),
+    pick: (kind) => call("dra:montage:pick", { kind }),
+    style: (path) => call("dra:montage:style", { path }),
+    render: (opts) => call("dra:montage:render", opts),
+    onProgress: (handler) => {
+      const listener = (_e, data) => handler(data);
+      ipcRenderer.on("dra:montage:progress", listener);
+      return () => ipcRenderer.removeListener("dra:montage:progress", listener);
+    },
+  },
+
   /** E-posta raporu (izin gerektirir). */
   mail: {
     configure: (user, pass, host) => call("dra:mail:configure", { user, pass, host }),

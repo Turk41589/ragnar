@@ -161,8 +161,8 @@ export async function run(_page, _base, t) {
     t.ok(!bridge.nodeSizinti, "Node arayuze sizmiyor (yalitim acik)");
     t.eq(
       bridge.anahtarlar,
-      ["apps", "desktop", "health", "kick", "mail", "on", "perm", "report", "search",
-       "stt", "tts", "version", "window"],
+      ["apps", "desktop", "health", "kick", "mail", "montage", "on", "perm", "report",
+       "search", "stt", "tts", "version", "window"],
       "kopru yalnizca beklenen yuzeyi aciyor",
     );
 
@@ -248,6 +248,21 @@ export async function run(_page, _base, t) {
     );
     t.eq(izinsizMail.kod, "NEED_PERMISSION", "uygulamada izinsiz e-posta okunmuyor");
     t.eq(izinsizMail.scope, "eposta", "e-posta icin dogru yetki isteniyor");
+
+    // Montaj da izin gerektiriyor; ffmpeg durumu ise izinsiz okunabilir
+    // (kurulu mu degil mi bilgisi bir eriim degil).
+    const izinsizMontaj = await window.evaluate(() =>
+      window.dra.montage.style("/tmp/yok.mlt").then(
+        () => ({ kod: null }),
+        (err) => ({ kod: err.code, scope: err.scope }),
+      ),
+    );
+    t.eq(izinsizMontaj.kod, "NEED_PERMISSION", "uygulamada izinsiz proje okunmuyor");
+    t.eq(izinsizMontaj.scope, "montaj", "montaj icin dogru yetki isteniyor");
+
+    const ffDurum = await window.evaluate(() => window.dra.montage.status());
+    t.ok(typeof ffDurum.ffmpeg?.ready === "boolean", "ffmpeg durumu okunabiliyor");
+    t.ok(ffDurum.templates?.hizli, "hazir sablonlar arayuze geliyor");
     t.eq(health.mail.ready, false, "e-posta varsayilan kapali");
     t.ok(!("pass" in health.mail), "e-posta sifresi IPC'de tasinmiyor");
     t.eq(izinsiz.scope, "sistem", "hangi yetkinin gerektigi arayuze ulasiyor");

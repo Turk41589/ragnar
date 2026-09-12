@@ -20,6 +20,8 @@ import * as tts from "../server/tts.mjs";
 import * as permissions from "../server/permissions.mjs";
 import * as report from "../server/report.mjs";
 import * as mail from "../server/mail.mjs";
+import * as editstyle from "../server/editstyle.mjs";
+import * as montage from "../server/montage.mjs";
 import * as stt from "./speech-engine.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -328,6 +330,50 @@ function registerIpc() {
     // Yetki denetimi burada: arayuzun "izin var" demesi yetmez.
     await permissions.require("sistem");
     return { report: await report.system() };
+  });
+
+  /* ----------------------------------------------------- montaj ---- */
+
+  handle("dra:montage:status", async () => ({
+    ffmpeg: await montage.ffmpegStatus(),
+    templates: montage.TEMPLATES,
+  }));
+
+  handle("dra:montage:style", async ({ path }) => {
+    await permissions.require("montaj");
+    return { style: await editstyle.read(path) };
+  });
+
+  handle("dra:montage:pick", async ({ kind }) => {
+    // Klasor/dosya secimi ana surecte: arayuz kendi basina yol uyduramaz.
+    const secenek = kind === "folder"
+      ? { properties: ["openDirectory"] }
+      : kind === "image"
+        ? { properties: ["openFile"], filters: [{ name: "Gorsel", extensions: ["png", "jpg", "jpeg", "webp"] }] }
+        : kind === "music"
+          ? { properties: ["openFile"], filters: [{ name: "Ses", extensions: ["mp3", "m4a", "wav", "aac"] }] }
+          : {
+              properties: ["openFile"],
+              filters: [{ name: "Montaj projesi", extensions: ["mlt", "kdenlive", "fcpxml", "xml", "json", "prproj"] }],
+            };
+    const sonuc = await dialog.showOpenDialog(mainWindow, secenek);
+    return { path: sonuc.canceled ? null : sonuc.filePaths[0] };
+  });
+
+  handle("dra:montage:render", async (o) => {
+    await permissions.require("montaj");
+    const style = o.stylePath ? await editstyle.read(o.stylePath) : null;
+    const plan = montage.planFromStyle(style, { template: o.template });
+    const result = await montage.render({
+      clipsDir: o.clipsDir,
+      plan,
+      title: o.title,
+      titleImage: o.titleImage,
+      music: o.music,
+      out: o.out,
+      onProgress: (p) => mainWindow?.webContents.send("dra:montage:progress", p),
+    });
+    return { result };
   });
 
   /* ---------------------------------------------------- e-posta ---- */

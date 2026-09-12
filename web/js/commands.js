@@ -355,6 +355,22 @@ const RULES = [
   },
 
   {
+    name: "montaj",
+    example: "montaji baslat",
+    phrases: [
+      "montaji baslat", "montaj yap", "videoyu montajla", "video hazirla",
+      "montaja basla", "videoyu birlestir", "klipleri birlestir",
+      "montaj baslat", "videomu hazirla", "kurguyu yap",
+    ],
+    priority: 2,
+    run: async (n, raw, ctx) => {
+      const sonuc = await ctx.runMontage();
+      if (!sonuc) return { text: "" };
+      return sonuc;
+    },
+  },
+
+  {
     name: "eposta",
     example: "mail var mi",
     phrases: [

@@ -27,6 +27,8 @@ import * as tts from "./tts.mjs";
 import * as permissions from "./permissions.mjs";
 import * as report from "./report.mjs";
 import * as mail from "./mail.mjs";
+import * as editstyle from "./editstyle.mjs";
+import * as montage from "./montage.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -291,6 +293,40 @@ const server = createServer(async (req, res) => {
     return handleAction(req, res, async (body) => {
       await permissions.require("eposta");
       return { summary: await mail.summary({ days: Number(body.days) || 2 }) };
+    });
+  }
+
+  /* -------------------------------------------------------- montaj -- */
+
+  if (url.pathname === "/api/montage/status" && req.method === "POST") {
+    return handleAction(req, res, async () => ({
+      ffmpeg: await montage.ffmpegStatus(),
+      templates: montage.TEMPLATES,
+    }));
+  }
+
+  if (url.pathname === "/api/montage/style" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      await permissions.require("montaj");
+      return { style: await editstyle.read(body.path) };
+    });
+  }
+
+  if (url.pathname === "/api/montage/render" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      await permissions.require("montaj");
+      const style = body.stylePath ? await editstyle.read(body.stylePath) : null;
+      const plan = montage.planFromStyle(style, { template: body.template });
+      return {
+        result: await montage.render({
+          clipsDir: body.clipsDir,
+          plan,
+          title: body.title,
+          titleImage: body.titleImage,
+          music: body.music,
+          out: body.out,
+        }),
+      };
     });
   }
 

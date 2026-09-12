@@ -188,6 +188,7 @@ yeniden sorulmaması için diske yazılır.
 | Dosyaları okuma | İzin verdiğiniz klasörlerdeki dosyaları okur; silmez, değiştirmez |
 | E-posta okuma | Gelen kutusunu okur, reklam/bülten ayıklar; mesaj göndermez |
 | YouTube kanalı | Kanal istatistiği okur, video yükler (yükleme öncesi ayrıca onay ister) |
+| Video montajı | Gösterdiğiniz klasördeki videoları okur, projenizden üslup çıkarır, yeni video üretir |
 | İşletme verileri | İşletmenizle ilgili anlattıklarınızı bu bilgisayarda tutar |
 
 ### Bilgisayar raporu
@@ -249,6 +250,51 @@ Sadece gereken kısmı var — giriş, kutu seçme, arama, başlık çekme.
 > gerçekten konuşan bir **sahte IMAP sunucusuna** karşı sınandı (36 test:
 > literal blok okuma, Türkçe başlık çözme, sınıflama kuralları) — canlı
 > doğrulanmadı. İlk kullanımda "Bağlantıyı sına" ile doğrulayın.
+
+### Video montajı
+
+**"DRA montajı başlat"** deyin ya da Modlar → **Video montajı**. DRA klasördeki
+klipleri kesip birleştirir, başlık kartı ekler, isterseniz fon müziği bindirir
+ve yeni bir dosya üretir. **Kaynak dosyalarınıza dokunmaz.**
+
+**Üslubu kendi projenizden öğrenir.** Kesim uzunluğunu tahmin etmesine gerek
+yok — eski montaj projenizi verirsiniz, DRA onu okur ve *ölçer*: ortalama ve
+ortanca kesim uzunluğu, çözünürlük, kare hızı, kaç saniyede bir başlık
+girdiğiniz, hangi geçişleri kullandığınız. Sonra yeni videoyu **aynı
+ölçülerle** keser. Burada da yapay zekâ yok: üslup sayılardan ibaret, yapılan
+iş o sayıları uygulamak.
+
+Okuduğu proje biçimleri:
+
+| Biçim | Program |
+|---|---|
+| `.mlt`, `.kdenlive` | Shotcut, Kdenlive |
+| `.fcpxml` | Final Cut, DaVinci Resolve, Premiere (dışa aktarım) |
+| `draft_content.json` | CapCut |
+| `.prproj` | Premiere (çıkarabildiği kadar) |
+
+**Neden ekrana bakıp fare oynatmıyor:** bir montaj programını arayüzünden
+sürmek her güncellemede kırılır ve size çalışmayan bir şey vermiş olurum.
+Proje **dosyası** ise kararlı bir biçim; okumak hem sağlam, hem de programın
+açık olmasını gerektirmiyor.
+
+Premiere'in `.prproj` yapısı sürümler arasında değiştiği için kesim bilgisini
+her zaman çıkaramaz. Çıkaramazsa **tahmin etmez** — Premiere'de
+Dosya → Dışa Aktar → Final Cut Pro XML deyip o dosyayı vermenizi söyler.
+
+Proje vermek istemezseniz üç hazır şablon var: **hızlı kesim**, **sakin
+anlatım**, **dikey (Shorts)**.
+
+**ffmpeg gerekiyor** ve bu projenin bağımlılığı değil — DRA kendi başına bir
+şey indirmez. Kurulu değilse montaj düğmesi kapalı kalır ve nasıl kurulacağını
+söyler (`winget install Gyan.FFmpeg`). Bazı ffmpeg sürümleri yazı basmayı
+(`drawtext`) desteklemez; DRA bunu önceden yoklar, desteklenmiyorsa giriş
+kartını yalnızca görselden üretir ve **bunu size söyler** — sessizce eksik
+bırakmaz.
+
+Kaynak klipler farklı çözünürlük, farklı kare hızında ve kimi sessiz olabilir;
+hepsi tek kalıba sokulur (oranı bozmadan sığdırılıp siyahla doldurulur, sessiz
+olanlara sessiz ses izi eklenir) — yoksa birleştirme bozulur.
 
 ## Ses ve gizlilik — okumaya değer
 
@@ -418,7 +464,7 @@ Açıkken sesli moderasyon:
 | Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm; uygulama taraması |
 | Not | not ekle, tek tek sil, hepsini temizle |
 | Alarm | saatli alarm kur, etiket ver, her gün tekrarla, aç/kapa, sil |
-| Modlar | çalışma modları (açılışta başlat, arka planda dinle, web araması, yayıncı desteği, **e-posta raporu**) ve **erişim izinleri** |
+| Modlar | çalışma modları (açılışta başlat, arka planda dinle, web araması, yayıncı desteği, **e-posta raporu**, **video montajı**) ve **erişim izinleri** |
 | Ayar | ses, mikrofon, ses tanıma motoru ve modeli, sesi cihazda tut, açılış dizisi, **DRA'nın sesi** (yerel / ElevenLabs), konuşma hızı, otomatik uyku, tema rengi, ek uyandırma sözcükleri, sıfırlama |
 
 **Orta** — reaktör. Dönen halkalar, glif şeridi ve yörüngedeki parçalar;
@@ -513,6 +559,8 @@ server/tts.mjs       ElevenLabs seslendirmesi (anahtar girilmeden istek atmaz)
 server/permissions.mjs  erisim izinleri — yetki denetiminin yapildigi yer
 server/report.mjs    bilgisayar raporu (disk, bellek, Windows guncellemeleri)
 server/mail.mjs      e-posta raporu (bagimliliksiz IMAP, yalnizca basliklar)
+server/editstyle.mjs montaj projesinden uslup cikarma (.mlt/.fcpxml/CapCut)
+server/montage.mjs   ffmpeg ile montaj (ffmpeg yoksa mod kapali kalir)
 web/js/system.js     sunucu köprüsü (istemci tarafı)
 ```
 

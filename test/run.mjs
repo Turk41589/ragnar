@@ -25,6 +25,7 @@ const SUITES = [
   await import("./suites/seslendirme.mjs"),
   await import("./suites/izinler.mjs"),
   await import("./suites/eposta.mjs"),
+  await import("./suites/montaj.mjs"),
   await import("./suites/masaustu.mjs"),
   await import("./suites/alarm.mjs"),
 ];

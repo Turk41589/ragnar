@@ -223,6 +223,40 @@ export async function systemReport() {
   return data.report;
 }
 
+/* -------------------------------------------------------------- montaj */
+
+export async function montageStatus() {
+  return desktop
+    ? await bridge(() => window.dra.montage.status())
+    : await post("/api/montage/status");
+}
+
+/** Klasor/dosya sectirir (yalnizca uygulama surumunde). */
+export async function montagePick(kind) {
+  if (!desktop) return null;
+  const { path } = await bridge(() => window.dra.montage.pick(kind));
+  return path;
+}
+
+export async function montageStyle(path) {
+  const data = desktop
+    ? await bridge(() => window.dra.montage.style(path))
+    : await post("/api/montage/style", { path });
+  return data.style;
+}
+
+export async function montageRender(opts) {
+  const data = desktop
+    ? await bridge(() => window.dra.montage.render(opts))
+    : await post("/api/montage/render", opts);
+  return data.result;
+}
+
+export function onMontageProgress(handler) {
+  if (!desktop) return () => {};
+  return window.dra.montage.onProgress(handler);
+}
+
 /* ------------------------------------------------------------- e-posta */
 
 export async function configureMail(user, pass, host) {

@@ -450,6 +450,79 @@ function raporuSun(r) {
   return `Raporu ekrana cikardim. Kisaca: ${parcalar.join(", ")}.`;
 }
 
+/* ================================================================= montaj */
+
+/** Proje dosyasindan cikan uslubu kart olarak gosterir. */
+function uslubuSun(u) {
+  const satirlar = [
+    ["Bicim", u.source.label],
+    ["Kesim sayisi", String(u.clipCount)],
+  ];
+  if (u.cut) {
+    satirlar.push(["Ortalama kesim", `${u.cut.avg} sn`]);
+    satirlar.push(["Ortanca kesim", `${u.cut.median} sn`]);
+    satirlar.push(["En kisa / en uzun", `${u.cut.min} sn / ${u.cut.max} sn`]);
+  }
+  satirlar.push(["Toplam sure", `${u.totalSeconds} sn`]);
+  if (u.width && u.height) satirlar.push(["Cozunurluk", `${u.width}x${u.height}`]);
+  satirlar.push(["Kare hizi", `${u.fps} fps`]);
+  if (u.titles.count) {
+    satirlar.push([
+      "Basliklar",
+      u.titles.everySeconds
+        ? `${u.titles.count} adet — ~${u.titles.everySeconds} sn'de bir`
+        : `${u.titles.count} adet`,
+    ]);
+  }
+
+  const bolumler = [{ heading: u.source.file, rows: satirlar }];
+  if (u.transitions.count) {
+    bolumler.push({
+      heading: "Gecisler",
+      note: `${u.transitions.count} gecis kullanilmis.`,
+      items: u.transitions.kinds,
+    });
+  }
+  if (u.incomplete && u.advice) {
+    bolumler.push({ note: u.advice, level: "warn" });
+  }
+
+  hud.logCard({ title: "Montaj uslubunuz", subtitle: "Projenizden okundu", sections: bolumler });
+
+  if (u.incomplete) return u.advice;
+  return `Projenizi okudum: ${u.clipCount} kesim, ortanca ${u.cut?.median ?? "?"} saniye. ` +
+    "Yeni videoyu ayni olculerle keserim.";
+}
+
+/** Biten montaji kart olarak gosterir. */
+function montajiSun(s) {
+  const mb = (s.bytes / 1024 / 1024).toFixed(1);
+  const bolumler = [
+    {
+      heading: "Uretilen video",
+      rows: [
+        ["Dosya", s.file],
+        ["Sure", s.seconds ? `${s.seconds} sn` : "—"],
+        ["Boyut", `${mb} MB`],
+        ["Kullanilan klip", String(s.clips)],
+        ["Cozunurluk", `${s.plan.width}x${s.plan.height}`],
+        ["Kesim uzunlugu", `${s.plan.cutSeconds} sn`],
+        ["Uslup", s.plan.source || s.plan.label || "—"],
+      ],
+    },
+  ];
+  if (s.notes?.length) bolumler.push({ note: s.notes.join(" "), level: "warn" });
+
+  hud.logCard({
+    title: "Montaj tamamlandi",
+    subtitle: new Date().toLocaleString("tr"),
+    sections: bolumler,
+  });
+
+  return `Montaj bitti efendim. ${s.clips} klipten ${s.seconds ?? "?"} saniyelik ` +
+    "video cikardim. Dosya kaynak klasorunuzda.";
+}
+
 /* ================================================================ e-posta */
 
 /** Kutudaki mesaj siniflarinin ekranda gorunecek sirasi ve adi. */
@@ -671,6 +744,59 @@ const ctx = {
     });
     if (!ozet) return null;
     return epostaSun(ozet);
+  },
+
+  /** Proje dosyasindan cikarilan uslubu kart olarak gosterir. */
+  showStyleCard: (u) => uslubuSun(u),
+
+  /**
+   * Montaji baslatir. Izin gerektirir; yoksa DRA once sorar.
+   * Uzun surebilir, bu yuzden ilerleme sohbete yaziliyor.
+   */
+  runMontage: async () => {
+    if (!store.montageClips) {
+      return "Once video klasorunu secin: Modlar sekmesi, Video montaji.";
+    }
+
+    const durum = await system.montageStatus().catch(() => null);
+    if (!durum?.ffmpeg?.ready) {
+      return durum?.ffmpeg?.advice || "Montaj icin ffmpeg kurulu olmali.";
+    }
+
+    const cikti = `${store.montageClips}/dra-montaj-${Date.now()}.mp4`;
+    hud.log("system", "Montaj basladi. Kliplerin sayisina gore birkac dakika surebilir…");
+    panel.setMontageStatus("Montaj suruyor…");
+
+    const bitir = system.onMontageProgress(({ step, done, total }) => {
+      panel.setMontageStatus(`${step === "kart" ? "Giris karti" : "Kesim"} ${done}/${total}`);
+    });
+
+    try {
+      const sonuc = await izinliCalis(() =>
+        system.montageRender({
+          clipsDir: store.montageClips,
+          // "proje" secildiyse uslup dosyadan, degilse hazir sablondan.
+          stylePath: store.montageTemplate === "proje" ? store.montageProject : null,
+          template: store.montageTemplate === "proje" ? "hizli" : store.montageTemplate,
+          title: store.montageTitle,
+          titleImage: store.montageImage || null,
+          music: store.montageMusic || null,
+          out: cikti,
+        }),
+      );
+      if (!sonuc) {
+        panel.setMontageStatus("Izin verilmedi");
+        return null;
+      }
+      panel.setMontageStatus(`Bitti: ${sonuc.file}`);
+      return montajiSun(sonuc);
+    } catch (err) {
+      panel.setMontageStatus(`Hata: ${err.message}`);
+      hud.log("error", err.message);
+      return `Montaj tamamlanamadi: ${err.message}`;
+    } finally {
+      bitir();
+    }
   },
 
   /** Panelden gelen, izin gerektiren isler icin ayni akis. */

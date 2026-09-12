@@ -52,6 +52,14 @@ export const SCOPES = {
       "mesajlari ozetler. Mesaj gondermez, silmez.",
     writes: false,
   },
+  montaj: {
+    title: "Video montaji",
+    detail:
+      "Gosterdiginiz klasordeki videolari okur, montaj projenizi okuyup " +
+      "uslubunuzu cikarir ve yeni bir video dosyasi uretir. Kaynak " +
+      "dosyalariniza dokunmaz.",
+    writes: true,
+  },
   youtube: {
     title: "YouTube kanali",
     detail:

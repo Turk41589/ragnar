@@ -245,6 +245,60 @@
               </small>
             </li>
 
+            <li>
+              <span>Video montaji</span>
+              <button class="switch" type="button" id="set-montage" role="switch" aria-checked="false"></button>
+            </li>
+            <li class="settings__stack" id="montage-fields" hidden>
+              <p class="nextalarm" id="montage-ffmpeg">ffmpeg denetleniyor…</p>
+
+              <label for="set-montage-template">Kesim uslubu</label>
+              <select id="set-montage-template">
+                <option value="hizli">Hizli kesim (yatay)</option>
+                <option value="anlatim">Sakin anlatim (yatay)</option>
+                <option value="dikey">Dikey &mdash; Shorts</option>
+                <option value="proje">Kendi projemden ogren</option>
+              </select>
+
+              <div id="montage-project-row" hidden>
+                <button class="btn btn--icon btn--wide" type="button" id="pick-montage-project">
+                  Montaj projesini sec
+                </button>
+                <p class="nextalarm" id="montage-project-info">Proje secilmedi</p>
+              </div>
+
+              <button class="btn btn--icon btn--wide" type="button" id="pick-montage-clips">
+                Video klasorunu sec
+              </button>
+              <p class="nextalarm" id="montage-clips-info">Klasor secilmedi</p>
+
+              <label for="set-montage-title">Video basligi</label>
+              <input id="set-montage-title" type="text" placeholder="Videonun basligi" maxlength="120" />
+
+              <button class="btn btn--icon btn--wide" type="button" id="pick-montage-image">
+                Baslik gorselini sec
+              </button>
+              <p class="nextalarm" id="montage-image-info">Gorsel secilmedi</p>
+
+              <button class="btn btn--icon btn--wide" type="button" id="pick-montage-music">
+                Fon muzigi sec (istege bagli)
+              </button>
+              <p class="nextalarm" id="montage-music-info">Muzik secilmedi</p>
+
+              <button class="btn btn--icon btn--wide btn--go" type="button" id="montage-run">
+                Montaji baslat
+              </button>
+              <p class="nextalarm" id="montage-status">Hazir degil</p>
+
+              <small class="hint">
+                DRA kaynak dosyalariniza dokunmaz; yeni bir dosya uretir.
+                &laquo;Kendi projemden ogren&raquo; secerseniz eski montaj
+                projenizi okur, ortalama kesim uzunlugunuzu ve cozunurlugunuzu
+                cikarir, yeni videoyu ayni olculerle keser. Sesle de
+                baslatabilirsiniz: &laquo;montaji baslat&raquo;.
+              </small>
+            </li>
+
           </ul>
 
           <h3 class="pane__title">Erisim izinleri</h3>

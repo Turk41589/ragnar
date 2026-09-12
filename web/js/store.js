@@ -38,6 +38,14 @@ const DEFAULTS = {
   mailMode: false,
   mailUser: "",
   mailPass: "",
+  // Montaj: kaynak klasoru, uslup projesi, kapak, muzik ve sablon.
+  montageMode: false,
+  montageClips: "",
+  montageProject: "",
+  montageImage: "",
+  montageMusic: "",
+  montageTemplate: "hizli",
+  montageTitle: "",
   notes: [],
   alarms: [],
 };
@@ -76,6 +84,14 @@ function coerce(saved) {
   if (typeof saved.mailMode === "boolean") store.mailMode = saved.mailMode;
   if (typeof saved.mailUser === "string") store.mailUser = saved.mailUser.slice(0, 200);
   if (typeof saved.mailPass === "string") store.mailPass = saved.mailPass.slice(0, 100);
+
+  if (typeof saved.montageMode === "boolean") store.montageMode = saved.montageMode;
+  for (const k of ["montageClips", "montageProject", "montageImage", "montageMusic", "montageTitle"]) {
+    if (typeof saved[k] === "string") store[k] = saved[k].slice(0, 600);
+  }
+  if (typeof saved.montageTemplate === "string") {
+    store.montageTemplate = saved.montageTemplate.slice(0, 40);
+  }
 
   if (Number.isFinite(saved.speechRate)) {
     store.speechRate = Math.min(1.6, Math.max(0.6, saved.speechRate));
