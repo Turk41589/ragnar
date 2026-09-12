@@ -13,6 +13,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { classify } from "./sentiment.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DRA_DATA_DIR || join(HERE, "..", "data");
@@ -82,6 +83,8 @@ export async function ingest(source, gelenler) {
       from: String(m.from || "bilinmiyor").slice(0, 120),
       handle: m.handle ? String(m.handle).slice(0, 160) : null,
       text: metin.slice(0, 4000),
+      // Siniflama girerken bir kez yapiliyor; liste ve raporlar bunu okur.
+      kind: classify(metin).kind,
       at: Number.isFinite(m.at) ? m.at : Date.now(),
       status: DURUM.YENI,
       reply: null,

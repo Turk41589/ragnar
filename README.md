@@ -375,6 +375,57 @@ DRA bunu söyler, sessizce yutmaz.
 > WhatsApp, Graph API'yi taklit eden **gerçek bir yerel sunucuya** karşı
 > sınandı (60 test) — canlı doğrulanmadı.
 
+### Mesajları sınıflama — yapay zekâ yok
+
+Her mesaj depoya girerken sınıflanır: **memnun · şikâyet · soru · nötr.**
+Kurallar açık ve denetlenebilir.
+
+Türkçe'de asıl zorluk **olumsuzluk**: "memnun değilim" içinde "memnun" geçer
+ama anlamı tam tersidir. Kelime saymak bu yüzden yetmez — her eşleşmenin
+ardındaki iki kelimeye bakılır ve gerekirse işaret ters çevrilir. İki yönlü
+çalışır:
+
+* "memnun değilim" → olumlu kelime olumsuzlanmış → **şikâyet**
+* "sorun yok, teşekkürler" → olumsuz kelime olumsuzlanmış → **memnun**
+* "beğenmedim" → fiil olumsuzluğu → **şikâyet**
+* "yemek lezzetliydi ama servis yavaştı" → ikisi de var → **şikâyet**
+  (ilgilenilmesi gereken taraf odur)
+
+Kısa kalıplarda tam kelime aranır: "geç" kalıbı "geçerli" içinde eşleşip
+geçerli bir soruyu şikâyet saymaz.
+
+### Otomatik yanıt
+
+Anahtar kelime kuralları yazarsınız: *"kaçta, açık mısınız, saat"* → *"Her gün
+09:00-22:00 arası açıktır."* Uyan mesajlara DRA kendiliğinden yanıt verir.
+
+Bu modül **gerçek müşteriye mesaj gönderiyor ve geri alınamıyor**, o yüzden
+baştan kısıtlı:
+
+* **Varsayılan kapalı.** Açık olmadan tek bir mesaj gitmez.
+* **Deneme kipi**: neyi kime göndereceğini gösterir, **göndermez**. Sesli
+  "otomatik yanıtla" komutu da önce denemeyi çalıştırır — ekranı görmeden
+  müşteriye mesaj gitmesin.
+* **Şikâyetlere otomatik yanıt verilmez.** Kızgın müşteriye şablon cevap
+  durumu büyütür; kural açıkça "şikâyetlere de yanıt ver" demedikçe elde
+  bırakılır.
+* Aynı mesaja iki kez yanıt verilmez; bir turda en fazla 20 mesaj yanıtlanır
+  (yanlış yazılmış bir kural yüzlerce müşteriye gitmesin).
+* Gönderim başarısız olursa mesaj **yanıtlandı sayılmaz**, sırada kalır.
+
+### İşletme raporu
+
+**"DRA işletme raporu"** — memnuniyet oranı, şikâyetler ve yanıt performansı
+tek kartta.
+
+Memnuniyet oranı **yalnızca duygu taşıyan mesajlar** üzerinden hesaplanır.
+Soru ve nötr mesajları paya katmak oranı yapay olarak şişirirdi. Duygu taşıyan
+mesaj yoksa oran **sıfır değil, yok** olarak gösterilir — uydurulmaz.
+
+Şikâyet raporu en sık geçen konuları da çıkarır ve kaç şikâyetin hâlâ yanıtsız
+olduğunu söyler. Yanıt performansı: kaçına yanıt verilmiş ve **ortanca** yanıt
+süresi (ortalama değil — tek bir çok geç yanıt tabloyu bozmasın).
+
 ## Ses ve gizlilik — okumaya değer
 
 Tarayıcıların varsayılan ses tanıması sesi **satıcının sunucusuna gönderir**
@@ -647,6 +698,9 @@ server/sources.mjs   musteri mesaji kaynaklari (her kaynak ne istedigini bildiri
 server/messages.mjs  birlesik musteri mesaji deposu
 server/instagram.mjs Instagram DM (Meta Graph API)
 server/whatsapp.mjs  WhatsApp Cloud API (gonderim + webhook alicisi)
+server/sentiment.mjs mesaj siniflama (Turkce olumsuzluk dahil)
+server/autoreply.mjs otomatik yanit kurallari (varsayilan kapali, deneme kipi)
+server/business.mjs  memnuniyet, sikayet ve yanit performansi raporlari
 web/js/system.js     sunucu köprüsü (istemci tarafı)
 ```
 

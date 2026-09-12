@@ -387,6 +387,39 @@ const RULES = [
   },
 
   {
+    name: "isletme-rapor",
+    example: "isletme raporu",
+    phrases: [
+      "isletme raporu", "memnuniyet raporu", "musteri memnuniyeti",
+      "sikayet raporu", "sikayetler ne durumda", "memnuniyet ne durumda",
+      "isletmem nasil", "dukkanim nasil",
+    ],
+    priority: 3,
+    run: async (n, raw, ctx) => {
+      const sonuc = await ctx.businessReport();
+      if (!sonuc) return { text: "" };
+      return sonuc;
+    },
+  },
+
+  {
+    name: "otomatik-yanit",
+    example: "otomatik yanitla",
+    phrases: [
+      "otomatik yanitla", "mesajlari yanitla", "musterilere cevap ver",
+      "otomatik yanit calistir", "bekleyenleri yanitla",
+    ],
+    priority: 3,
+    run: async (n, raw, ctx) => {
+      // Sesli komutta once DENEME yapiyoruz: kullanici ekrani gormeden
+      // gercek musteriye mesaj gitmesin.
+      const sonuc = await ctx.runAutoreply(true);
+      if (!sonuc) return { text: "" };
+      return sonuc;
+    },
+  },
+
+  {
     name: "youtube",
     example: "kanal raporu",
     phrases: [

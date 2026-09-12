@@ -27,6 +27,8 @@ import * as videos from "../server/videos.mjs";
 import * as scheduler from "../server/scheduler.mjs";
 import * as sources from "../server/sources.mjs";
 import * as messages from "../server/messages.mjs";
+import * as autoreply from "../server/autoreply.mjs";
+import * as business from "../server/business.mjs";
 import * as stt from "./speech-engine.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -379,6 +381,31 @@ function registerIpc() {
 
   handle("dra:messages:mark", async ({ id, reply }) => ({
     message: reply ? await messages.markReplied(id, reply) : await messages.markRead(id),
+  }));
+
+  /* --------------------------------------------- otomatik yanit / rapor */
+
+  handle("dra:auto:list", async () => ({
+    status: await autoreply.status(),
+    rules: await autoreply.list(),
+  }));
+
+  handle("dra:auto:mode", async ({ enabled }) => {
+    await permissions.require("isletme");
+    return { status: await autoreply.setEnabled(enabled) };
+  });
+
+  handle("dra:auto:add", async (o) => ({ rule: await autoreply.add(o) }));
+  handle("dra:auto:remove", async ({ id }) => await autoreply.remove(id));
+  handle("dra:auto:toggle", async ({ id }) => ({ rule: await autoreply.toggle(id) }));
+
+  handle("dra:auto:run", async ({ dryRun }) => {
+    await permissions.require("isletme");
+    return { result: await autoreply.run({ dryRun: Boolean(dryRun) }) };
+  });
+
+  handle("dra:business:report", async ({ days }) => ({
+    report: await business.report({ days: Number(days) || 30 }),
   }));
 
   /* ---------------------------------------------------- youtube ---- */

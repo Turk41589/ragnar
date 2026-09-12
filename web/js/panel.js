@@ -307,6 +307,69 @@ export function syncSettings() {
   renderSwatches();
 }
 
+/* ---------------------------------------------------------- otomatik yanit */
+
+/** Kural listesini ve otomatik yanit durumunu cizer. */
+export async function renderRules() {
+  const liste = $("rule-list");
+  if (!liste) return;
+
+  let veri;
+  try {
+    veri = await system.autoreplyList();
+  } catch {
+    return;
+  }
+
+  syncSwitch($("set-autoreply"), veri.status.enabled);
+  $("autoreply-status").textContent = veri.status.enabled
+    ? `Acik — ${veri.status.activeRules} kural calisiyor`
+    : "Otomatik yanit kapali";
+
+  liste.replaceChildren();
+  for (const kural of veri.rules) {
+    const li = document.createElement("li");
+    li.className = "settings__stack";
+    li.dataset.rule = kural.id;
+
+    const satir = document.createElement("div");
+    satir.className = "permrow";
+    const ad = document.createElement("span");
+    ad.textContent = kural.name;
+    const durum = document.createElement("b");
+    durum.className = "permrow__state";
+    durum.dataset.granted = String(kural.enabled);
+    durum.textContent = kural.enabled ? "acik" : "kapali";
+    durum.style.cursor = "pointer";
+    durum.addEventListener("click", async () => {
+      await system.autoreplyToggle(kural.id).catch(() => {});
+      renderRules();
+    });
+    satir.append(ad, durum);
+    li.append(satir);
+
+    const bilgi = document.createElement("small");
+    bilgi.className = "hint";
+    bilgi.textContent =
+      `${kural.keywords.join(", ")} → "${kural.reply}"` +
+      (kural.answerComplaints ? " (sikayetlere de yanit verir)" : "") +
+      (kural.used ? ` — ${kural.used} kez kullanildi` : "");
+    li.append(bilgi);
+
+    const sil = document.createElement("button");
+    sil.className = "btn btn--icon btn--wide btn--danger";
+    sil.type = "button";
+    sil.textContent = "Kurali sil";
+    sil.addEventListener("click", async () => {
+      await system.autoreplyRemove(kural.id).catch(() => {});
+      renderRules();
+    });
+    li.append(sil);
+
+    liste.append(li);
+  }
+}
+
 /* -------------------------------------------------------- musteri kaynaklari */
 
 /**
@@ -1027,12 +1090,68 @@ export function mountPanel(context) {
           "secin; her kaynak icin gereken bilgileri ayri ayri isteyecegim.",
       );
       await renderSources();
+      await renderRules();
     }
   });
 
   $("set-business-name").addEventListener("change", (event) => {
     store.businessName = event.target.value.trim();
     saveStore();
+  });
+
+  /* --- otomatik yanit --- */
+
+  $("set-autoreply").addEventListener("click", async () => {
+    const acik = $("set-autoreply").getAttribute("aria-checked") === "true";
+    try {
+      const durum = await ctx.withPermission(() => system.autoreplySetMode(!acik));
+      if (!durum) return;
+      ctx.log(
+        "system",
+        durum.enabled
+          ? "Otomatik yanit ACIK. Kurallariniza uyan mesajlara kendim yanit verecegim."
+          : "Otomatik yanit kapatildi.",
+      );
+      renderRules();
+    } catch (err) {
+      ctx.toast(`Degistirilemedi: ${err.message}`, 5000);
+    }
+  });
+
+  $("set-rule-complaints").addEventListener("click", () => {
+    const dugme = $("set-rule-complaints");
+    const acik = dugme.getAttribute("aria-checked") === "true";
+    dugme.setAttribute("aria-checked", String(!acik));
+  });
+
+  $("rule-add").addEventListener("click", async () => {
+    try {
+      await system.autoreplyAdd({
+        name: $("set-rule-name").value.trim(),
+        keywords: $("set-rule-words").value,
+        reply: $("set-rule-reply").value.trim(),
+        answerComplaints: $("set-rule-complaints").getAttribute("aria-checked") === "true",
+      });
+      $("set-rule-name").value = "";
+      $("set-rule-words").value = "";
+      $("set-rule-reply").value = "";
+      $("set-rule-complaints").setAttribute("aria-checked", "false");
+      ctx.toast("Kural eklendi");
+      renderRules();
+    } catch (err) {
+      ctx.toast(`Kural eklenemedi: ${err.message}`, 6000);
+    }
+  });
+
+  $("autoreply-dry").addEventListener("click", async () => {
+    const sonuc = await ctx.runAutoreply(true);
+    if (sonuc) ctx.log("system", sonuc);
+  });
+
+  $("autoreply-run").addEventListener("click", async () => {
+    const sonuc = await ctx.runAutoreply(false);
+    if (sonuc) ctx.log("system", sonuc);
+    renderRules();
   });
 
   $("source-collect").addEventListener("click", async () => {

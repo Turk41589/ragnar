@@ -161,9 +161,9 @@ export async function run(_page, _base, t) {
     t.ok(!bridge.nodeSizinti, "Node arayuze sizmiyor (yalitim acik)");
     t.eq(
       bridge.anahtarlar,
-      ["apps", "desktop", "health", "kick", "mail", "messages", "montage", "on", "perm",
-       "report", "search", "sources", "stt", "tts", "version", "videos", "window",
-       "youtube"],
+      ["apps", "autoreply", "business", "desktop", "health", "kick", "mail", "messages",
+       "montage", "on", "perm", "report", "search", "sources", "stt", "tts", "version",
+       "videos", "window", "youtube"],
       "kopru yalnizca beklenen yuzeyi aciyor",
     );
 
@@ -298,6 +298,20 @@ export async function run(_page, _base, t) {
     );
     t.eq(izinsizKaynak.kod, "NEED_PERMISSION", "izinsiz mesaj toplanmiyor");
     t.eq(izinsizKaynak.scope, "isletme", "isletme yetkisi isteniyor");
+
+    // Otomatik yanit GERCEK MUSTERIYE mesaj gonderiyor: deneme kipi bile
+    // yetki istemeli.
+    const izinsizYanit = await window.evaluate(() =>
+      window.dra.autoreply.run(true).then(
+        () => ({ kod: null }),
+        (err) => ({ kod: err.code, scope: err.scope }),
+      ),
+    );
+    t.eq(izinsizYanit.kod, "NEED_PERMISSION", "izinsiz otomatik yanit calismiyor");
+    t.eq(izinsizYanit.scope, "isletme", "otomatik yanit isletme yetkisi istiyor");
+
+    const yanitDurum = await window.evaluate(() => window.dra.autoreply.list());
+    t.eq(yanitDurum.status.enabled, false, "otomatik yanit varsayilan kapali");
     t.eq(health.mail.ready, false, "e-posta varsayilan kapali");
     t.ok(!("pass" in health.mail), "e-posta sifresi IPC'de tasinmiyor");
     t.eq(izinsiz.scope, "sistem", "hangi yetkinin gerektigi arayuze ulasiyor");

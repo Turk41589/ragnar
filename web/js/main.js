@@ -554,6 +554,143 @@ function mesajlariSun(veri) {
     `${o.unanswered} tanesi yanit bekliyor.`;
 }
 
+/* ========================================================= otomatik yanit */
+
+function otomatikYanitSun(s, deneme) {
+  if (s.skipped === "kapali") {
+    hud.logCard({
+      title: "Otomatik yanit",
+      sections: [{
+        note: "Otomatik yanit kapali. Modlar sekmesinden acabilirsiniz; " +
+          "once «Deneme» ile ne gidecegini gormenizi oneririm.",
+        level: "warn",
+      }],
+    });
+    return "Otomatik yanit kapali efendim.";
+  }
+
+  const bolumler = [];
+
+  if (deneme) {
+    bolumler.push({
+      note: s.planned.length
+        ? `${s.planned.length} mesaj icin yanit hazir. HICBIRI GONDERILMEDI — ` +
+          "bu yalnizca deneme."
+        : "Kurallara uyan bekleyen mesaj yok.",
+      level: s.planned.length ? "warn" : null,
+    });
+  }
+
+  const gosterilecek = deneme ? s.planned : s.sent;
+  if (gosterilecek.length) {
+    bolumler.push({
+      heading: deneme ? "Gonderilecekler" : "Gonderilenler",
+      items: gosterilecek.map(
+        (p) => `${p.from}: "${p.text.slice(0, 45)}…" → ${p.reply.slice(0, 60)}`,
+      ),
+    });
+  }
+
+  if (s.errors?.length) {
+    bolumler.push({
+      heading: "Gonderilemeyenler",
+      level: "error",
+      // Gonderilemeyen mesaj yanitlanmis sayilmiyor; elde kaldigi soylensin.
+      note: "Bu mesajlar yanitlanmadi, sirada duruyor.",
+      items: s.errors.map((e) => `${e.from}: ${e.error}`),
+    });
+  }
+
+  hud.logCard({
+    title: deneme ? "Otomatik yanit — deneme" : "Otomatik yanit",
+    subtitle: new Date().toLocaleString("tr"),
+    sections: bolumler,
+  });
+
+  if (deneme) {
+    return s.planned.length
+      ? `${s.planned.length} mesaj icin yanit hazirladim ama gondermedim. ` +
+        "Ekranda gorup onaylarsaniz «simdi yanitla» diyebilirsiniz."
+      : "Kurallara uyan bekleyen mesaj yok.";
+  }
+  if (!s.sent.length && !s.errors.length) return "Yanitlanacak mesaj yok efendim.";
+  return `${s.sent.length} mesaji yanitladim` +
+    (s.errors.length ? `, ${s.errors.length} tanesi gonderilemedi.` : ".");
+}
+
+/* =============================================================== isletme */
+
+function isletmeSun(r) {
+  const m = r.satisfaction;
+  const s = r.complaints;
+  const y = r.responsiveness;
+
+  const bolumler = [];
+
+  /* --- memnuniyet --- */
+  bolumler.push({
+    heading: `Memnuniyet — son ${r.days} gun`,
+    note: m.rate === null
+      // Duygu tasiyan mesaj yoksa oran uydurulmaz.
+      ? "Henuz memnuniyet olcecek kadar duygu tasiyan mesaj yok."
+      : `%${m.rate} memnuniyet (${m.basis} duygu tasiyan mesaj uzerinden).`,
+    level: m.rate === null ? null : m.rate >= 70 ? "ok" : m.rate >= 40 ? "warn" : "error",
+    rows: [
+      ["Memnun", String(m.memnun), m.total ? Math.round((m.memnun / m.total) * 100) : 0],
+      ["Sikayet", String(m.sikayet), m.total ? Math.round((m.sikayet / m.total) * 100) : 0],
+      ["Soru", String(m.soru)],
+      ["Notr", String(m.notr)],
+    ],
+  });
+
+  /* --- sikayetler --- */
+  if (s.total) {
+    bolumler.push({
+      heading: `Sikayetler (${s.total})`,
+      note: s.unanswered
+        ? `${s.unanswered} sikayet hala yanitsiz.`
+        : "Tum sikayetler yanitlanmis.",
+      level: s.unanswered ? "error" : "ok",
+      items: s.items.slice(0, 5).map(
+        (x) => `${x.from}: ${x.text.slice(0, 80)}`,
+      ),
+    });
+    if (s.topics.length) {
+      bolumler.push({
+        heading: "En sik gecen konular",
+        rows: s.topics.slice(0, 5).map((k) => [k.topic, String(k.count)]),
+      });
+    }
+  }
+
+  /* --- yanit performansi --- */
+  bolumler.push({
+    heading: "Yanit performansi",
+    rows: [
+      ["Yanitlanan", `${y.answered} / ${y.total}`, y.rate ?? 0],
+      ["Yanitsiz", String(y.unanswered)],
+      ...(y.medianMinutes === null
+        ? []
+        : [["Ortanca yanit suresi", `${y.medianMinutes} dakika`]]),
+    ],
+  });
+
+  hud.logCard({
+    title: store.businessName ? `${store.businessName} — isletme raporu` : "Isletme raporu",
+    subtitle: new Date(r.at).toLocaleString("tr"),
+    sections: bolumler,
+  });
+
+  const parcalar = [];
+  if (m.rate !== null) parcalar.push(`memnuniyet yuzde ${m.rate}`);
+  if (s.total) parcalar.push(`${s.total} sikayet`);
+  if (y.unanswered) parcalar.push(`${y.unanswered} yanitsiz mesaj`);
+
+  return parcalar.length
+    ? `Son ${r.days} gunun raporu: ${parcalar.join(", ")}.`
+    : `Son ${r.days} gunde raporlanacak bir sey yok.`;
+}
+
 /* ================================================================ youtube */
 
 function kanalSun(k, sira) {
@@ -982,6 +1119,28 @@ const ctx = {
     });
     if (!sonuc) return null;
     return toplamaSun(sonuc);
+  },
+
+  /**
+   * Otomatik yaniti calistirir.
+   * Deneme kipinde HICBIR SEY gonderilmez; ne gidecegi gosterilir.
+   */
+  runAutoreply: async (dryRun) => {
+    if (!store.businessMode) {
+      return "Isletme modu kapali. Modlar sekmesinden acabilirsiniz.";
+    }
+    const sonuc = await izinliCalis(() => system.autoreplyRun(Boolean(dryRun)));
+    if (!sonuc) return null;
+    return otomatikYanitSun(sonuc, Boolean(dryRun));
+  },
+
+  /** Isletme raporu: memnuniyet, sikayet, yanit performansi. */
+  businessReport: async () => {
+    if (!store.businessMode) {
+      return "Isletme modu kapali. Modlar sekmesinden acabilirsiniz.";
+    }
+    const rapor = await system.businessReport(30);
+    return isletmeSun(rapor);
   },
 
   /** Musteri mesajlari raporu. */

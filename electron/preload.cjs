@@ -84,6 +84,20 @@ contextBridge.exposeInMainWorld("dra", {
     mark: (id, reply) => call("dra:messages:mark", { id, reply }),
   },
 
+  /** Otomatik yanit ve isletme raporlari (izin gerektirir). */
+  autoreply: {
+    list: () => call("dra:auto:list"),
+    setMode: (enabled) => call("dra:auto:mode", { enabled }),
+    add: (o) => call("dra:auto:add", o),
+    remove: (id) => call("dra:auto:remove", { id }),
+    toggle: (id) => call("dra:auto:toggle", { id }),
+    run: (dryRun) => call("dra:auto:run", { dryRun }),
+  },
+
+  business: {
+    report: (days) => call("dra:business:report", { days }),
+  },
+
   /** YouTube kanali ve stok video deposu (izin gerektirir). */
   youtube: {
     configure: (clientId, clientSecret, refreshToken) =>

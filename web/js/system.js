@@ -274,6 +274,52 @@ export async function messageMark(id, reply) {
     : await post("/api/messages/mark", { id, reply });
 }
 
+/* ------------------------------------------------- otomatik yanit / rapor */
+
+export async function autoreplyList() {
+  return desktop ? await bridge(() => window.dra.autoreply.list()) : await post("/api/autoreply");
+}
+
+export async function autoreplySetMode(enabled) {
+  const d = desktop
+    ? await bridge(() => window.dra.autoreply.setMode(enabled))
+    : await post("/api/autoreply/toggle-mode", { enabled });
+  return d.status;
+}
+
+export async function autoreplyAdd(o) {
+  const d = desktop
+    ? await bridge(() => window.dra.autoreply.add(o))
+    : await post("/api/autoreply/add", o);
+  return d.rule;
+}
+
+export async function autoreplyRemove(id) {
+  return desktop
+    ? await bridge(() => window.dra.autoreply.remove(id))
+    : await post("/api/autoreply/remove", { id });
+}
+
+export async function autoreplyToggle(id) {
+  return desktop
+    ? await bridge(() => window.dra.autoreply.toggle(id))
+    : await post("/api/autoreply/toggle", { id });
+}
+
+export async function autoreplyRun(dryRun) {
+  const d = desktop
+    ? await bridge(() => window.dra.autoreply.run(dryRun))
+    : await post("/api/autoreply/run", { dryRun });
+  return d.result;
+}
+
+export async function businessReport(days = 30) {
+  const d = desktop
+    ? await bridge(() => window.dra.business.report(days))
+    : await post("/api/business/report", { days });
+  return d.report;
+}
+
 /* ------------------------------------------------------------- youtube */
 
 export async function configureYoutube(clientId, clientSecret, refreshToken) {

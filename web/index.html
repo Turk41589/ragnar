@@ -375,6 +375,42 @@
                 Mesajlari topla
               </button>
               <p class="nextalarm" id="message-summary">Henuz mesaj yok</p>
+
+              <h3 class="pane__title">Otomatik yanit</h3>
+              <div class="permrow">
+                <span>Otomatik yanit acik</span>
+                <button class="switch" type="button" id="set-autoreply" role="switch" aria-checked="false"></button>
+              </div>
+              <small class="hint">
+                Acikken kurallariniza uyan mesajlara DRA kendiliginden yanit
+                verir. Once &laquo;Deneme&raquo; ile neyin gidecegini gorun &mdash;
+                deneme hicbir sey gondermez. Sikayet mesajlarina, kuralda
+                acikca istenmedikce otomatik yanit verilmez.
+              </small>
+
+              <ul class="settings" id="rule-list"></ul>
+
+              <label for="set-rule-name">Kural adi</label>
+              <input id="set-rule-name" type="text" placeholder="Calisma saatleri" maxlength="80" />
+              <label for="set-rule-words">Anahtar kelimeler (virgulle)</label>
+              <input id="set-rule-words" type="text" placeholder="kacta, acik misiniz, saat" maxlength="300" />
+              <label for="set-rule-reply">Verilecek yanit</label>
+              <input id="set-rule-reply" type="text" placeholder="Her gun 09:00-22:00 arasi aciktir." maxlength="1000" />
+              <div class="permrow">
+                <span>Sikayetlere de yanit ver</span>
+                <button class="switch" type="button" id="set-rule-complaints" role="switch" aria-checked="false"></button>
+              </div>
+              <button class="btn btn--icon btn--wide" type="button" id="rule-add">
+                Kurali ekle
+              </button>
+
+              <button class="btn btn--icon btn--wide" type="button" id="autoreply-dry">
+                Deneme (gondermez)
+              </button>
+              <button class="btn btn--icon btn--wide btn--go" type="button" id="autoreply-run">
+                Simdi yanitla
+              </button>
+              <p class="nextalarm" id="autoreply-status">Otomatik yanit kapali</p>
             </li>
 
           </ul>

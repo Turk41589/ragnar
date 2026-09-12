@@ -35,6 +35,8 @@ import * as scheduler from "./scheduler.mjs";
 import * as sources from "./sources.mjs";
 import * as messages from "./messages.mjs";
 import * as whatsapp from "./whatsapp.mjs";
+import * as autoreply from "./autoreply.mjs";
+import * as business from "./business.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -475,6 +477,48 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { "content-type": "text/plain" });
       return res.end("ok");
     }
+  }
+
+  /* --------------------------------------------- otomatik yanit / rapor */
+
+  if (url.pathname === "/api/autoreply" && req.method === "POST") {
+    return handleAction(req, res, async () => ({
+      status: await autoreply.status(),
+      rules: await autoreply.list(),
+    }));
+  }
+
+  if (url.pathname === "/api/autoreply/toggle-mode" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      await permissions.require("isletme");
+      return { status: await autoreply.setEnabled(body.enabled) };
+    });
+  }
+
+  if (url.pathname === "/api/autoreply/add" && req.method === "POST") {
+    return handleAction(req, res, async (body) => ({ rule: await autoreply.add(body) }));
+  }
+
+  if (url.pathname === "/api/autoreply/remove" && req.method === "POST") {
+    return handleAction(req, res, async (body) => await autoreply.remove(body.id));
+  }
+
+  if (url.pathname === "/api/autoreply/toggle" && req.method === "POST") {
+    return handleAction(req, res, async (body) => ({ rule: await autoreply.toggle(body.id) }));
+  }
+
+  if (url.pathname === "/api/autoreply/run" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      // Deneme kipi de yetki istiyor: mesajlari okumak da bir erisim.
+      await permissions.require("isletme");
+      return { result: await autoreply.run({ dryRun: Boolean(body.dryRun) }) };
+    });
+  }
+
+  if (url.pathname === "/api/business/report" && req.method === "POST") {
+    return handleAction(req, res, async (body) => ({
+      report: await business.report({ days: Number(body.days) || 30 }),
+    }));
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {
