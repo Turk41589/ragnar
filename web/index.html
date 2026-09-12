@@ -220,6 +220,31 @@
                 &laquo;ahmeti 10 dakika sustur&raquo;, &laquo;sohbete yaz merhaba&raquo;.
               </small>
             </li>
+            <li>
+              <span>E-posta raporu</span>
+              <button class="switch" type="button" id="set-mail" role="switch" aria-checked="false"></button>
+            </li>
+            <li class="settings__stack" id="mail-fields" hidden>
+              <label for="set-mail-user">Gmail adresi</label>
+              <input id="set-mail-user" type="email" placeholder="ornek@gmail.com"
+                     autocomplete="off" maxlength="200" />
+              <label for="set-mail-pass">Uygulama sifresi</label>
+              <input id="set-mail-pass" type="password" placeholder="16 haneli uygulama sifresi"
+                     autocomplete="off" maxlength="100" />
+              <button class="btn btn--icon btn--wide" type="button" id="set-mail-test">
+                Baglantiyi sina
+              </button>
+              <p class="nextalarm" id="mail-status">Hesap girilmedi</p>
+              <small class="hint">
+                Buraya Gmail sifrenizi DEGIL, Google'in verdigi
+                <strong>uygulama sifresini</strong> girin: Google Hesabi &rarr;
+                Guvenlik &rarr; Iki adimli dogrulama &rarr; Uygulama sifreleri.
+                Bosluklu gosterilir, bosluklariyla yapistirabilirsiniz.
+                DRA yalnizca mesaj BASLIKLARINI okur &mdash; govde hic indirilmez.
+                Sifre bu bilgisayarda kalir.
+              </small>
+            </li>
+
           </ul>
 
           <h3 class="pane__title">Erisim izinleri</h3>

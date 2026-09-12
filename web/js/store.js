@@ -34,6 +34,10 @@ const DEFAULTS = {
   elevenKey: "",
   elevenVoice: "",
   elevenModel: "eleven_flash_v2_5",
+  // E-posta raporu: Gmail adresi + UYGULAMA SIFRESI (normal sifre degil).
+  mailMode: false,
+  mailUser: "",
+  mailPass: "",
   notes: [],
   alarms: [],
 };
@@ -69,6 +73,9 @@ function coerce(saved) {
   if (typeof saved.elevenModel === "string" && saved.elevenModel.trim()) {
     store.elevenModel = saved.elevenModel.trim().slice(0, 80);
   }
+  if (typeof saved.mailMode === "boolean") store.mailMode = saved.mailMode;
+  if (typeof saved.mailUser === "string") store.mailUser = saved.mailUser.slice(0, 200);
+  if (typeof saved.mailPass === "string") store.mailPass = saved.mailPass.slice(0, 100);
 
   if (Number.isFinite(saved.speechRate)) {
     store.speechRate = Math.min(1.6, Math.max(0.6, saved.speechRate));

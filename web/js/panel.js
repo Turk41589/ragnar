@@ -259,18 +259,35 @@ export function syncSettings() {
   $("set-kick-channel").value = store.kickChannel;
   $("set-kick-token").value = store.kickToken;
 
+  syncSwitch($("set-mail"), store.mailMode);
+  $("mail-fields").hidden = !store.mailMode;
+  $("set-mail-user").value = store.mailUser;
+  $("set-mail-pass").value = store.mailPass;
+
   $("set-tts").value = store.ttsProvider;
   $("row-eleven").hidden = store.ttsProvider !== "elevenlabs";
   $("set-eleven-key").value = store.elevenKey;
   syncElevenOption($("set-eleven-voice"), store.elevenVoice);
   syncElevenOption($("set-eleven-model"), store.elevenModel);
   refreshElevenStatus();
+  refreshMailStatus();
 
   $("set-rate").value = String(store.speechRate);
   $("set-rate-val").textContent = `${store.speechRate.toFixed(2)}×`;
   $("set-sleep").value = String(store.autoSleepMinutes);
   $("set-wake").value = store.extraWakeWords.join(", ");
   renderSwatches();
+}
+
+/* ----------------------------------------------------------------- e-posta */
+
+function refreshMailStatus() {
+  const el = $("mail-status");
+  if (!el) return;
+  if (!store.mailMode) el.textContent = "Kapali";
+  else if (!store.mailUser) el.textContent = "Adres girilmedi";
+  else if (!store.mailPass) el.textContent = "Uygulama sifresi girilmedi";
+  else el.textContent = "Hazir — «Baglantiyi sina» ile dogrulayin";
 }
 
 /* ----------------------------------------------------------------- izinler */
@@ -657,6 +674,67 @@ export function mountPanel(context) {
       }
     });
   }
+
+  /* --------------------------------------------------------- e-posta -- */
+
+  $("set-mail").addEventListener("click", () => {
+    store.mailMode = !store.mailMode;
+    saveStore();
+    syncSettings();
+    if (store.mailMode) {
+      ctx.log(
+        "system",
+        "E-posta raporu acildi. Gmail adresinizi ve UYGULAMA SIFRENIZI girin; " +
+          "sonra «mail var mi» diye sorabilirsiniz.",
+      );
+    } else {
+      // Kapatilinca sifreyi surecten de cekiyoruz.
+      system.configureMail("", "").catch(() => {});
+      ctx.log("system", "E-posta raporu kapatildi.");
+    }
+    refreshMailStatus();
+  });
+
+  for (const id of ["set-mail-user", "set-mail-pass"]) {
+    $(id).addEventListener("change", async (event) => {
+      if (id === "set-mail-user") store.mailUser = event.target.value.trim();
+      else store.mailPass = event.target.value.trim();
+      saveStore();
+      if (store.mailUser && store.mailPass) {
+        try {
+          await system.configureMail(store.mailUser, store.mailPass);
+        } catch (err) {
+          ctx.toast(`E-posta ayarlanamadi: ${err.message}`, 5000);
+        }
+      }
+      refreshMailStatus();
+    });
+  }
+
+  $("set-mail-test").addEventListener("click", async () => {
+    if (!store.mailUser || !store.mailPass) {
+      ctx.toast("Once adres ve uygulama sifresini girin");
+      return;
+    }
+    $("mail-status").textContent = "Sinaniyor…";
+    try {
+      await system.configureMail(store.mailUser, store.mailPass);
+      // Sinama da izin gerektiriyor; yoksa DRA sorar.
+      const sonuc = await ctx.withPermission(() => system.mailTest());
+      if (!sonuc) {
+        $("mail-status").textContent = "Izin verilmedi";
+        return;
+      }
+      const ozet = `Baglanti tamam — ${sonuc.user}, kutuda ${sonuc.total} mesaj`;
+      $("mail-status").textContent = ozet;
+      ctx.log("system", ozet);
+      ctx.toast("E-posta baglantisi calisiyor");
+    } catch (err) {
+      $("mail-status").textContent = `Hata: ${err.message}`;
+      ctx.log("system", `E-posta baglantisi kurulamadi: ${err.message}`);
+      ctx.toast("E-posta baglantisi kurulamadi", 6000);
+    }
+  });
 
   /* ------------------------------------------------------ ElevenLabs -- */
 

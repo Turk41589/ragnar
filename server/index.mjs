@@ -26,6 +26,7 @@ import * as kick from "./kick.mjs";
 import * as tts from "./tts.mjs";
 import * as permissions from "./permissions.mjs";
 import * as report from "./report.mjs";
+import * as mail from "./mail.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -134,6 +135,7 @@ const server = createServer(async (req, res) => {
       search: { enabled: searchEnabled },
       kick: kick.status(),
       tts: tts.status(),
+    mail: mail.status(),
       apps: await apps.scanInfo(),
     });
   }
@@ -267,6 +269,28 @@ const server = createServer(async (req, res) => {
       // Yetki denetimi ISIN YAPILDIGI yerde: arayuzun sozune guvenmiyoruz.
       await permissions.require("sistem");
       return { report: await report.system() };
+    });
+  }
+
+  /* ------------------------------------------------------- e-posta -- */
+
+  if (url.pathname === "/api/mail/configure" && req.method === "POST") {
+    return handleAction(req, res, async (body) => ({
+      status: mail.configure({ user: body.user, pass: body.pass, host: body.host }),
+    }));
+  }
+
+  if (url.pathname === "/api/mail/test" && req.method === "POST") {
+    return handleAction(req, res, async () => {
+      await permissions.require("eposta");
+      return await mail.test();
+    });
+  }
+
+  if (url.pathname === "/api/mail/summary" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      await permissions.require("eposta");
+      return { summary: await mail.summary({ days: Number(body.days) || 2 }) };
     });
   }
 

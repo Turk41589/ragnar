@@ -206,6 +206,50 @@ gerekmez). Başka bir işletim sisteminde o bölüm "yalnızca Windows'ta okunuy
 der — uydurma bir değer göstermez. Bir parça okunamazsa rapor o alan eksik
 gelir; hiç rapor gelmemesinden iyidir.
 
+### E-posta raporu
+
+**"DRA mail var mı"** deyin. DRA gelen kutunuzu okur, reklam ve bültenleri
+ayıklar, işe yarar olanları öne çıkarır ve sohbete görsel bir kart basar:
+
+* **Sponsor / işbirliği** ve **iş / görüşme** mesajları tek tek listelenir
+* **Kişisel** mesajlar (gerçek bir insandan gelenler) ayrıca gösterilir
+* Kaç reklam, kaç bülten, kaç otomatik bildirim ayıkladığını söyler
+
+Sözlü özet yalnızca işe yarar kısmı okur: "Son 2 günde 34 mesaj geldi.
+Dikkatinizi çekecekler: 1 sponsor teklifi, 2 iş mesajı. 28 tanesini ayıkladım."
+
+**Nasıl ayırıyor — yapay zekâ yok.** Kurallar açık ve denetlenebilir. En
+güvenilir işaret başlıklarda: toplu gönderilen her posta `List-Unsubscribe` ya
+da `Precedence: bulk` taşır. Bu tahmin değil, **gönderenin kendi beyanı** —
+bülten/reklam ayrımı buradan çıkıyor. Üstüne konu satırı kuralları biniyor
+(indirim/kampanya → reklam, mülakat/görüşme → iş, sponsor/işbirliği → sponsor).
+Sponsor teklifi toplu gönderilse bile önemli sayılır, çünkü öyledir.
+
+**Kurulum — OAuth yok.** Google Cloud'da proje açmanız gerekmiyor. DRA IMAP
+ile bağlanır ve sizden tek bir şey ister: bir **uygulama şifresi.**
+
+1. Google Hesabı → Güvenlik → **İki adımlı doğrulama** açık olmalı
+2. Aynı sayfada **Uygulama şifreleri** → yeni bir tane oluşturun
+3. Modlar sekmesinde **E-posta raporu**'nu açın, adresinizi ve o 16 haneli
+   şifreyi girin → **Bağlantıyı sına**
+
+Gmail şifreniz hiçbir yere girilmez. Uygulama şifresi bu bilgisayarda kalır,
+istek DRA'nın kendi sürecinden gider.
+
+**Mesaj gövdesi hiç indirilmez.** DRA yalnızca başlıkları ister
+(`BODY.PEEK[HEADER.FIELDS ...]`) — gönderen, konu, tarih ve sınıflama için
+gereken üç başlık. Raporu üretmek için gövde gerekmiyor, indirmemek de en iyi
+gizlilik kararı. Bu testle doğrulanıyor: istekler arasında `BODY[]` ya da
+`RFC822` geçmiyor.
+
+Bağımlılık eklenmedi: IMAP satır tabanlı bir protokol, `node:tls` yetiyor.
+Sadece gereken kısmı var — giriş, kutu seçme, arama, başlık çekme.
+
+> Not: Geliştirme ortamında Gmail hesabı ve dışarı çıkış yok. Protokol,
+> gerçekten konuşan bir **sahte IMAP sunucusuna** karşı sınandı (36 test:
+> literal blok okuma, Türkçe başlık çözme, sınıflama kuralları) — canlı
+> doğrulanmadı. İlk kullanımda "Bağlantıyı sına" ile doğrulayın.
+
 ## Ses ve gizlilik — okumaya değer
 
 Tarayıcıların varsayılan ses tanıması sesi **satıcının sunucusuna gönderir**
@@ -374,7 +418,7 @@ Açıkken sesli moderasyon:
 | Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm; uygulama taraması |
 | Not | not ekle, tek tek sil, hepsini temizle |
 | Alarm | saatli alarm kur, etiket ver, her gün tekrarla, aç/kapa, sil |
-| Modlar | çalışma modları (açılışta başlat, arka planda dinle, web araması, yayıncı desteği) ve **erişim izinleri** |
+| Modlar | çalışma modları (açılışta başlat, arka planda dinle, web araması, yayıncı desteği, **e-posta raporu**) ve **erişim izinleri** |
 | Ayar | ses, mikrofon, ses tanıma motoru ve modeli, sesi cihazda tut, açılış dizisi, **DRA'nın sesi** (yerel / ElevenLabs), konuşma hızı, otomatik uyku, tema rengi, ek uyandırma sözcükleri, sıfırlama |
 
 **Orta** — reaktör. Dönen halkalar, glif şeridi ve yörüngedeki parçalar;
@@ -468,6 +512,7 @@ server/kick.mjs      Kick moderasyon köprüsü
 server/tts.mjs       ElevenLabs seslendirmesi (anahtar girilmeden istek atmaz)
 server/permissions.mjs  erisim izinleri — yetki denetiminin yapildigi yer
 server/report.mjs    bilgisayar raporu (disk, bellek, Windows guncellemeleri)
+server/mail.mjs      e-posta raporu (bagimliliksiz IMAP, yalnizca basliklar)
 web/js/system.js     sunucu köprüsü (istemci tarafı)
 ```
 

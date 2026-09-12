@@ -238,7 +238,35 @@ export async function run(page, base, t, { external }) {
   await page.click("#consent-no");
   await page.waitForTimeout(500);
 
+  /* ------------------------------------------------------ e-posta modu */
+  // Hesap girilmeden "mail var mi" agi hic yoklamamali; kullaniciya ne
+  // yapmasi gerektigini soylemeli.
+  await page.click('.tab[data-tab="modlar"]');
+  await page.waitForTimeout(300);
+  t.ok(await page.locator("#set-mail").count() > 0, "e-posta modu Modlar sekmesinde");
+  t.ok(await page.locator("#mail-fields").isHidden(), "hesap alanlari kapaliyken gizli");
+
+  await page.click("#set-mail");
+  await page.waitForTimeout(300);
+  t.ok(await page.locator("#mail-fields").isVisible(), "mod acilinca alanlar gorunuyor");
+  t.eq(
+    await page.locator("#set-mail-pass").getAttribute("type"),
+    "password",
+    "uygulama sifresi ekranda gizli yaziliyor",
+  );
+
+  await tell(page, "mail var mi", 1500);
+  const mailYanit = (await readChat(page)).at(-1).text;
+  t.has(mailYanit, "uygulama sifrenizi", "hesap yoksa ne yapilacagi soyleniyor");
+  t.ok(await page.locator("#consent").isHidden(), "hesap yoksa izin bile sorulmuyor");
+
+  await page.click("#set-mail");
+  await page.waitForTimeout(250);
+
   /* ------------------------------------------------------ DRA'nin sesi */
+  // Ses ayarlari Ayar sekmesinde; onceki blok Modlar'da birakmis olabilir.
+  await page.click('.tab[data-tab="ayar"]');
+  await page.waitForTimeout(250);
   // Varsayilan ses bilgisayarindan gelir; ElevenLabs ancak kullanici
   // acarsa devreye girer ve o zaman bile arayuz ElevenLabs'la konusmaz.
   t.eq(

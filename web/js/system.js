@@ -28,6 +28,7 @@ let serverInfo = {
   search: { enabled: false },
   kick: { ready: false },
   tts: { ready: false },
+  mail: { ready: false },
   apps: {},
 };
 
@@ -220,6 +221,29 @@ export async function systemReport() {
     ? await bridge(() => window.dra.report.system())
     : await post("/api/report/system");
   return data.report;
+}
+
+/* ------------------------------------------------------------- e-posta */
+
+export async function configureMail(user, pass, host) {
+  const data = desktop
+    ? await bridge(() => window.dra.mail.configure(user, pass, host))
+    : await post("/api/mail/configure", { user, pass, host });
+  serverInfo.mail = data.status;
+  return data.status;
+}
+
+export const mailReady = () => Boolean(serverInfo.mail?.ready);
+
+export async function mailTest() {
+  return desktop ? await bridge(() => window.dra.mail.test()) : await post("/api/mail/test");
+}
+
+export async function mailSummary(days = 2) {
+  const data = desktop
+    ? await bridge(() => window.dra.mail.summary(days))
+    : await post("/api/mail/summary", { days });
+  return data.summary;
 }
 
 /* ----------------------------------------------------- seslendirme (TTS) */

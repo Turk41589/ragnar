@@ -69,6 +69,13 @@ contextBridge.exposeInMainWorld("dra", {
     system: () => call("dra:report:system"),
   },
 
+  /** E-posta raporu (izin gerektirir). */
+  mail: {
+    configure: (user, pass, host) => call("dra:mail:configure", { user, pass, host }),
+    test: () => call("dra:mail:test"),
+    summary: (days) => call("dra:mail:summary", { days }),
+  },
+
   /** ElevenLabs seslendirmesi (istege bagli). */
   tts: {
     configure: (apiKey, voiceId, model) => call("dra:tts:configure", { apiKey, voiceId, model }),

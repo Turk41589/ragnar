@@ -161,8 +161,8 @@ export async function run(_page, _base, t) {
     t.ok(!bridge.nodeSizinti, "Node arayuze sizmiyor (yalitim acik)");
     t.eq(
       bridge.anahtarlar,
-      ["apps", "desktop", "health", "kick", "on", "perm", "report", "search", "stt",
-       "tts", "version", "window"],
+      ["apps", "desktop", "health", "kick", "mail", "on", "perm", "report", "search",
+       "stt", "tts", "version", "window"],
       "kopru yalnizca beklenen yuzeyi aciyor",
     );
 
@@ -238,6 +238,18 @@ export async function run(_page, _base, t) {
       ),
     );
     t.eq(izinsiz.kod, "NEED_PERMISSION", "uygulamada izinsiz rapor uretilmiyor");
+
+    // E-posta da ayni kapidan geciyor olmali.
+    const izinsizMail = await window.evaluate(() =>
+      window.dra.mail.summary(2).then(
+        () => ({ kod: null }),
+        (err) => ({ kod: err.code, scope: err.scope }),
+      ),
+    );
+    t.eq(izinsizMail.kod, "NEED_PERMISSION", "uygulamada izinsiz e-posta okunmuyor");
+    t.eq(izinsizMail.scope, "eposta", "e-posta icin dogru yetki isteniyor");
+    t.eq(health.mail.ready, false, "e-posta varsayilan kapali");
+    t.ok(!("pass" in health.mail), "e-posta sifresi IPC'de tasinmiyor");
     t.eq(izinsiz.scope, "sistem", "hangi yetkinin gerektigi arayuze ulasiyor");
     t.ok(izinsiz.title, "sorunun basligi IPC uzerinden tasiniyor");
 

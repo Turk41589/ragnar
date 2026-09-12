@@ -450,6 +450,91 @@ function raporuSun(r) {
   return `Raporu ekrana cikardim. Kisaca: ${parcalar.join(", ")}.`;
 }
 
+/* ================================================================ e-posta */
+
+/** Kutudaki mesaj siniflarinin ekranda gorunecek sirasi ve adi. */
+const EPOSTA_SIRA = [
+  ["sponsor", "Sponsor / isbirligi"],
+  ["is", "Is / gorusme"],
+  ["kisisel", "Kisisel"],
+  ["bulten", "Bulten"],
+  ["reklam", "Reklam"],
+  ["diger", "Otomatik bildirim"],
+];
+
+/** Onemli sayilan siniflar: bunlar tek tek listelenir. */
+const ONEMLI = new Set(["sponsor", "is", "kisisel"]);
+
+function epostaSun(o) {
+  if (!o.total) {
+    hud.logCard({
+      title: "E-posta raporu",
+      subtitle: new Date(o.at).toLocaleString("tr"),
+      sections: [{ note: `Son ${o.days} gunde yeni mesaj yok.`, level: "ok" }],
+    });
+    return `Son ${o.days} gunde yeni mesajiniz yok efendim.`;
+  }
+
+  const bolumler = [];
+
+  // --- sayim tablosu ---
+  const satirlar = [];
+  for (const [id, ad] of EPOSTA_SIRA) {
+    const n = o.counts[id] || 0;
+    if (n) satirlar.push([ad, String(n), Math.round((n / o.total) * 100)]);
+  }
+  bolumler.push({
+    heading: `Son ${o.days} gun — ${o.total} mesaj`,
+    rows: satirlar,
+  });
+
+  // --- ise yarar olanlar tek tek ---
+  for (const [id, ad] of EPOSTA_SIRA) {
+    if (!ONEMLI.has(id)) continue;
+    const liste = o.groups[id];
+    if (!liste?.length) continue;
+    bolumler.push({
+      heading: ad,
+      // En yeniler once; cok uzun listeyi kirpiyoruz.
+      items: liste
+        .slice()
+        .sort((a, b) => (b.date || 0) - (a.date || 0))
+        .slice(0, 6)
+        .map((m) => `${m.from} — ${m.subject}`),
+    });
+  }
+
+  // --- ayiklananlar ---
+  const gurultu = (o.counts.reklam || 0) + (o.counts.bulten || 0) + (o.counts.diger || 0);
+  if (gurultu) {
+    bolumler.push({
+      note:
+        `${gurultu} mesaji ayikladim: ${o.counts.reklam || 0} reklam, ` +
+        `${o.counts.bulten || 0} bulten, ${o.counts.diger || 0} otomatik bildirim.`,
+      level: "warn",
+    });
+  }
+
+  hud.logCard({
+    title: "E-posta raporu",
+    subtitle: new Date(o.at).toLocaleString("tr"),
+    sections: bolumler,
+  });
+
+  /* --- sozlu ozet: yalnizca ise yarar olani soyle --- */
+  const onemliParca = [];
+  if (o.counts.sponsor) onemliParca.push(`${o.counts.sponsor} sponsor teklifi`);
+  if (o.counts.is) onemliParca.push(`${o.counts.is} is mesaji`);
+  if (o.counts.kisisel) onemliParca.push(`${o.counts.kisisel} kisisel mesaj`);
+
+  const bas = `Son ${o.days} gunde ${o.total} mesaj geldi.`;
+  if (!onemliParca.length) {
+    return `${bas} Ise yarar bir sey yok; ${gurultu} tanesi reklam, bulten ya da bildirim.`;
+  }
+  return `${bas} Dikkatinizi cekecekler: ${onemliParca.join(", ")}. ` +
+    `${gurultu} tanesini ayikladim.`;
+}
+
 /* ================================================================= izinler */
 
 /** "evet/olur/tamam" → true, "hayir/olmaz/iptal" → false, baska → null. */
@@ -569,6 +654,27 @@ const ctx = {
     if (!rapor) return null;
     return raporuSun(rapor);
   },
+
+  /**
+   * E-posta raporu. Izin gerektirir; yoksa DRA once sorar.
+   * Reklam/bulten ayiklanir, ise yarar mesajlar one cikarilir.
+   */
+  mailReport: async () => {
+    if (!store.mailUser || !store.mailPass) {
+      return "E-posta hesabi tanimli degil. Modlar sekmesinden Gmail adresinizi " +
+        "ve uygulama sifrenizi girin.";
+    }
+    const ozet = await izinliCalis(async () => {
+      // Ayarlar her acilista yeniden bildirilir; sifre surecte tutulmaz.
+      await system.configureMail(store.mailUser, store.mailPass);
+      return system.mailSummary(2);
+    });
+    if (!ozet) return null;
+    return epostaSun(ozet);
+  },
+
+  /** Panelden gelen, izin gerektiren isler icin ayni akis. */
+  withPermission: (is) => izinliCalis(is),
 
   onBackgroundChanged: () => {
     // Arka plan dinleme acildiysa mikrofonu hemen baslat.

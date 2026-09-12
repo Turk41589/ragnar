@@ -19,6 +19,7 @@ import * as kick from "../server/kick.mjs";
 import * as tts from "../server/tts.mjs";
 import * as permissions from "../server/permissions.mjs";
 import * as report from "../server/report.mjs";
+import * as mail from "../server/mail.mjs";
 import * as stt from "./speech-engine.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -263,6 +264,7 @@ function registerIpc() {
     search: { enabled: searchEnabled },
     kick: kick.status(),
     tts: tts.status(),
+    mail: mail.status(),
     apps: await apps.scanInfo(),
   }));
 
@@ -326,6 +328,22 @@ function registerIpc() {
     // Yetki denetimi burada: arayuzun "izin var" demesi yetmez.
     await permissions.require("sistem");
     return { report: await report.system() };
+  });
+
+  /* ---------------------------------------------------- e-posta ---- */
+
+  handle("dra:mail:configure", async ({ user, pass, host }) => ({
+    status: mail.configure({ user, pass, host }),
+  }));
+
+  handle("dra:mail:test", async () => {
+    await permissions.require("eposta");
+    return await mail.test();
+  });
+
+  handle("dra:mail:summary", async ({ days }) => {
+    await permissions.require("eposta");
+    return { summary: await mail.summary({ days: Number(days) || 2 }) };
   });
 
   /* ------------------------------------------------ seslendirme ---- */

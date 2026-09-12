@@ -355,6 +355,24 @@ const RULES = [
   },
 
   {
+    name: "eposta",
+    example: "mail var mi",
+    phrases: [
+      "mail var mi", "maillerim", "mail raporu", "eposta raporu",
+      "e posta raporu", "postalarim", "gelen kutusu", "gelen kutum",
+      "mail geldi mi", "yeni mail var mi", "mailleri kontrol et",
+      "epostalarimi kontrol et", "mail ozeti", "kim mail atmis",
+      "onemli mail var mi",
+    ],
+    priority: 2,
+    run: async (n, raw, ctx) => {
+      const ozet = await ctx.mailReport();
+      if (!ozet) return { text: "" };
+      return ozet;
+    },
+  },
+
+  {
     name: "selam",
     example: "merhaba",
     phrases: [
