@@ -128,7 +128,9 @@ export function readChat(page) {
   return page.$$eval("#log li", (els) =>
     els.map((el) => ({
       who: el.dataset.who,
-      text: el.querySelector(".chat__bubble").textContent.trim(),
+      // Rapor gibi bazi yanitlar balon yerine gorsel kart olarak basilir.
+      text: (el.querySelector(".chat__bubble") || el.querySelector(".card"))
+        ?.textContent.trim() ?? "",
     })),
   );
 }

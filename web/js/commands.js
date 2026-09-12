@@ -332,6 +332,29 @@ const RULES = [
 
   /* -- selamlama --------------------------------------------------------- */
   {
+    name: "rapor",
+    example: "rapor ver",
+    phrases: [
+      "rapor ver", "rapor", "raporu ver", "bana rapor ver", "rapor hazirla",
+      "rapor sun", "bilgisayar raporu", "bilgisayar durumu",
+      "guncelleme var mi", "guncelleme kontrol et", "guncellemeleri kontrol et",
+      "bilgisayar guncel mi", "son guncelleme ne zaman",
+      "disk ne kadar dolu", "disk durumu",
+    ],
+    // "alarm raporu" gibi baska bir seyi kastediyorsa bu kural devreye girmesin.
+    exclude: ["alarm", "not", "sohbet"],
+    // Rapor istegi, DRA'nin kendi durumunu anlatan "durum" kuralindan
+    // once gelmeli: kullanici "rapor" derken bilgisayari kastediyor.
+    priority: 2,
+    run: async (n, raw, ctx) => {
+      const ozet = await ctx.computerReport();
+      // null: kullanici izin vermedi — uyari zaten ekranda, sessiz gec.
+      if (!ozet) return { text: "" };
+      return ozet;
+    },
+  },
+
+  {
     name: "selam",
     example: "merhaba",
     phrases: [
@@ -859,8 +882,8 @@ const RULES = [
     name: "durum",
     example: "sistem durumu",
     phrases: [
-      "sistem durumu", "durum raporu", "rapor ver", "sistemler nasil",
-      "durumun ne", "her sey yolunda mi", "durum",
+      "sistem durumu", "sistemler nasil", "durumun ne", "kendi durumun",
+      "her sey yolunda mi", "durum", "nasil gidiyor sistemler",
     ],
     run: (n, raw, ctx) => ctx.systemReport(),
   },

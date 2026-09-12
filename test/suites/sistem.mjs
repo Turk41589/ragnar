@@ -156,8 +156,8 @@ export async function run(page, base, t) {
   /* --------------------------------------------------- ayar aray uzu -- */
   await page.click("#btn-manual-wake");
   await page.waitForSelector("#hud:not([hidden])", { timeout: 15000 });
-  // Modlar Sistem sekmesinde.
-  await page.click('.tab[data-tab="sistem"]');
+  // Calisma modlari Modlar sekmesinde.
+  await page.click('.tab[data-tab="modlar"]');
   await page.waitForTimeout(200);
 
   t.eq(

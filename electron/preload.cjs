@@ -8,10 +8,28 @@
 
 const { contextBridge, ipcRenderer } = require("electron");
 
-/** Ana surece istek atar; hata mesajlarini duz metne cevirir. */
+/**
+ * Ana surece istek atar.
+ *
+ * DIKKAT — hata neden Error DEGIL de duz nesne:
+ * contextBridge, dunyalar arasinda gecen Error nesnelerini sadelestirir
+ * ve UZERINE EKLENEN ALANLARI SILER. Yani `err.code = "..."` yazsak
+ * arayuz tarafinda yalnizca mesaj kalir; izin eksikligi sradan bir
+ * hatadan ayirt edilemez. Duz nesneler ise oldugu gibi geciyor, bu
+ * yuzden basarisizligi VERI olarak reddediyoruz.
+ *
+ * Arayuz tarafinda system.js bunu tekrar gercek bir Error'a cevirir;
+ * geri kalan kod farki gormez (`err.message` her iki durumda da calisir).
+ */
 const call = (channel, payload) =>
   ipcRenderer.invoke(channel, payload).then((res) => {
-    if (res && res.ok === false) throw new Error(res.error || "Islem basarisiz.");
+    if (res && res.ok === false) {
+      return Promise.reject({
+        message: res.error || "Islem basarisiz.",
+        ...(res.code ? { code: res.code } : {}),
+        ...(res.scope ? { scope: res.scope, title: res.title, detail: res.detail } : {}),
+      });
+    }
     return res;
   });
 
@@ -37,6 +55,18 @@ contextBridge.exposeInMainWorld("dra", {
   kick: {
     configure: (token, channel) => call("dra:kick:configure", { token, channel }),
     action: (action, args) => call("dra:kick:action", { action, args }),
+  },
+
+  /** Erisim izinleri — her yetki ayri ayri verilir, geri alinabilir. */
+  perm: {
+    list: () => call("dra:perm:list"),
+    grant: (scope) => call("dra:perm:grant", { scope }),
+    revoke: (scope) => call("dra:perm:revoke", { scope }),
+  },
+
+  /** Bilgisayar raporu (izin gerektirir). */
+  report: {
+    system: () => call("dra:report:system"),
   },
 
   /** ElevenLabs seslendirmesi (istege bagli). */

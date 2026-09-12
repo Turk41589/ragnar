@@ -273,6 +273,77 @@ export function syncSettings() {
   renderSwatches();
 }
 
+/* ----------------------------------------------------------------- izinler */
+
+/**
+ * Verilen yetkileri listeler. Her satir tek tikla geri alinabilir —
+ * "her seye erisebilir" demenin karsiligi, her seyi geri alabilmek.
+ */
+export async function renderPermissions() {
+  const list = $("perm-list");
+  if (!list) return;
+
+  let izinler;
+  try {
+    izinler = await system.permissions();
+  } catch (err) {
+    list.replaceChildren();
+    $("perm-info").textContent = `Izinler okunamadi: ${err.message}`;
+    return;
+  }
+
+  list.replaceChildren();
+  const verilen = izinler.filter((p) => p.granted).length;
+  $("perm-info").textContent = verilen
+    ? `${verilen} yetki verildi. Her birini buradan geri alabilirsiniz.`
+    : "Henuz hicbir yetki verilmedi. DRA ihtiyac duydugunda size soracak.";
+
+  for (const izin of izinler) {
+    const li = document.createElement("li");
+    li.className = "settings__stack";
+    li.dataset.perm = izin.id;
+
+    const satir = document.createElement("div");
+    satir.className = "permrow";
+
+    const ad = document.createElement("span");
+    ad.textContent = izin.title;
+
+    const durum = document.createElement("b");
+    durum.className = "permrow__state";
+    durum.dataset.granted = String(izin.granted);
+    durum.textContent = izin.granted ? "verildi" : "kapali";
+
+    satir.append(ad, durum);
+    li.append(satir);
+
+    const aciklama = document.createElement("small");
+    aciklama.className = "hint";
+    aciklama.textContent = izin.detail;
+    li.append(aciklama);
+
+    if (izin.granted) {
+      const dugme = document.createElement("button");
+      dugme.className = "btn btn--icon btn--wide btn--danger";
+      dugme.type = "button";
+      dugme.textContent = "Bu izni geri al";
+      dugme.addEventListener("click", async () => {
+        try {
+          await system.revokePermission(izin.id);
+          ctx.log("system", `"${izin.title}" izni geri alindi.`);
+          ctx.toast("Izin geri alindi");
+        } catch (err) {
+          ctx.toast(`Izin geri alinamadi: ${err.message}`, 5000);
+        }
+        renderPermissions();
+      });
+      li.append(dugme);
+    }
+
+    list.append(li);
+  }
+}
+
 /* -------------------------------------------------------------- ElevenLabs */
 
 /**
@@ -419,7 +490,12 @@ export function mountPanel(context) {
 
   // --- sekmeler -----------------------------------------------------
   for (const tab of document.querySelectorAll(".tab")) {
-    tab.addEventListener("click", () => showTab(tab.dataset.tab));
+    tab.addEventListener("click", () => {
+      showTab(tab.dataset.tab);
+      // Izin listesi her acilista tazelenir: yetki sesli bir soruyla da
+      // verilmis olabilir, sekme eski halini gostermesin.
+      if (tab.dataset.tab === "modlar") renderPermissions();
+    });
   }
 
   // --- notlar -------------------------------------------------------
@@ -794,6 +870,17 @@ export function mountPanel(context) {
       ctx.toast("Arka planda dinleme kapatildi");
     }
     ctx.onBackgroundChanged();
+  });
+
+  $("perm-revoke-all").addEventListener("click", async () => {
+    try {
+      await system.revokePermission("*");
+      ctx.log("system", "Tum erisim izinleri geri alindi.");
+      ctx.toast("Tum izinler geri alindi");
+    } catch (err) {
+      ctx.toast(`Izinler geri alinamadi: ${err.message}`, 5000);
+    }
+    renderPermissions();
   });
 
   $("set-diag").addEventListener("click", () => ctx.runDiagnostics());

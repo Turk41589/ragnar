@@ -161,7 +161,8 @@ export async function run(_page, _base, t) {
     t.ok(!bridge.nodeSizinti, "Node arayuze sizmiyor (yalitim acik)");
     t.eq(
       bridge.anahtarlar,
-      ["apps", "desktop", "health", "kick", "on", "search", "stt", "tts", "version", "window"],
+      ["apps", "desktop", "health", "kick", "on", "perm", "report", "search", "stt",
+       "tts", "version", "window"],
       "kopru yalnizca beklenen yuzeyi aciyor",
     );
 
@@ -228,6 +229,17 @@ export async function run(_page, _base, t) {
     t.eq(health.kick.ready, false, "Kick varsayilan kapali");
     t.eq(health.tts.ready, false, "ElevenLabs varsayilan kapali");
     t.ok(!("apiKey" in health.tts), "ElevenLabs anahtari IPC'de tasinmiyor");
+
+    // Izin denetimi uygulamada da ANA SURECTE: arayuzun sozune guvenmiyoruz.
+    const izinsiz = await window.evaluate(() =>
+      window.dra.report.system().then(
+        () => ({ kod: null }),
+        (err) => ({ kod: err.code, scope: err.scope, title: err.title }),
+      ),
+    );
+    t.eq(izinsiz.kod, "NEED_PERMISSION", "uygulamada izinsiz rapor uretilmiyor");
+    t.eq(izinsiz.scope, "sistem", "hangi yetkinin gerektigi arayuze ulasiyor");
+    t.ok(izinsiz.title, "sorunun basligi IPC uzerinden tasiniyor");
 
     // Tarayici surumunun aksine ortada jeton yok — IPC'de gerek de yok.
     t.ok(!("token" in health), "masaustunde oturum jetonu tasinmiyor");

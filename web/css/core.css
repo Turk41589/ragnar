@@ -205,6 +205,19 @@ body[data-state="speaking"] .backdrop__glow {
   letter-spacing: 0.14em;
 }
 
+/* Onaylayan dugme: izin sorusunda "Izin ver" gibi. */
+.btn--go {
+  border-color: var(--accent-soft);
+  color: var(--accent);
+  background: var(--accent-ghost);
+}
+
+.btn--go:hover {
+  color: var(--bg);
+  background: var(--accent);
+  box-shadow: 0 0 20px -6px var(--accent);
+}
+
 .btn--danger {
   border-color: rgb(255 77 94 / 0.35);
 }
@@ -448,3 +461,234 @@ body[data-state="speaking"] .backdrop__glow {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ------------------------------------------------------------- izin sorusu */
+
+/*
+ * DRA bir yetkiye ilk kez ihtiyac duydugunda cikar. Ekranin tamamini
+ * kapatiyor: bu, gozden kacmamasi gereken bir karar.
+ */
+.consent {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(2 4 8 / 0.82);
+  backdrop-filter: blur(6px);
+  animation: fade-in 160ms ease both;
+}
+
+.consent[hidden] { display: none; }
+
+.consent__box {
+  width: min(520px, 100%);
+  padding: 26px 26px 20px;
+  background: var(--bg-lift);
+  border: 1px solid var(--accent-soft);
+  border-radius: var(--radius);
+  box-shadow: 0 0 60px -16px var(--accent);
+}
+
+.consent__eyebrow {
+  margin: 0 0 10px;
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.consent__title {
+  margin: 0 0 12px;
+  font-size: 20px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+.consent__detail {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-dim);
+}
+
+.consent__note {
+  margin: 0 0 20px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent-faint);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.consent__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.consent__hint {
+  margin: 14px 0 0;
+  text-align: right;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+}
+
+@media (max-width: 520px) {
+  .consent__actions { flex-direction: column-reverse; }
+  .consent__actions .btn { width: 100%; }
+  .consent__hint { text-align: center; }
+}
+
+/* ------------------------------------------------------------- rapor karti */
+
+/*
+ * Sohbetteki "sunum" karti. Hareketli goruntu yerine canli cizim:
+ * veriler gercek, metin secilebilir, ekran okuyucu okuyabiliyor.
+ */
+.card {
+  padding: 16px 16px 14px;
+  background: linear-gradient(160deg, var(--accent-ghost), rgb(7 12 20 / 0.9));
+  border: 1px solid var(--accent-faint);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  animation: fade-in 260ms ease both;
+}
+
+.card__title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.card__sub {
+  margin: 0 0 14px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+
+.card__heading {
+  margin: 16px 0 8px;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--accent-ghost);
+  padding-bottom: 5px;
+}
+
+.card__note {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+.card__note[data-level="ok"] { color: var(--ok); }
+.card__note[data-level="warn"] { color: var(--amber); }
+.card__note[data-level="error"] { color: var(--danger); }
+
+.card__rows,
+.card__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px solid rgb(207 239 255 / 0.05);
+}
+
+.card__row span {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+}
+
+.card__row b {
+  font-size: 12px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Doluluk cubugu iki kolonu da kaplar. */
+.card__bar {
+  grid-column: 1 / -1;
+  height: 3px;
+  margin-top: 4px;
+  background: rgb(207 239 255 / 0.07);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.card__bar i {
+  display: block;
+  height: 100%;
+  width: var(--hedef, 0%);
+  background: var(--accent);
+  border-radius: 2px;
+  /* Kart ekrana girerken cubuklar dolar — sunum hissi buradan geliyor. */
+  animation: card-fill 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.card__bar i[data-level="yuksek"] { background: var(--amber); }
+.card__bar i[data-level="kritik"] { background: var(--danger); }
+
+.card__items li {
+  position: relative;
+  padding: 4px 0 4px 14px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+.card__items li::before {
+  content: "▸";
+  position: absolute;
+  left: 0;
+  color: var(--accent-soft);
+}
+
+@keyframes card-fill {
+  from { width: 0; }
+  to { width: var(--hedef, 0%); }
+}
+
+/* Hareketi azalt ayari acik olanlar icin: dolum animasyonu kapanir. */
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .card__bar i { animation: none; }
+}
+
+/* --------------------------------------------------------------- izin satiri */
+
+.permrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.permrow span {
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.permrow__state {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.permrow__state[data-granted="true"] { color: var(--ok); }

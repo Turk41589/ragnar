@@ -34,7 +34,7 @@ let serverInfo = {
 /** Baglantiyi kurar ve ortam bilgisini alir. */
 export async function connect() {
   if (desktop) {
-    serverInfo = await window.dra.health();
+    serverInfo = await bridge(() => window.dra.health());
     return serverInfo;
   }
   const res = await fetch("/api/health");
@@ -48,6 +48,35 @@ export async function connect() {
 export const info = () => serverInfo;
 export const connected = () => desktop || Boolean(token);
 
+/**
+ * Kopruden gelen basarisizligi gercek bir Error'a cevirir.
+ *
+ * Preload, contextBridge Error'lerin ozel alanlarini sildigi icin
+ * basarisizligi duz nesne olarak reddediyor (bkz. preload.cjs). Burada
+ * yeniden Error'a ceviriyoruz; boylece cagiran kod iki ortamda da ayni
+ * seyi gorur: `err.message`, gerektiginde `err.code` / `err.scope`.
+ */
+function toError(raw) {
+  if (raw instanceof Error) return raw;
+  const err = new Error(raw?.message || "Islem basarisiz.");
+  if (raw?.code) err.code = raw.code;
+  if (raw?.scope) {
+    err.scope = raw.scope;
+    err.title = raw.title;
+    err.detail = raw.detail;
+  }
+  return err;
+}
+
+/** Masaustu koprusune istek atar; hatayi normalize eder. */
+async function bridge(fn) {
+  try {
+    return await fn();
+  } catch (raw) {
+    throw toError(raw);
+  }
+}
+
 /** Tarayici surumunde islem yapan uclara istek atar. */
 async function post(path, body = {}) {
   if (!token) throw new Error("Sunucu baglantisi yok. Sayfayi yenileyin.");
@@ -58,7 +87,18 @@ async function post(path, body = {}) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Sunucu ${res.status} dondu.`);
-  if (data.ok === false) throw new Error(data.error || "Islem basarisiz.");
+  if (data.ok === false) {
+    // Izin eksikliginde hatanin kimligi korunur; cagiran taraf bunu
+    // gorup kullaniciya sorabilsin.
+    const err = new Error(data.error || "Islem basarisiz.");
+    if (data.code) err.code = data.code;
+    if (data.scope) {
+      err.scope = data.scope;
+      err.title = data.title;
+      err.detail = data.detail;
+    }
+    throw err;
+  }
   return data;
 }
 
@@ -66,7 +106,7 @@ async function post(path, body = {}) {
 
 export async function loadApps() {
   try {
-    const data = desktop ? await window.dra.apps.list() : await (await fetch("/api/apps")).json();
+    const data = desktop ? await bridge(() => window.dra.apps.list()) : await (await fetch("/api/apps")).json();
     apps = Array.isArray(data.apps) ? data.apps : [];
   } catch {
     apps = [];
@@ -78,7 +118,7 @@ export const appList = () => apps;
 
 /** Sistemi yeniden tarar. */
 export async function scanApps() {
-  const data = desktop ? await window.dra.apps.scan() : await post("/api/apps/scan");
+  const data = desktop ? await bridge(() => window.dra.apps.scan()) : await post("/api/apps/scan");
   apps = data.apps || [];
   return apps;
 }
@@ -110,16 +150,16 @@ export function findApp(query) {
 }
 
 export const launchApp = (id) =>
-  desktop ? window.dra.apps.launch(id) : post("/api/apps/launch", { id });
+  desktop ? bridge(() => window.dra.apps.launch(id)) : post("/api/apps/launch", { id });
 
 export const closeApp = (id) =>
-  desktop ? window.dra.apps.close(id) : post("/api/apps/close", { id });
+  desktop ? bridge(() => window.dra.apps.close(id)) : post("/api/apps/close", { id });
 
 /* ------------------------------------------------------------- arama */
 
 export async function setSearchEnabled(enabled) {
   const data = desktop
-    ? await window.dra.search.setEnabled(enabled)
+    ? await bridge(() => window.dra.search.setEnabled(enabled))
     : await post("/api/search/toggle", { enabled });
   serverInfo.search = { enabled: data.enabled };
   return data.enabled;
@@ -129,7 +169,7 @@ export const searchEnabled = () => Boolean(serverInfo.search?.enabled);
 
 export async function webSearch(query) {
   const data = desktop
-    ? await window.dra.search.query(query)
+    ? await bridge(() => window.dra.search.query(query))
     : await post("/api/search", { query });
   return data.result;
 }
@@ -138,7 +178,7 @@ export async function webSearch(query) {
 
 export async function configureKick(tokenValue, channel) {
   const data = desktop
-    ? await window.dra.kick.configure(tokenValue, channel)
+    ? await bridge(() => window.dra.kick.configure(tokenValue, channel))
     : await post("/api/kick/configure", { token: tokenValue, channel });
   serverInfo.kick = data.status;
   return data.status;
@@ -148,9 +188,38 @@ export const kickReady = () => Boolean(serverInfo.kick?.ready);
 
 export async function kickAction(action, args = []) {
   const data = desktop
-    ? await window.dra.kick.action(action, args)
+    ? await bridge(() => window.dra.kick.action(action, args))
     : await post("/api/kick/action", { action, args });
   return data.message;
+}
+
+/* ------------------------------------------------------------- izinler */
+
+/** Tum yetkiler ve durumlari. */
+export async function permissions() {
+  const data = desktop ? await bridge(() => window.dra.perm.list()) : await post("/api/permissions");
+  return data.permissions || [];
+}
+
+export async function grantPermission(scope) {
+  return desktop
+    ? await bridge(() => window.dra.perm.grant(scope))
+    : await post("/api/permissions/grant", { scope });
+}
+
+export async function revokePermission(scope) {
+  return desktop
+    ? await bridge(() => window.dra.perm.revoke(scope))
+    : await post("/api/permissions/revoke", { scope });
+}
+
+/* --------------------------------------------------------------- rapor */
+
+export async function systemReport() {
+  const data = desktop
+    ? await bridge(() => window.dra.report.system())
+    : await post("/api/report/system");
+  return data.report;
 }
 
 /* ----------------------------------------------------- seslendirme (TTS) */
@@ -161,7 +230,7 @@ export async function kickAction(action, args = []) {
  */
 export async function configureTts(apiKey, voiceId, model) {
   const data = desktop
-    ? await window.dra.tts.configure(apiKey, voiceId, model)
+    ? await bridge(() => window.dra.tts.configure(apiKey, voiceId, model))
     : await post("/api/tts/configure", { apiKey, voiceId, model });
   serverInfo.tts = data.status;
   return data.status;
@@ -171,20 +240,20 @@ export const ttsReady = () => Boolean(serverInfo.tts?.ready);
 
 export async function ttsVoices() {
   const data = desktop
-    ? await window.dra.tts.voices()
+    ? await bridge(() => window.dra.tts.voices())
     : await post("/api/tts/voices");
   return data.voices || [];
 }
 
 export async function ttsModels() {
   const data = desktop
-    ? await window.dra.tts.models()
+    ? await bridge(() => window.dra.tts.models())
     : await post("/api/tts/models");
   return data.models || [];
 }
 
 export async function ttsTest() {
-  return desktop ? await window.dra.tts.test() : await post("/api/tts/test");
+  return desktop ? await bridge(() => window.dra.tts.test()) : await post("/api/tts/test");
 }
 
 /**
@@ -193,7 +262,7 @@ export async function ttsTest() {
  */
 export async function ttsSpeak(text) {
   const data = desktop
-    ? await window.dra.tts.speak(text)
+    ? await bridge(() => window.dra.tts.speak(text))
     : await post("/api/tts/speak", { text });
 
   const ikili = atob(data.audio);
@@ -210,12 +279,12 @@ export async function ttsSpeak(text) {
 /** Acilista baslatma (yalnizca masaustu surumunde). */
 export async function getAutoStart() {
   if (!desktop) return null;
-  return (await window.dra.window.getAutoStart()).enabled;
+  return (await bridge(() => window.dra.window.getAutoStart())).enabled;
 }
 
 export async function setAutoStart(enabled) {
   if (!desktop) return false;
-  return (await window.dra.window.setAutoStart(enabled)).enabled;
+  return (await bridge(() => window.dra.window.setAutoStart(enabled))).enabled;
 }
 
 /** Uygulama gizli mi baslatildi? (bilgisayar acilisinda) */

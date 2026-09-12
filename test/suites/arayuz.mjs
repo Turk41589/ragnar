@@ -76,11 +76,11 @@ export async function run(page, base, t, { external }) {
     "'sesi cihazda tut' varsayilan olarak acik",
   );
 
-  // Web aramasi ve yayinci destegi artik Sistem sekmesinde.
-  await page.click('.tab[data-tab="sistem"]');
+  // Calisma modlari artik kendi sekmesinde (Modlar).
+  await page.click('.tab[data-tab="modlar"]');
   await page.waitForTimeout(150);
-  t.ok(await page.locator("#set-search").isVisible(), "web aramasi Sistem sekmesinde");
-  t.ok(await page.locator("#set-streamer").isVisible(), "yayinci destegi Sistem sekmesinde");
+  t.ok(await page.locator("#set-search").isVisible(), "web aramasi Modlar sekmesinde");
+  t.ok(await page.locator("#set-streamer").isVisible(), "yayinci destegi Modlar sekmesinde");
   await page.click('.tab[data-tab="ayar"]');
 
   await page.click("#set-boot");
@@ -136,6 +136,107 @@ export async function run(page, base, t, { external }) {
   t.has(report?.text ?? "", "Mikrofon seviyesi", "teshis mikrofon seviyesini yaziyor");
   t.has(diagChat.at(-1).text, "mikrofonu acin", "teshis mikrofon kapaliyken yol gosteriyor");
   await page.click('.tab[data-tab="ayar"]');
+
+  /* -------------------------------------------------- izin akisi -------- *
+   * "Her seye erissin ama once izin istesin" isteginin arayuz tarafi.
+   * Sinanan sey: izin verilmeden is YAPILMIYOR, soru CIKIYOR, "hayir"
+   * denince vazgeciliyor, "evet" denince is tamamlaniyor.               */
+  await page.click('.tab[data-tab="modlar"]');
+  await page.waitForTimeout(500);
+  t.ok(await page.locator('[data-pane="modlar"]').isVisible(), "Modlar sekmesi aciliyor");
+  t.ok(
+    await page.locator("#row-background").count() > 0,
+    "calisma modlari Modlar sekmesine tasindi",
+  );
+  t.ok(await page.locator("#perm-list").count() > 0, "izin listesi Modlar sekmesinde");
+
+  // Baslangicta hicbir izin verilmemis olmali.
+  await page.click("#perm-revoke-all");
+  await page.waitForTimeout(400);
+  const ilkIzinler = await page.$$eval(
+    "#perm-list .permrow__state",
+    (els) => els.map((e) => e.dataset.granted),
+  );
+  t.ok(ilkIzinler.length >= 5, "yetkiler tek tek listeleniyor");
+  t.ok(ilkIzinler.every((g) => g === "false"), "baslangicta hicbir yetki verilmemis");
+
+  // --- "hayir" dendiginde is yapilmamali ----------------------------
+  await page.fill("#composer-input", "rapor ver");
+  await page.press("#composer-input", "Enter");
+  await page.waitForSelector("#consent:not([hidden])", { timeout: 10000 });
+  t.ok(await page.locator("#consent").isVisible(), "izin sorusu ekrana cikiyor");
+  t.has(
+    await page.textContent("#consent-title"),
+    "Bilgisayar",
+    "soru hangi yetki oldugunu yaziyor",
+  );
+  t.ok(
+    (await page.textContent("#consent-detail")).length > 20,
+    "soru ne yapilacagini acikliyor",
+  );
+
+  await page.click("#consent-no");
+  await page.waitForTimeout(700);
+  t.ok(await page.locator("#consent").isHidden(), "hayir deyince soru kapaniyor");
+  t.eq(
+    await page.$$eval("#log .card", (e) => e.length),
+    0,
+    "izin verilmeyince rapor uretilmiyor",
+  );
+
+  // --- sesle "evet" ------------------------------------------------
+  await page.fill("#composer-input", "rapor ver");
+  await page.press("#composer-input", "Enter");
+  await page.waitForSelector("#consent:not([hidden])", { timeout: 10000 });
+  // Soru acikken yazilan "evet" komut degil, cevap sayilmali.
+  await page.fill("#composer-input", "evet");
+  await page.press("#composer-input", "Enter");
+  await page.waitForSelector("#log .card", { timeout: 20000 });
+  t.ok(await page.locator("#consent").isHidden(), "evet deyince soru kapaniyor");
+
+  const kart = await page.textContent("#log .card");
+  t.has(kart, "Bilgisayar raporu", "rapor gorsel kart olarak basiliyor");
+  t.has(kart, "Bellek", "raporda bellek satiri var");
+  t.has(kart, "Acik kalma", "raporda calisma suresi var");
+  t.ok(
+    await page.locator("#log .card .card__bar i").count() > 0,
+    "kartta doluluk cubuklari var (sunum gibi)",
+  );
+
+  // Izin verildikten sonra bir daha sorulmamali.
+  await tell(page, "rapor ver", 2500);
+  t.ok(await page.locator("#consent").isHidden(), "verilen izin tekrar sorulmuyor");
+  t.eq(
+    await page.$$eval("#log .card", (e) => e.length),
+    2,
+    "ikinci rapor sorusuz uretildi",
+  );
+
+  // Modlar sekmesi izni verildi olarak gostermeli.
+  await page.click('.tab[data-tab="modlar"]');
+  await page.waitForTimeout(600);
+  t.eq(
+    await page.$$eval(
+      '#perm-list [data-perm="sistem"] .permrow__state',
+      (els) => els[0]?.dataset.granted,
+    ),
+    "true",
+    "verilen izin Modlar sekmesinde gorunuyor",
+  );
+
+  // Geri alinca yeniden sorulmali.
+  await page.click("#perm-revoke-all");
+  await page.waitForTimeout(500);
+  await page.click('.tab[data-tab="ayar"]');
+  await page.fill("#composer-input", "rapor ver");
+  await page.press("#composer-input", "Enter");
+  await page.waitForSelector("#consent:not([hidden])", { timeout: 10000 });
+  t.ok(
+    await page.locator("#consent").isVisible(),
+    "izin geri alininca yeniden soruluyor",
+  );
+  await page.click("#consent-no");
+  await page.waitForTimeout(500);
 
   /* ------------------------------------------------------ DRA'nin sesi */
   // Varsayilan ses bilgisayarindan gelir; ElevenLabs ancak kullanici

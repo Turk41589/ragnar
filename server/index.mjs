@@ -24,6 +24,8 @@ import { SESSION_TOKEN, rejectReason } from "./guard.mjs";
 import * as apps from "./apps.mjs";
 import * as kick from "./kick.mjs";
 import * as tts from "./tts.mjs";
+import * as permissions from "./permissions.mjs";
+import * as report from "./report.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -86,7 +88,15 @@ async function handleAction(req, res, work) {
     return sendJson(res, 200, { ok: true, ...result });
   } catch (err) {
     console.error("[dra] islem hatasi:", err?.message || err);
-    return sendJson(res, 200, { ok: false, error: err?.message || "Islem basarisiz." });
+    // Izin eksikligi sradan bir hata degil: arayuz bunu gorup kullaniciya
+    // "su yetkiyi veriyor musun" diye sorabilmeli. Hatanin kimligi
+    // tasinmazsa arayuzun elinde yalnizca bir metin kalir.
+    return sendJson(res, 200, {
+      ok: false,
+      error: err?.message || "Islem basarisiz.",
+      ...(err?.code ? { code: err.code } : {}),
+      ...(err?.scope ? { scope: err.scope, title: err.title, detail: err.detail } : {}),
+    });
   }
 }
 
@@ -232,6 +242,31 @@ const server = createServer(async (req, res) => {
       // Ses, ayni korumali uctan base64 olarak doner; arayuz ElevenLabs
       // ile hic konusmaz, anahtari hic gormez.
       return { audio: audio.toString("base64"), type, chars, truncated };
+    });
+  }
+
+  /* ------------------------------------------------------- izinler -- */
+
+  if (url.pathname === "/api/permissions" && req.method === "POST") {
+    return handleAction(req, res, async () => ({ permissions: await permissions.list() }));
+  }
+
+  if (url.pathname === "/api/permissions/grant" && req.method === "POST") {
+    return handleAction(req, res, async (body) => await permissions.grant(body.scope));
+  }
+
+  if (url.pathname === "/api/permissions/revoke" && req.method === "POST") {
+    return handleAction(req, res, async (body) =>
+      body.scope === "*" ? await permissions.revokeAll() : await permissions.revoke(body.scope));
+  }
+
+  /* --------------------------------------------------------- rapor -- */
+
+  if (url.pathname === "/api/report/system" && req.method === "POST") {
+    return handleAction(req, res, async () => {
+      // Yetki denetimi ISIN YAPILDIGI yerde: arayuzun sozune guvenmiyoruz.
+      await permissions.require("sistem");
+      return { report: await report.system() };
     });
   }
 

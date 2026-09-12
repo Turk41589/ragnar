@@ -17,6 +17,8 @@ import { fileURLToPath } from "node:url";
 import * as apps from "../server/apps.mjs";
 import * as kick from "../server/kick.mjs";
 import * as tts from "../server/tts.mjs";
+import * as permissions from "../server/permissions.mjs";
+import * as report from "../server/report.mjs";
 import * as stt from "./speech-engine.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -235,7 +237,13 @@ function handle(channel, work) {
       return { ok: true, ...(result || {}) };
     } catch (err) {
       console.error(`[dra] ${channel}:`, err?.message || err);
-      return { ok: false, error: err?.message || "Islem basarisiz." };
+      // Izin eksikligi arayuzde soruya donusecek; hatanin kimligi kaybolmasin.
+      return {
+        ok: false,
+        error: err?.message || "Islem basarisiz.",
+        ...(err?.code ? { code: err.code } : {}),
+        ...(err?.scope ? { scope: err.scope, title: err.title, detail: err.detail } : {}),
+      };
     }
   });
 }
@@ -303,6 +311,21 @@ function registerIpc() {
     if (!fn) throw new Error("Bilinmeyen moderasyon islemi.");
     const message = await fn(...(args || []));
     return { message: typeof message === "string" ? message : JSON.stringify(message) };
+  });
+
+  /* ---------------------------------------------------- izinler ---- */
+
+  handle("dra:perm:list", async () => ({ permissions: await permissions.list() }));
+  handle("dra:perm:grant", async ({ scope }) => await permissions.grant(scope));
+  handle("dra:perm:revoke", async ({ scope }) =>
+    scope === "*" ? await permissions.revokeAll() : await permissions.revoke(scope));
+
+  /* ------------------------------------------------------ rapor ---- */
+
+  handle("dra:report:system", async () => {
+    // Yetki denetimi burada: arayuzun "izin var" demesi yetmez.
+    await permissions.require("sistem");
+    return { report: await report.system() };
   });
 
   /* ------------------------------------------------ seslendirme ---- */

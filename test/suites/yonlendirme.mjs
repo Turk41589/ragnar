@@ -34,7 +34,14 @@ const CASES = [
   ["şaka yap","saka"],["espri yap","saka"],["güldür beni","saka"],["bir fıkra anlat","saka"],
   ["yazı tura at","yazi-tura"],["zar at","zar"],["sayı tut","rastgele-sayi"],
   ["renk yeşil","renk"],["temayı değiştir","renk"],
-  ["sistem durumu","durum"],["rapor ver","durum"],["her şey yolunda mı","durum"],
+  ["sistem durumu","durum"],["her şey yolunda mı","durum"],["durumun ne","durum"],
+  // "rapor" artik BILGISAYAR raporu: donanim, disk, guncellemeler.
+  // Bu ikisi bir donem ayni ctx metodunu paylasiyordu ve rapor komutu
+  // sessizce DRA'nin kendi durumunu donduruyordu.
+  ["rapor ver","rapor"],["rapor","rapor"],["bana rapor ver","rapor"],
+  ["bilgisayar raporu","rapor"],["güncelleme var mı","rapor"],
+  ["güncellemeleri kontrol et","rapor"],["disk ne kadar dolu","rapor"],
+  ["bilgisayar güncel mi","rapor"],
   ["ayarları aç","panel-ac"],["ayarlar","panel-ac"],
   ["sesini kapat","sesi-kapat"],["sus","sesi-kapat"],["sessiz ol","sesi-kapat"],
   ["sesini aç","sesi-ac"],

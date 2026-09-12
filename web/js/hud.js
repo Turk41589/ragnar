@@ -25,6 +25,11 @@ const el = {
   timers: $("timers"),
   gauges: $("gauges"),
   toast: $("toast"),
+  consent: $("consent"),
+  consentTitle: $("consent-title"),
+  consentDetail: $("consent-detail"),
+  consentYes: $("consent-yes"),
+  consentNo: $("consent-no"),
 };
 
 const GAUGE = {};
@@ -296,3 +301,161 @@ on("level", (level) => {
   setGauge("mic", pct, `${pct}%`);
   if (!el.sleep.hidden) sleepMeter(state.micEnabled, level);
 });
+
+/* ------------------------------------------------------------- izin sorusu */
+
+/**
+ * Bekleyen izin sorusunu cozen fonksiyon. Ayni anda yalnizca bir soru
+ * olabilir; ikinci bir istek gelirse birincisi beklemeye devam eder ve
+ * cagiran taraf sirayla sorar.
+ */
+let consentResolve = null;
+
+export const consentPending = () => Boolean(consentResolve);
+
+/**
+ * Kullaniciya "su yetkiyi veriyor musun" diye sorar.
+ * Karari dondurur; iptal (Esc / Hayir) false demektir.
+ */
+export function askPermission({ title, detail }) {
+  // Onceki soru hala aciksa onu reddedip yenisini soruyoruz; aksi halde
+  // eski soru sonsuza kadar askida kalirdi.
+  if (consentResolve) settleConsent(false);
+
+  el.consentTitle.textContent = title || "Erisim izni";
+  el.consentDetail.textContent = detail || "";
+  el.consent.hidden = false;
+  // Varsayilan odak "Hayir"da: kazara Enter'a basmak izin vermesin.
+  el.consentNo.focus();
+
+  return new Promise((resolve) => {
+    consentResolve = resolve;
+  });
+}
+
+/** Sesle ya da dugmeyle gelen cevabi uygular. */
+export function settleConsent(approved) {
+  if (!consentResolve) return false;
+  const resolve = consentResolve;
+  consentResolve = null;
+  el.consent.hidden = true;
+  resolve(Boolean(approved));
+  return true;
+}
+
+el.consentYes.addEventListener("click", () => settleConsent(true));
+el.consentNo.addEventListener("click", () => settleConsent(false));
+el.consent.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") settleConsent(false);
+});
+
+/* ------------------------------------------------------------ rapor karti */
+
+/** Bir olcum satiri: etiket, deger ve (varsa) doluluk cubugu. */
+function cardRow(label, value, percent) {
+  const row = document.createElement("li");
+  row.className = "card__row";
+
+  const name = document.createElement("span");
+  name.textContent = label;
+
+  const val = document.createElement("b");
+  val.textContent = value;
+
+  row.append(name, val);
+
+  if (Number.isFinite(percent)) {
+    const bar = document.createElement("div");
+    bar.className = "card__bar";
+    const fill = document.createElement("i");
+    // Cubuk anime olarak dolsun: rapor "sunum" gibi gorunsun.
+    fill.style.setProperty("--hedef", `${Math.min(100, Math.max(0, percent))}%`);
+    if (percent >= 90) fill.dataset.level = "kritik";
+    else if (percent >= 75) fill.dataset.level = "yuksek";
+    bar.append(fill);
+    row.append(bar);
+  }
+
+  return row;
+}
+
+/**
+ * Sohbete gorsel bir rapor karti basar.
+ *
+ * Kullanici "gif gibi gorsel sunum" istedi. Hareketli goruntu yerine
+ * canli cizilen bir kart kullaniyoruz: ayni sunum etkisini veriyor ama
+ * veriler gercek, metin secilebilir ve ekran okuyucu okuyabiliyor.
+ *
+ * @param {{title: string, subtitle?: string, sections: Array}} data
+ */
+export function logCard(data) {
+  const li = document.createElement("li");
+  li.dataset.who = "dra";
+
+  const head = document.createElement("div");
+  head.className = "chat__who";
+  const name = document.createElement("span");
+  name.textContent = WHO_LABEL.dra || "DRA";
+  const time = document.createElement("time");
+  time.textContent = formatTime();
+  head.append(name, time);
+  li.append(head);
+
+  const card = document.createElement("div");
+  card.className = "card";
+
+  const title = document.createElement("h4");
+  title.className = "card__title";
+  title.textContent = data.title || "Rapor";
+  card.append(title);
+
+  if (data.subtitle) {
+    const sub = document.createElement("p");
+    sub.className = "card__sub";
+    sub.textContent = data.subtitle;
+    card.append(sub);
+  }
+
+  for (const section of data.sections || []) {
+    if (section.heading) {
+      const h = document.createElement("p");
+      h.className = "card__heading";
+      h.textContent = section.heading;
+      card.append(h);
+    }
+
+    if (section.note) {
+      const n = document.createElement("p");
+      n.className = "card__note";
+      if (section.level) n.dataset.level = section.level;
+      n.textContent = section.note;
+      card.append(n);
+    }
+
+    if (section.rows?.length) {
+      const ul = document.createElement("ul");
+      ul.className = "card__rows";
+      for (const [label, value, percent] of section.rows) {
+        ul.append(cardRow(label, value, percent));
+      }
+      card.append(ul);
+    }
+
+    if (section.items?.length) {
+      const ul = document.createElement("ul");
+      ul.className = "card__items";
+      for (const item of section.items) {
+        const li2 = document.createElement("li");
+        li2.textContent = item;
+        ul.append(li2);
+      }
+      card.append(ul);
+    }
+  }
+
+  li.append(card);
+  el.log.append(li);
+  while (el.log.children.length > 80) el.log.firstElementChild.remove();
+  el.log.scrollTop = el.log.scrollHeight;
+  return card;
+}

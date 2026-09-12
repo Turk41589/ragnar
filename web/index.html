@@ -92,6 +92,7 @@
           <button class="tab" type="button" role="tab" data-tab="sistem" aria-selected="true">Sistem</button>
           <button class="tab" type="button" role="tab" data-tab="notlar" aria-selected="false">Not</button>
           <button class="tab" type="button" role="tab" data-tab="alarm" aria-selected="false">Alarm</button>
+          <button class="tab" type="button" role="tab" data-tab="modlar" aria-selected="false">Modlar</button>
           <button class="tab" type="button" role="tab" data-tab="ayar" aria-selected="false">Ayar</button>
         </nav>
 
@@ -111,56 +112,6 @@
 
           <h3 class="pane__title">Siradaki alarm</h3>
           <p class="nextalarm" id="next-alarm">Kurulu alarm yok</p>
-
-          <h3 class="pane__title">Modlar</h3>
-          <ul class="settings">
-            <li id="row-autostart" hidden>
-              <span>Acilista baslat</span>
-              <button class="switch" type="button" id="set-autostart" role="switch" aria-checked="false"></button>
-            </li>
-            <li id="row-background" hidden>
-              <span>Arka planda dinle</span>
-              <button class="switch" type="button" id="set-background" role="switch" aria-checked="false"></button>
-            </li>
-            <li class="settings__stack" id="row-background-hint" hidden>
-              <small class="hint">
-                Acikken bilgisayar acildiginda DRA pencere gostermeden baslar,
-                tepside bekler ve mikrofonu dinler. Adini soyleyince kendini
-                gosterir; &laquo;uyu&raquo; deyince tekrar tepsiye iner.
-                Bunun icin &laquo;Acilista baslat&raquo; da acik olmali.
-              </small>
-            </li>
-
-            <li>
-              <span>Web aramasi</span>
-              <button class="switch" type="button" id="set-search" role="switch" aria-checked="false"></button>
-            </li>
-            <li class="settings__stack">
-              <small class="hint">
-                Kapaliyken DRA hicbir dis servise baglanmaz. Acinca bilmedigi
-                sorulari DuckDuckGo uzerinden arar ve sonucu sohbete yazar.
-              </small>
-            </li>
-
-            <li>
-              <span>Yayinci destegi</span>
-              <button class="switch" type="button" id="set-streamer" role="switch" aria-checked="false"></button>
-            </li>
-            <li class="settings__stack" id="kick-fields" hidden>
-              <label for="set-kick-channel">Kick kanal adi</label>
-              <input id="set-kick-channel" type="text" placeholder="kanaladi" maxlength="80" />
-              <label for="set-kick-token">Kick erisim jetonu</label>
-              <input id="set-kick-token" type="password" placeholder="Bearer jetonu" maxlength="400" />
-              <button class="btn btn--icon btn--wide" type="button" id="set-kick-test">
-                Baglantiyi sina
-              </button>
-              <small class="hint">
-                Jeton yalnizca sunucuda tutulur, sohbete ya da disariya yazilmaz.
-                Acikken sesle moderasyon yapabilirsiniz: &laquo;ahmeti banla&raquo;,
-                &laquo;ahmeti 10 dakika sustur&raquo;, &laquo;sohbete yaz merhaba&raquo;.
-              </small>
-            </li>
-          </ul>
 
           <h3 class="pane__title">Uygulamalar</h3>
           <p class="nextalarm" id="apps-info">Henuz taranmadi</p>
@@ -212,6 +163,82 @@
           <button class="btn btn--icon btn--wide btn--danger" type="button" id="alarms-clear">
             Tum alarmlari sil
           </button>
+        </section>
+
+        <!-- ---------- MODLAR ---------- -->
+        <section class="pane" data-pane="modlar" role="tabpanel" hidden>
+          <p class="nextalarm">
+            DRA'nin ne yapabilecegini burada acip kapatirsiniz. Kapali bir mod
+            hicbir sey yapmaz, hicbir yere baglanmaz.
+          </p>
+
+          <h3 class="pane__title">Calisma modlari</h3>
+          <ul class="settings">
+            <li id="row-autostart" hidden>
+              <span>Acilista baslat</span>
+              <button class="switch" type="button" id="set-autostart" role="switch" aria-checked="false"></button>
+            </li>
+            <li id="row-background" hidden>
+              <span>Arka planda dinle</span>
+              <button class="switch" type="button" id="set-background" role="switch" aria-checked="false"></button>
+            </li>
+            <li class="settings__stack" id="row-background-hint" hidden>
+              <small class="hint">
+                Acikken bilgisayar acildiginda DRA pencere gostermeden baslar,
+                tepside bekler ve mikrofonu dinler. Adini soyleyince kendini
+                gosterir; &laquo;uyu&raquo; deyince tekrar tepsiye iner.
+                Bunun icin &laquo;Acilista baslat&raquo; da acik olmali.
+              </small>
+            </li>
+
+            <li>
+              <span>Web aramasi</span>
+              <button class="switch" type="button" id="set-search" role="switch" aria-checked="false"></button>
+            </li>
+            <li class="settings__stack">
+              <small class="hint">
+                Kapaliyken DRA hicbir dis servise baglanmaz. Acinca bilmedigi
+                sorulari DuckDuckGo uzerinden arar ve sonucu sohbete yazar.
+              </small>
+            </li>
+
+            <li>
+              <span>Yayinci destegi</span>
+              <button class="switch" type="button" id="set-streamer" role="switch" aria-checked="false"></button>
+            </li>
+            <li class="settings__stack" id="kick-fields" hidden>
+              <label for="set-kick-channel">Kick kanal adi</label>
+              <input id="set-kick-channel" type="text" placeholder="kanaladi" maxlength="80" />
+              <label for="set-kick-token">Kick erisim jetonu</label>
+              <input id="set-kick-token" type="password" placeholder="Bearer jetonu" maxlength="400" />
+              <button class="btn btn--icon btn--wide" type="button" id="set-kick-test">
+                Baglantiyi sina
+              </button>
+              <small class="hint">
+                Jeton yalnizca sunucuda tutulur, sohbete ya da disariya yazilmaz.
+                Acikken sesle moderasyon yapabilirsiniz: &laquo;ahmeti banla&raquo;,
+                &laquo;ahmeti 10 dakika sustur&raquo;, &laquo;sohbete yaz merhaba&raquo;.
+              </small>
+            </li>
+          </ul>
+
+          <h3 class="pane__title">Erisim izinleri</h3>
+          <p class="nextalarm" id="perm-info">
+            DRA bir yetkiye ihtiyac duydugunda size sorar. Verdiginiz her izni
+            buradan geri alabilirsiniz.
+          </p>
+          <ul class="settings" id="perm-list"></ul>
+          <button class="btn btn--icon btn--wide btn--danger" type="button" id="perm-revoke-all">
+            Tum izinleri geri al
+          </button>
+
+          <h3 class="pane__title">Yolda olanlar</h3>
+          <ul class="card__items" id="mod-roadmap">
+            <li>E-posta raporu &mdash; Gmail baglantisi gerekiyor</li>
+            <li>YouTube modu &mdash; kanal yetkisi ve video kaynagi gerekiyor</li>
+            <li>Isletme modu &mdash; hangi verileri tutacagini birlikte belirleyecegiz</li>
+            <li>Telefondan uzaktan kontrol</li>
+          </ul>
         </section>
 
         <!-- ---------- AYARLAR ---------- -->
@@ -392,6 +419,25 @@
         </div>
       </footer>
     </main>
+
+    <!-- Izin sorusu: DRA bir yetkiye ilk kez ihtiyac duydugunda cikar.
+         Kullanici onaylamadan islem yapilmaz; yetki ana surecte tutulur. -->
+    <div class="consent" id="consent" role="dialog" aria-modal="true"
+         aria-labelledby="consent-title" hidden>
+      <div class="consent__box">
+        <p class="consent__eyebrow">Erisim izni</p>
+        <h2 class="consent__title" id="consent-title">&mdash;</h2>
+        <p class="consent__detail" id="consent-detail">&mdash;</p>
+        <p class="consent__note" id="consent-note">
+          Izin verirseniz kalici olur; Modlar sekmesinden her an geri alabilirsiniz.
+        </p>
+        <div class="consent__actions">
+          <button class="btn btn--icon" type="button" id="consent-no">Hayir</button>
+          <button class="btn btn--icon btn--go" type="button" id="consent-yes">Izin ver</button>
+        </div>
+        <p class="consent__hint">Sesle de cevap verebilirsiniz: &laquo;evet&raquo; / &laquo;hayir&raquo;</p>
+      </div>
+    </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 

@@ -152,7 +152,22 @@ let busy = false;
 
 async function handleUtterance(rawText) {
   const text = (rawText || "").trim();
-  if (!text || busy) return;
+  if (!text) return;
+
+  // Ekranda bekleyen bir izin sorusu varsa once ona cevap veriyoruz.
+  // Aksi halde kullanici "evet" dedigini sanip komut vermis olurdu.
+  if (hud.consentPending()) {
+    const karar = izinCevabi(text);
+    if (karar !== null) {
+      hud.log("user", text);
+      hud.settleConsent(karar);
+      return;
+    }
+    hud.log("system", "Once izin sorusunu cevaplayin: evet ya da hayir.");
+    return;
+  }
+
+  if (busy) return;
   busy = true;
   touch();
 
@@ -336,6 +351,149 @@ on("tts", ({ message }) => {
   hud.toast(message, 6000);
 });
 
+/* ================================================================== rapor */
+
+/** Windows cekirdek surumunu okunur bir ada cevirir. */
+function windowsAdi(release) {
+  const buildNo = Number(release?.split(".")[2]);
+  if (!Number.isFinite(buildNo)) return null;
+  // 22000 ve sonrasi Windows 11; oncesi 10. (Microsoft'un kendi esigi.)
+  return buildNo >= 22000 ? `Windows 11 (yapi ${buildNo})` : `Windows 10 (yapi ${buildNo})`;
+}
+
+/**
+ * Raporu sohbete gorsel kart olarak basar, sozlu ozeti dondurur.
+ * Eksik alanlar sessizce atlanir: rapor hic gelmemesinden iyidir.
+ */
+function raporuSun(r) {
+  const bolumler = [];
+  const sistemSatirlari = [];
+
+  const ad = r.os.platform === "win32" ? windowsAdi(r.os.release) : null;
+  sistemSatirlari.push(["Isletim sistemi", ad || `${r.os.platform} ${r.os.release}`]);
+  sistemSatirlari.push(["Bilgisayar", r.os.host]);
+  sistemSatirlari.push(["Islemci", `${r.cpu.cores} cekirdek`]);
+  sistemSatirlari.push(["Acik kalma suresi", r.uptime.text]);
+  sistemSatirlari.push([
+    "Bellek",
+    `${r.memory.totalText} — %${r.memory.percentUsed} dolu`,
+    r.memory.percentUsed,
+  ]);
+  if (r.disk) {
+    sistemSatirlari.push([
+      "Disk",
+      `${r.disk.freeText} bos / ${r.disk.totalText}`,
+      r.disk.percentUsed,
+    ]);
+  }
+  bolumler.push({ heading: "Bilgisayar", rows: sistemSatirlari });
+
+  /* --- guncellemeler --- */
+  const sozlu = [];
+  if (r.updates) {
+    const u = r.updates;
+    const satirlar = [];
+
+    if (u.lastInstalled) {
+      const gun = Math.floor((Date.now() - u.lastInstalled) / 86400000);
+      satirlar.push([
+        "Son guncelleme",
+        `${new Date(u.lastInstalled).toLocaleDateString("tr")}${
+          u.lastId ? ` (${u.lastId})` : ""
+        } — ${gun} gun once`,
+      ]);
+    } else {
+      satirlar.push(["Son guncelleme", "okunamadi"]);
+    }
+
+    let not = null;
+    let seviye = null;
+    if (u.pending === null) {
+      not = "Bekleyen guncellemeler kontrol edilemedi.";
+      seviye = "warn";
+    } else if (u.pending === 0) {
+      not = "Bekleyen guncelleme yok, sistem guncel.";
+      seviye = "ok";
+      sozlu.push("sisteminiz guncel");
+    } else {
+      not = `${u.pending} guncelleme bekliyor.`;
+      seviye = u.pending > 5 ? "error" : "warn";
+      sozlu.push(`${u.pending} guncelleme bekliyor`);
+    }
+
+    bolumler.push({
+      heading: "Guncellemeler",
+      note: not,
+      level: seviye,
+      rows: satirlar,
+      items: u.pendingList?.length ? u.pendingList : null,
+    });
+  } else if (r.os.platform !== "win32") {
+    bolumler.push({
+      heading: "Guncellemeler",
+      note: "Guncelleme bilgisi yalnizca Windows'ta okunuyor.",
+    });
+  }
+
+  hud.logCard({
+    title: "Bilgisayar raporu",
+    subtitle: new Date(r.at).toLocaleString("tr"),
+    sections: bolumler,
+  });
+
+  /* --- sozlu ozet --- */
+  const parcalar = [];
+  if (r.disk) parcalar.push(`diskin yuzde ${r.disk.percentUsed} dolu`);
+  parcalar.push(`bellegin yuzde ${r.memory.percentUsed} kullaniliyor`);
+  if (sozlu.length) parcalar.unshift(sozlu[0]);
+
+  return `Raporu ekrana cikardim. Kisaca: ${parcalar.join(", ")}.`;
+}
+
+/* ================================================================= izinler */
+
+/** "evet/olur/tamam" → true, "hayir/olmaz/iptal" → false, baska → null. */
+function izinCevabi(text) {
+  const t = text.toLocaleLowerCase("tr").trim();
+  if (/^(evet|tamam|olur|ver|izin ver|onayla|kabul|peki|hayd?i)\b/.test(t)) return true;
+  if (/^(hayir|hayır|olmaz|yok|verme|iptal|vazgec|vazgeç|istemiyorum|dur)\b/.test(t)) return false;
+  return null;
+}
+
+/**
+ * Izin gerektiren bir isi yapar.
+ *
+ * Is once dogrudan denenir. Yetki yoksa sunucu/ana surec NEED_PERMISSION
+ * ile reddeder; o zaman kullaniciya sorulur ve onay alinirsa is BIR KEZ
+ * yeniden denenir. Boylece izin sorusu gercek bir ihtiyac aninda cikar,
+ * kullanici pesin pesin yetki dagitmak zorunda kalmaz.
+ */
+async function izinliCalis(is) {
+  try {
+    return await is();
+  } catch (err) {
+    if (err?.code !== "NEED_PERMISSION") throw err;
+
+    const baslik = err.title || "Erisim izni";
+    hud.log("system", `Bunun icin izniniz gerekiyor: ${baslik}`);
+    // Ses acikken soruyu ayrica soyluyoruz; kullanici ekrana bakmiyor olabilir.
+    await respond(`${baslik} icin izin istiyorum. Veriyor musunuz?`);
+
+    const onay = await hud.askPermission({ title: baslik, detail: err.detail });
+    if (!onay) {
+      await respond("Tamam, dokunmuyorum.");
+      return null;
+    }
+
+    await system.grantPermission(err.scope);
+    hud.log("system", `"${baslik}" izni verildi.`);
+    panel.renderPermissions();
+
+    // Tek bir yeniden deneme: burada da reddedilirse gercek bir sorun var.
+    return await is();
+  }
+}
+
 /* ============================================================ komut baglami */
 
 const ctx = {
@@ -399,6 +557,19 @@ const ctx = {
   toggleMic: () => dom.btnMic.click(),
   onAutoSleepChanged: () => touch(),
   onWakeWordsChanged: () => rebuildWakeWords(),
+  /**
+   * BILGISAYAR raporu — donanim, disk, guncellemeler. Izin gerektirir.
+   * Sonucu sohbete gorsel bir kart olarak basar ve sozlu bir ozet doner.
+   *
+   * Asagidaki `systemReport` ile karistirilmamali: o, DRA'nin KENDI
+   * durumunu (saat, mikrofon, alarm, not) anlatir ve izin gerektirmez.
+   */
+  computerReport: async () => {
+    const rapor = await izinliCalis(() => system.systemReport());
+    if (!rapor) return null;
+    return raporuSun(rapor);
+  },
+
   onBackgroundChanged: () => {
     // Arka plan dinleme acildiysa mikrofonu hemen baslat.
     if (store.backgroundListen && !speech.isListening()) enableMic();

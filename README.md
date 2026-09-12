@@ -155,6 +155,57 @@ değişkenini ayarlayın.
 
 ---
 
+## Erişim izinleri
+
+DRA'nın bilgisayara ve hesaplara erişimi genişledikçe "her şeye erişebilir"
+demek yeterli değil. Her yetki **ayrı ayrı** verilir, **sorularak** verilir ve
+**tek tıkla geri alınır.**
+
+Nasıl çalışıyor:
+
+1. DRA bir yetkiye ihtiyaç duyduğu **ilk anda** sorar — peşin peşin yetki
+   dağıtmanız gerekmez. "Rapor ver" dediğinizde ekrana ne isteyeceğini ve ne
+   yapacağını yazan bir soru gelir.
+2. **Hayır** derseniz iş yapılmaz. **Evet** derseniz yetki kaydedilir ve iş
+   kaldığı yerden tamamlanır.
+3. Sesle de cevap verebilirsiniz: «evet» / «hayır». Soru ekrandayken
+   yazdığınız "evet" komut sayılmaz, cevap sayılır.
+4. **Modlar** sekmesinde verdiğiniz her yetki, ne zaman verildiğiyle birlikte
+   listelenir. Tek tek ya da hep birden geri alınır.
+
+**İzni arayüz vermez, arka taraf verir.** Yetki denetimi işin yapıldığı yerde
+(uygulamada ana süreç, tarayıcıda yerel sunucu) yapılır. Arayüzün "izin
+verildi" demesi yetmez — kullanıcının onayı oraya yazılmış olmalı. Yani
+arayüzde bir açık olsa bile izinsiz iş yapılamaz. Bu, testlerle doğrulanıyor:
+izin yokken rapor **üretilmiyor**, yalnızca soru çıkmıyor.
+
+İzinler `data/permissions.json` dosyasında durur (depoya girmez). Her açılışta
+yeniden sorulmaması için diske yazılır.
+
+| Yetki | Ne yapar |
+|---|---|
+| Bilgisayar durumu | İşletim sistemi, disk, bellek, çalışma süresi, Windows güncellemeleri — yalnızca okur |
+| Dosyaları okuma | İzin verdiğiniz klasörlerdeki dosyaları okur; silmez, değiştirmez |
+| E-posta okuma | Gelen kutusunu okur, reklam/bülten ayıklar; mesaj göndermez |
+| YouTube kanalı | Kanal istatistiği okur, video yükler (yükleme öncesi ayrıca onay ister) |
+| İşletme verileri | İşletmenizle ilgili anlattıklarınızı bu bilgisayarda tutar |
+
+### Bilgisayar raporu
+
+**"DRA rapor ver"** deyin. İzin verdikten sonra sohbete görsel bir rapor kartı
+düşer: işletim sistemi, bellek ve disk doluluk çubukları, ne kadar süre açık
+kaldığı, **son yüklenen Windows güncellemesi** ve **bekleyen güncelleme sayısı**
+(varsa ilk sekizinin adı). DRA ayrıca sözlü bir özet verir.
+
+Kart hareketli bir GIF değil, **canlı çizilen** bir kart: aynı sunum etkisini
+verir ama veriler gerçek, metin seçilebilir ve ekran okuyucu okuyabilir. Doluluk
+çubukları kart ekrana girerken dolar.
+
+Güncelleme bilgisi Windows'a özel (PowerShell ile okunuyor, yönetici yetkisi
+gerekmez). Başka bir işletim sisteminde o bölüm "yalnızca Windows'ta okunuyor"
+der — uydurma bir değer göstermez. Bir parça okunamazsa rapor o alan eksik
+gelir; hiç rapor gelmemesinden iyidir.
+
 ## Ses ve gizlilik — okumaya değer
 
 Tarayıcıların varsayılan ses tanıması sesi **satıcının sunucusuna gönderir**
@@ -320,9 +371,10 @@ Açıkken sesli moderasyon:
 
 | Sekme | İçerik |
 |---|---|
-| Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm; **modlar** (açılışta başlat, arka planda dinle, web araması, yayıncı desteği); uygulama taraması |
+| Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm; uygulama taraması |
 | Not | not ekle, tek tek sil, hepsini temizle |
 | Alarm | saatli alarm kur, etiket ver, her gün tekrarla, aç/kapa, sil |
+| Modlar | çalışma modları (açılışta başlat, arka planda dinle, web araması, yayıncı desteği) ve **erişim izinleri** |
 | Ayar | ses, mikrofon, ses tanıma motoru ve modeli, sesi cihazda tut, açılış dizisi, **DRA'nın sesi** (yerel / ElevenLabs), konuşma hızı, otomatik uyku, tema rengi, ek uyandırma sözcükleri, sıfırlama |
 
 **Orta** — reaktör. Dönen halkalar, glif şeridi ve yörüngedeki parçalar;
@@ -414,6 +466,8 @@ server/apps.mjs      uygulama/oyun tarama, başlatma, kapatma
 server/search.mjs    web araması (kapalıyken hiç yüklenmez)
 server/kick.mjs      Kick moderasyon köprüsü
 server/tts.mjs       ElevenLabs seslendirmesi (anahtar girilmeden istek atmaz)
+server/permissions.mjs  erisim izinleri — yetki denetiminin yapildigi yer
+server/report.mjs    bilgisayar raporu (disk, bellek, Windows guncellemeleri)
 web/js/system.js     sunucu köprüsü (istemci tarafı)
 ```
 
