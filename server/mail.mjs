@@ -120,6 +120,8 @@ class Imap {
     });
   }
 
+  /** Tamponun tamamini okunmus sayar. */
+
   /**
    * Komut gonderir, etiketli tamamlanma satirina kadar okur.
    * Literal bloklarin icindeki satirlar tamamlanma sanilmaz.
@@ -149,8 +151,8 @@ class Imap {
       const bitis = Date.now() + 30_000;
 
       const bak = () => {
-        const metin = this.buffer.toString("utf8");
-        const cozum = this.scan(metin, tag);
+        // Tampon METNE CEVRILMEDEN taraniyor — sebebi scan()'in basinda.
+        const cozum = this.scan(this.buffer, tag);
         if (cozum) return resolve(cozum);
         if (Date.now() > bitis) {
           return reject(new Error("Sunucu yaniti tamamlanmadi."));
@@ -162,25 +164,31 @@ class Imap {
   }
 
   /**
-   * Metni satir satir gezer. Bir satir "{n}" ile bitiyorsa sonraki n
-   * bayt veridir, satir degildir. Etiketli satir bulunursa tum yaniti
-   * dondurur; bulunamazsa null (daha veri gerekiyor).
+   * Yaniti satir satir gezer. Bir satir "{n}" ile bitiyorsa sonraki n
+   * BAYT veridir, satir degildir.
+   *
+   * DIKKAT — burada TAMPON uzerinde calisiyoruz, metin uzerinde degil:
+   * IMAP'teki {n} bir BAYT sayisi. Tamponu once UTF-8 metne cevirip
+   * karakter sayarsak, Turkce bir baslikta (her "ş" iki bayt) sayac
+   * kayiyor; okuyucu blogun ortasindan devam edip yaniti hic
+   * tamamlayamiyor ve istek zaman asimina dusuyordu.
    */
-  scan(metin, tag) {
+  scan(buf, tag) {
     const satirlar = [];
+    const CRLF = Buffer.from("\r\n");
     let i = 0;
 
-    while (i < metin.length) {
-      const sonu = metin.indexOf("\r\n", i);
+    while (i < buf.length) {
+      const sonu = buf.indexOf(CRLF, i);
       if (sonu === -1) return null; // yarim satir, bekle
-      const satir = metin.slice(i, sonu);
+      const satir = buf.toString("utf8", i, sonu);
       i = sonu + 2;
 
       const literal = /\{(\d+)\}$/.exec(satir);
       if (literal) {
-        const uzunluk = Number(literal[1]);
-        if (metin.length < i + uzunluk) return null; // blok tamamlanmadi
-        satirlar.push({ line: satir, literal: metin.slice(i, i + uzunluk) });
+        const uzunluk = Number(literal[1]); // BAYT
+        if (buf.length < i + uzunluk) return null; // blok tamamlanmadi
+        satirlar.push({ line: satir, literal: buf.toString("utf8", i, i + uzunluk) });
         i += uzunluk;
         continue;
       }
@@ -206,21 +214,48 @@ class Imap {
 
 /* -------------------------------------------------------------- baslik */
 
+/**
+ * ISO-8859-9 (Turkce latin) ile latin1 yalnizca ALTI karakterde ayrilir.
+ * Node bu kod sayfasini tanimadigi icin latin1'e dusurulurse "İş" → "Ýþ"
+ * oluyordu; bu yalnizca goruntuyu bozmakla kalmiyor, konu satirindaki
+ * "görüşme" kelimesini de tanimaz hale getirip mesajin yanlis siniflanmasina
+ * yol aciyordu. Farkli olan alti bayti elle esliyoruz.
+ */
+const ISO_8859_9 = {
+  0xd0: "\u011e", // Ğ
+  0xf0: "\u011f", // ğ
+  0xdd: "\u0130", // İ
+  0xfd: "\u0131", // ı
+  0xde: "\u015e", // Ş
+  0xfe: "\u015f", // ş
+};
+
+function decodeBytes(buf, charset) {
+  if (charset === "utf-8" || charset === "utf8") return buf.toString("utf8");
+  if (charset === "iso-8859-9" || charset === "latin5" || charset === "windows-1254") {
+    let out = "";
+    for (const b of buf) out += ISO_8859_9[b] ?? String.fromCharCode(b);
+    return out;
+  }
+  return buf.toString("latin1");
+}
+
 /** "=?UTF-8?B?...?=" bicimli basliklari cozer (Turkce konular boyle gelir). */
 function decodeWords(value) {
   return String(value || "").replace(
     /=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g,
     (hepsi, sarj, tip, veri) => {
       try {
-        const kod = sarj.toLowerCase().replace("iso-8859-9", "latin1");
-        if (tip.toUpperCase() === "B") {
-          return Buffer.from(veri, "base64").toString(kod === "utf-8" ? "utf8" : "latin1");
-        }
-        // Q kodlamasi: alt cizgi bosluk, =XX onaltilik
-        const duz = veri
-          .replace(/_/g, " ")
-          .replace(/=([0-9A-Fa-f]{2})/g, (_x, h) => String.fromCharCode(parseInt(h, 16)));
-        return Buffer.from(duz, "binary").toString(kod === "utf-8" ? "utf8" : "latin1");
+        const kod = sarj.toLowerCase();
+        const bayt = tip.toUpperCase() === "B"
+          ? Buffer.from(veri, "base64")
+          : Buffer.from(
+              // Q kodlamasi: alt cizgi bosluk, =XX onaltilik
+              veri.replace(/_/g, " ")
+                .replace(/=([0-9A-Fa-f]{2})/g, (_x, h) => String.fromCharCode(parseInt(h, 16))),
+              "binary",
+            );
+        return decodeBytes(bayt, kod);
       } catch {
         return hepsi;
       }
@@ -408,4 +443,4 @@ export async function summary({ days = 2 } = {}) {
   });
 }
 
-export const _internal = { parseHeaders, parseFrom, decodeWords, classify, quote };
+export const _internal = { parseHeaders, parseFrom, decodeWords, classify, quote, decodeBytes };

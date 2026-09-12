@@ -69,6 +69,26 @@ contextBridge.exposeInMainWorld("dra", {
     system: () => call("dra:report:system"),
   },
 
+  /** YouTube kanali ve stok video deposu (izin gerektirir). */
+  youtube: {
+    configure: (clientId, clientSecret, refreshToken) =>
+      call("dra:yt:configure", { clientId, clientSecret, refreshToken }),
+    link: () => call("dra:yt:link"),
+    channel: () => call("dra:yt:channel"),
+    onEvent: (handler) => {
+      const listener = (_e, data) => handler(data);
+      ipcRenderer.on("dra:yt:event", listener);
+      return () => ipcRenderer.removeListener("dra:yt:event", listener);
+    },
+  },
+
+  videos: {
+    list: () => call("dra:videos:list"),
+    add: (o) => call("dra:videos:add", o),
+    remove: (id) => call("dra:videos:remove", { id }),
+    update: (id, patch) => call("dra:videos:update", { id, patch }),
+  },
+
   /** Video montaji (izin gerektirir). */
   montage: {
     status: () => call("dra:montage:status"),

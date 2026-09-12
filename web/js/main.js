@@ -345,6 +345,23 @@ on("mic", ({ status, message }) => {
  * Seslendirme uyarilari. ElevenLabs cevap vermediginde DRA susmaz,
  * bilgisayarin sesine doner — ama kullanici bunu bilsin.
  */
+/**
+ * Yayin zamanlayicisindan gelen olaylar. Yukleme arka planda oluyor;
+ * kullanici olup bitenden habersiz kalmamali.
+ */
+system.onYoutubeEvent?.((olay) => {
+  if (!olay) return;
+  if (olay.type === "basladi") {
+    hud.log("system", `YouTube: "${olay.video.title}" yukleniyor…`);
+  } else if (olay.type === "bitti") {
+    hud.log("system", `YouTube: "${olay.video.title}" yayinlandi — ${olay.sonuc.url}`);
+    hud.toast("Video yayinlandi", 6000);
+  } else if (olay.type === "hata") {
+    hud.log("error", `YouTube: "${olay.video.title}" yuklenemedi — ${olay.error}`);
+    hud.toast("Video yuklenemedi", 6000);
+  }
+});
+
 on("tts", ({ message }) => {
   if (!message) return;
   hud.log("system", message);
@@ -448,6 +465,46 @@ function raporuSun(r) {
   if (sozlu.length) parcalar.unshift(sozlu[0]);
 
   return `Raporu ekrana cikardim. Kisaca: ${parcalar.join(", ")}.`;
+}
+
+/* ================================================================ youtube */
+
+function kanalSun(k, sira) {
+  const bolumler = [{
+    heading: k.title,
+    rows: [
+      ["Abone", k.subscribers.toLocaleString("tr")],
+      ["Toplam izlenme", k.views.toLocaleString("tr")],
+      ["Video sayisi", String(k.videos)],
+    ],
+  }];
+
+  if (sira?.summary?.total) {
+    const o = sira.summary;
+    bolumler.push({
+      heading: "Yayin sirasi",
+      rows: [
+        ["Bekleyen", String(o.bekliyor)],
+        ["Yuklenen", String(o.yuklendi)],
+        ...(o.hata ? [["Hata", String(o.hata)]] : []),
+      ],
+      items: sira.videos
+        .filter((v) => v.status === "bekliyor" && v.publishAt)
+        .slice(0, 5)
+        .map((v) => `${new Date(v.publishAt).toLocaleString("tr")} — ${v.title}`),
+    });
+  }
+
+  hud.logCard({
+    title: "YouTube kanali",
+    subtitle: new Date().toLocaleString("tr"),
+    sections: bolumler,
+  });
+
+  const bekleyen = sira?.summary?.bekliyor || 0;
+  return `${k.title} kanalinda ${k.subscribers.toLocaleString("tr")} abone ve ` +
+    `${k.videos} video var.` +
+    (bekleyen ? ` Sirada ${bekleyen} video yayin bekliyor.` : "");
 }
 
 /* ================================================================= montaj */
@@ -613,8 +670,14 @@ function epostaSun(o) {
 /** "evet/olur/tamam" → true, "hayir/olmaz/iptal" → false, baska → null. */
 function izinCevabi(text) {
   const t = text.toLocaleLowerCase("tr").trim();
-  if (/^(evet|tamam|olur|ver|izin ver|onayla|kabul|peki|hayd?i)\b/.test(t)) return true;
-  if (/^(hayir|hayır|olmaz|yok|verme|iptal|vazgec|vazgeç|istemiyorum|dur)\b/.test(t)) return false;
+  // `\b` yalnizca ASCII harfleri sozcuk sayar: "vazgeç" kaliba HIC
+  // uymuyordu cunku "ç" sozcuk karakteri degil. Sinir yerine "sonu ya da
+  // bosluk" diyoruz.
+  const S = "(?=$|[\\s,.!?])";
+  if (new RegExp(`^(evet|tamam|olur|ver|izin ver|onayla|kabul|peki)${S}`).test(t)) return true;
+  if (new RegExp(
+    `^(hayir|hayır|olmaz|yok|verme|iptal|vazgec|vazgeç|istemiyorum|dur)${S}`,
+  ).test(t)) return false;
   return null;
 }
 
@@ -733,6 +796,11 @@ const ctx = {
    * Reklam/bulten ayiklanir, ise yarar mesajlar one cikarilir.
    */
   mailReport: async () => {
+    // Mod kapaliysa hesap kayitli olsa bile ag'a cikmiyoruz: anahtari
+    // kapatmak "artik kullanma" demek.
+    if (!store.mailMode) {
+      return "E-posta raporu kapali. Modlar sekmesinden acabilirsiniz.";
+    }
     if (!store.mailUser || !store.mailPass) {
       return "E-posta hesabi tanimli degil. Modlar sekmesinden Gmail adresinizi " +
         "ve uygulama sifrenizi girin.";
@@ -754,6 +822,9 @@ const ctx = {
    * Uzun surebilir, bu yuzden ilerleme sohbete yaziliyor.
    */
   runMontage: async () => {
+    if (!store.montageMode) {
+      return "Montaj modu kapali. Modlar sekmesinden acabilirsiniz.";
+    }
     if (!store.montageClips) {
       return "Once video klasorunu secin: Modlar sekmesi, Video montaji.";
     }
@@ -763,7 +834,9 @@ const ctx = {
       return durum?.ffmpeg?.advice || "Montaj icin ffmpeg kurulu olmali.";
     }
 
-    const cikti = `${store.montageClips}/dra-montaj-${Date.now()}.mp4`;
+    // Cikti KAYNAK KLASORUNE yazilmamali: ikinci calistirmada onceki
+    // montaj da kaynak klip olarak iceri giriyordu. Alt klasore koyuyoruz.
+    const cikti = `${store.montageClips}/dra-montaj/dra-montaj-${Date.now()}.mp4`;
     hud.log("system", "Montaj basladi. Kliplerin sayisina gore birkac dakika surebilir…");
     panel.setMontageStatus("Montaj suruyor…");
 
@@ -797,6 +870,26 @@ const ctx = {
     } finally {
       bitir();
     }
+  },
+
+  /** YouTube kanal raporu. Izin gerektirir. */
+  youtubeReport: async () => {
+    if (!store.youtubeMode) {
+      return "YouTube modu kapali. Modlar sekmesinden acabilirsiniz.";
+    }
+    if (!store.ytRefreshToken) {
+      return "YouTube kanali bagli degil. Modlar sekmesinden «Kanali bagla» deyin.";
+    }
+    const veri = await izinliCalis(async () => {
+      await system.configureYoutube(store.ytClientId, store.ytClientSecret, store.ytRefreshToken);
+      const [kanal, sira] = await Promise.all([
+        system.youtubeChannel(),
+        system.videoList().catch(() => null),
+      ]);
+      return { kanal, sira };
+    });
+    if (!veri) return null;
+    return kanalSun(veri.kanal, veri.sira);
   },
 
   /** Panelden gelen, izin gerektiren isler icin ayni akis. */
@@ -971,6 +1064,9 @@ async function connectServer() {
     }
     // Ses ElevenLabs'a alinmissa anahtari her acilista yeniden bildiriyoruz;
     // anahtar sunucuda/ana surecte tutulmaz, surec kapaninca kaybolur.
+    if (store.youtubeMode && store.ytClientId && store.ytRefreshToken) {
+      await system.configureYoutube(store.ytClientId, store.ytClientSecret, store.ytRefreshToken);
+    }
     if (store.ttsProvider === "elevenlabs" && store.elevenKey) {
       await system.configureTts(store.elevenKey, store.elevenVoice, store.elevenModel);
     }

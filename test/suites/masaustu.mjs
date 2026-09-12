@@ -162,7 +162,7 @@ export async function run(_page, _base, t) {
     t.eq(
       bridge.anahtarlar,
       ["apps", "desktop", "health", "kick", "mail", "montage", "on", "perm", "report",
-       "search", "stt", "tts", "version", "window"],
+       "search", "stt", "tts", "version", "videos", "window", "youtube"],
       "kopru yalnizca beklenen yuzeyi aciyor",
     );
 
@@ -263,6 +263,22 @@ export async function run(_page, _base, t) {
     const ffDurum = await window.evaluate(() => window.dra.montage.status());
     t.ok(typeof ffDurum.ffmpeg?.ready === "boolean", "ffmpeg durumu okunabiliyor");
     t.ok(ffDurum.templates?.hizli, "hazir sablonlar arayuze geliyor");
+
+    // YouTube da ayni izin kapisinin arkasinda.
+    const izinsizYt = await window.evaluate(() =>
+      window.dra.youtube.channel().then(
+        () => ({ kod: null }),
+        (err) => ({ kod: err.code, scope: err.scope }),
+      ),
+    );
+    t.eq(izinsizYt.kod, "NEED_PERMISSION", "uygulamada izinsiz kanal okunmuyor");
+    t.eq(izinsizYt.scope, "youtube", "youtube icin dogru yetki isteniyor");
+    t.eq(health.youtube.ready, false, "YouTube varsayilan kapali");
+    t.ok(!("clientSecret" in health.youtube), "YouTube gizli anahtari IPC'de tasinmiyor");
+
+    // Depoyu OKUMAK izin gerektirmez (kendi kaydimiz), YAZMAK gerektirir.
+    const depo = await window.evaluate(() => window.dra.videos.list());
+    t.ok(Array.isArray(depo.videos), "video deposu okunabiliyor");
     t.eq(health.mail.ready, false, "e-posta varsayilan kapali");
     t.ok(!("pass" in health.mail), "e-posta sifresi IPC'de tasinmiyor");
     t.eq(izinsiz.scope, "sistem", "hangi yetkinin gerektigi arayuze ulasiyor");

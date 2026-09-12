@@ -22,6 +22,9 @@ import * as report from "../server/report.mjs";
 import * as mail from "../server/mail.mjs";
 import * as editstyle from "../server/editstyle.mjs";
 import * as montage from "../server/montage.mjs";
+import * as youtube from "../server/youtube.mjs";
+import * as videos from "../server/videos.mjs";
+import * as scheduler from "../server/scheduler.mjs";
 import * as stt from "./speech-engine.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -267,6 +270,7 @@ function registerIpc() {
     kick: kick.status(),
     tts: tts.status(),
     mail: mail.status(),
+    youtube: youtube.status(),
     apps: await apps.scanInfo(),
   }));
 
@@ -332,6 +336,43 @@ function registerIpc() {
     return { report: await report.system() };
   });
 
+  /* ---------------------------------------------------- youtube ---- */
+
+  handle("dra:yt:configure", async ({ clientId, clientSecret, refreshToken }) => ({
+    status: youtube.configure({ clientId, clientSecret, refreshToken }),
+  }));
+
+  handle("dra:yt:link", async () => {
+    // Tarayiciyi acip kullanicinin onayini bekliyoruz; geri cagirma
+    // 127.0.0.1'de kendi actigimiz kisa omurlu sunucuya donuyor.
+    await permissions.require("youtube");
+    const oturum = await youtube.startAuth();
+    shell.openExternal(oturum.url);
+    const kod = await oturum.waitForCode();
+    const { refreshToken } = await youtube.exchangeCode(kod, oturum.redirect);
+    return { refreshToken, status: youtube.status() };
+  });
+
+  handle("dra:yt:channel", async () => {
+    await permissions.require("youtube");
+    return { channel: await youtube.channel() };
+  });
+
+  handle("dra:videos:list", async () => ({
+    videos: await videos.list(),
+    summary: await videos.summary(),
+  }));
+
+  handle("dra:videos:add", async (o) => {
+    await permissions.require("youtube");
+    return { video: await videos.add(o) };
+  });
+
+  handle("dra:videos:remove", async ({ id }) => await videos.remove(id));
+  handle("dra:videos:update", async ({ id, patch }) => ({
+    video: await videos.update(id, patch || {}),
+  }));
+
   /* ----------------------------------------------------- montaj ---- */
 
   handle("dra:montage:status", async () => ({
@@ -348,6 +389,8 @@ function registerIpc() {
     // Klasor/dosya secimi ana surecte: arayuz kendi basina yol uyduramaz.
     const secenek = kind === "folder"
       ? { properties: ["openDirectory"] }
+      : kind === "video"
+        ? { properties: ["openFile"], filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "webm", "m4v", "avi"] }] }
       : kind === "image"
         ? { properties: ["openFile"], filters: [{ name: "Gorsel", extensions: ["png", "jpg", "jpeg", "webp"] }] }
         : kind === "music"
@@ -492,6 +535,11 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     setupPermissions();
     registerIpc();
+
+    // Yayin zamanlayicisi. Yetki verilmemisse hicbir sey yapmaz; olaylari
+    // arayuze bildiriyoruz ki yukleme sessizce olmasin.
+    scheduler.onEvent((olay) => mainWindow?.webContents.send("dra:yt:event", olay));
+    scheduler.start();
     // Acilis ekrani yalnizca kullanici uygulamayi elle actiginda gosterilir.
     if (!GIZLI_BASLAT) createSplash();
     createWindow();

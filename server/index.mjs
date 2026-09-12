@@ -29,6 +29,9 @@ import * as report from "./report.mjs";
 import * as mail from "./mail.mjs";
 import * as editstyle from "./editstyle.mjs";
 import * as montage from "./montage.mjs";
+import * as youtube from "./youtube.mjs";
+import * as videos from "./videos.mjs";
+import * as scheduler from "./scheduler.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -138,6 +141,7 @@ const server = createServer(async (req, res) => {
       kick: kick.status(),
       tts: tts.status(),
     mail: mail.status(),
+    youtube: youtube.status(),
       apps: await apps.scanInfo(),
     });
   }
@@ -330,12 +334,58 @@ const server = createServer(async (req, res) => {
     });
   }
 
+  /* ------------------------------------------------------- youtube -- */
+
+  if (url.pathname === "/api/youtube/configure" && req.method === "POST") {
+    return handleAction(req, res, async (body) => ({
+      status: youtube.configure({
+        clientId: body.clientId,
+        clientSecret: body.clientSecret,
+        refreshToken: body.refreshToken,
+      }),
+    }));
+  }
+
+  if (url.pathname === "/api/youtube/channel" && req.method === "POST") {
+    return handleAction(req, res, async () => {
+      await permissions.require("youtube");
+      return { channel: await youtube.channel() };
+    });
+  }
+
+  if (url.pathname === "/api/videos" && req.method === "POST") {
+    return handleAction(req, res, async () => ({
+      videos: await videos.list(),
+      summary: await videos.summary(),
+    }));
+  }
+
+  if (url.pathname === "/api/videos/add" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      await permissions.require("youtube");
+      return { video: await videos.add(body) };
+    });
+  }
+
+  if (url.pathname === "/api/videos/remove" && req.method === "POST") {
+    return handleAction(req, res, async (body) => await videos.remove(body.id));
+  }
+
+  if (url.pathname === "/api/videos/update" && req.method === "POST") {
+    return handleAction(req, res, async (body) => ({
+      video: await videos.update(body.id, body.patch || {}),
+    }));
+  }
+
   if (req.method !== "GET" && req.method !== "HEAD") {
     return sendJson(res, 405, { error: "Desteklenmeyen metot." });
   }
 
   return serveStatic(req, res, url.pathname);
 });
+
+// Yayin zamanlayicisi: yetki verilmemisse hicbir sey yapmaz.
+scheduler.start();
 
 server.listen(PORT, HOST, () => {
   console.log("");

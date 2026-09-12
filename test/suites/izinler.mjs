@@ -136,5 +136,45 @@ export async function run(_page, _base, t) {
   t.ok(!diskte.grants?.sistem, "geri alinan izin diskte kalmadi");
 
   await perms.revokeAll();
+
+  /* ------------------------------------------ es zamanli erisim ---- */
+  // Yukleme bayragi await'ten ONCE yazilirsa, ayni anda gelen ikinci
+  // cagri dosya okunmadan "yuklendi" sanip bos izin listesi goruyordu:
+  // verilmis izin NEED_PERMISSION ile reddediliyor, es zamanli bir
+  // grant() da diske yalnizca yeni yetkiyi yazip digerlerini siliyordu.
+  await perms.grant("sistem");
+  await perms.grant("eposta");
+  await perms.grant("montaj");
+
+  // Modulu diskten yeniden okumaya zorlayip hepsini AYNI ANDA soruyoruz.
+  const taze = await import(
+    `../../server/permissions.mjs?tazele=${Date.now()}`
+  );
+  const sonuclar = await Promise.all([
+    taze.require("sistem").then(() => "ok", (e) => e.code),
+    taze.require("eposta").then(() => "ok", (e) => e.code),
+    taze.require("montaj").then(() => "ok", (e) => e.code),
+    taze.granted("sistem"),
+  ]);
+  t.eq(
+    sonuclar.slice(0, 3),
+    ["ok", "ok", "ok"],
+    "es zamanli sorgularda verilmis izinler kayboluyor degil",
+  );
+  t.eq(sonuclar[3], true, "es zamanli granted() de dogru cevap veriyor");
+
+  // Es zamanli bir yazma digerlerini silmemeli.
+  const taze2 = await import(
+    `../../server/permissions.mjs?tazele=${Date.now()}-2`
+  );
+  await Promise.all([taze2.grant("youtube"), taze2.require("sistem").catch(() => {})]);
+  const kalan = (await taze2.list()).filter((p) => p.granted).map((p) => p.id).sort();
+  t.eq(
+    kalan,
+    ["eposta", "montaj", "sistem", "youtube"],
+    "es zamanli yazma onceki izinleri silmiyor",
+  );
+
+  await perms.revokeAll();
   delete process.env.DRA_DATA_DIR;
 }

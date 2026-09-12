@@ -187,7 +187,7 @@ yeniden sorulmaması için diske yazılır.
 | Bilgisayar durumu | İşletim sistemi, disk, bellek, çalışma süresi, Windows güncellemeleri — yalnızca okur |
 | Dosyaları okuma | İzin verdiğiniz klasörlerdeki dosyaları okur; silmez, değiştirmez |
 | E-posta okuma | Gelen kutusunu okur, reklam/bülten ayıklar; mesaj göndermez |
-| YouTube kanalı | Kanal istatistiği okur, video yükler (yükleme öncesi ayrıca onay ister) |
+| YouTube kanalı | Kanal istatistiği okur; **sıraya koyduğunuz** videoları verdiğiniz saatte yükler |
 | Video montajı | Gösterdiğiniz klasördeki videoları okur, projenizden üslup çıkarır, yeni video üretir |
 | İşletme verileri | İşletmenizle ilgili anlattıklarınızı bu bilgisayarda tutar |
 
@@ -295,6 +295,41 @@ bırakmaz.
 Kaynak klipler farklı çözünürlük, farklı kare hızında ve kimi sessiz olabilir;
 hepsi tek kalıba sokulur (oranı bozmadan sığdırılıp siyahla doldurulur, sessiz
 olanlara sessiz ses izi eklenir) — yoksa birleştirme bozulur.
+
+### YouTube
+
+Modlar → **YouTube**. Videoyu, başlığını, başlık görselini ve **yayın saatini**
+verirsiniz; DRA sıraya koyar ve saati gelince yükler. **"DRA kanal raporu"**
+deyince abone/izlenme sayısını ve sırada bekleyenleri kart olarak gösterir.
+
+**Sıraya kendiniz eklemediğiniz hiçbir video yüklenmez.** Sırayı Modlar
+sekmesinden görür, istediğinizi çıkarırsınız. Yükleme başladığında,
+bittiğinde ve hata aldığında sohbete yazar — arka planda sessizce olmaz.
+
+Zamanlanmış videolar YouTube kuralı gereği önce **gizli** yüklenir, saati
+gelince kendiliğinden yayına geçer. "Herkese açık" seçseniz bile zamanlanmış
+yüklemede gizli gider; YouTube `publishAt` alanını başka türlü kabul etmiyor.
+
+**Kurulum — burada OAuth kaçınılmaz.** Gmail'deki uygulama şifresi kısayolunun
+YouTube'da karşılığı yok; Google yalnızca OAuth kabul ediyor. Tek seferlik:
+
+1. [Google Cloud Console](https://console.cloud.google.com) → yeni proje
+2. **YouTube Data API v3**'ü etkinleştirin
+3. Kimlik Bilgileri → OAuth istemci kimliği → tür: **Masaüstü uygulaması**
+4. Çıkan **İstemci Kimliği** ve **Gizli Anahtar**'ı Modlar sekmesine girin
+5. **Kanalı bağla** → tarayıcı açılır, onay verirsiniz, biter
+
+Onay kodunu kopyalayıp yapıştırmanız gerekmez: DRA geri çağırmayı
+`127.0.0.1`'de kendi açtığı kısa ömürlü bir sunucuyla karşılar. Yenileme
+jetonu bu bilgisayarda kalır, bir daha giriş istenmez.
+
+Bağımlılık eklenmedi — OAuth, devam ettirilebilir yükleme ve başlık görseli
+ayarlama `fetch` + `node:http` ile yazıldı.
+
+> Not: Geliştirme ortamında Google hesabı ve dışarı çıkış yok. Akışın tamamı,
+> Google'ın uçlarını taklit eden **gerçek bir yerel sunucuya** karşı sınandı
+> (68 test: yetkilendirme döngüsü, jeton yenileme, iki adımlı yükleme,
+> zamanlanmış yayında gizlilik kuralı, zamanlayıcı) — canlı doğrulanmadı.
 
 ## Ses ve gizlilik — okumaya değer
 
@@ -464,7 +499,7 @@ Açıkken sesli moderasyon:
 | Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm; uygulama taraması |
 | Not | not ekle, tek tek sil, hepsini temizle |
 | Alarm | saatli alarm kur, etiket ver, her gün tekrarla, aç/kapa, sil |
-| Modlar | çalışma modları (açılışta başlat, arka planda dinle, web araması, yayıncı desteği, **e-posta raporu**, **video montajı**) ve **erişim izinleri** |
+| Modlar | çalışma modları (açılışta başlat, arka planda dinle, web araması, yayıncı desteği, **e-posta raporu**, **video montajı**, **YouTube**) ve **erişim izinleri** |
 | Ayar | ses, mikrofon, ses tanıma motoru ve modeli, sesi cihazda tut, açılış dizisi, **DRA'nın sesi** (yerel / ElevenLabs), konuşma hızı, otomatik uyku, tema rengi, ek uyandırma sözcükleri, sıfırlama |
 
 **Orta** — reaktör. Dönen halkalar, glif şeridi ve yörüngedeki parçalar;
@@ -561,6 +596,9 @@ server/report.mjs    bilgisayar raporu (disk, bellek, Windows guncellemeleri)
 server/mail.mjs      e-posta raporu (bagimliliksiz IMAP, yalnizca basliklar)
 server/editstyle.mjs montaj projesinden uslup cikarma (.mlt/.fcpxml/CapCut)
 server/montage.mjs   ffmpeg ile montaj (ffmpeg yoksa mod kapali kalir)
+server/videos.mjs    stok video deposu (baslik, kapak, yayin saati)
+server/youtube.mjs   YouTube OAuth + devam ettirilebilir yukleme
+server/scheduler.mjs yayin zamanlayicisi (yetki yoksa hicbir sey yapmaz)
 web/js/system.js     sunucu köprüsü (istemci tarafı)
 ```
 

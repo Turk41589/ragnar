@@ -29,6 +29,7 @@ let serverInfo = {
   kick: { ready: false },
   tts: { ready: false },
   mail: { ready: false },
+  youtube: { ready: false },
   apps: {},
 };
 
@@ -221,6 +222,64 @@ export async function systemReport() {
     ? await bridge(() => window.dra.report.system())
     : await post("/api/report/system");
   return data.report;
+}
+
+/* ------------------------------------------------------------- youtube */
+
+export async function configureYoutube(clientId, clientSecret, refreshToken) {
+  const data = desktop
+    ? await bridge(() => window.dra.youtube.configure(clientId, clientSecret, refreshToken))
+    : await post("/api/youtube/configure", { clientId, clientSecret, refreshToken });
+  serverInfo.youtube = data.status;
+  return data.status;
+}
+
+export const youtubeReady = () => Boolean(serverInfo.youtube?.ready);
+
+/** Tarayiciyi acip kanali baglar (yalnizca uygulama surumunde). */
+export async function linkYoutube() {
+  if (!desktop) {
+    throw new Error("Kanal baglama yalnizca uygulama surumunde yapilabilir.");
+  }
+  return bridge(() => window.dra.youtube.link());
+}
+
+export async function youtubeChannel() {
+  const data = desktop
+    ? await bridge(() => window.dra.youtube.channel())
+    : await post("/api/youtube/channel");
+  return data.channel;
+}
+
+export function onYoutubeEvent(handler) {
+  if (!desktop) return () => {};
+  return window.dra.youtube.onEvent(handler);
+}
+
+/* ------------------------------------------------------- video deposu */
+
+export async function videoList() {
+  return desktop ? await bridge(() => window.dra.videos.list()) : await post("/api/videos");
+}
+
+export async function videoAdd(o) {
+  const data = desktop
+    ? await bridge(() => window.dra.videos.add(o))
+    : await post("/api/videos/add", o);
+  return data.video;
+}
+
+export async function videoRemove(id) {
+  return desktop
+    ? await bridge(() => window.dra.videos.remove(id))
+    : await post("/api/videos/remove", { id });
+}
+
+export async function videoUpdate(id, patch) {
+  const data = desktop
+    ? await bridge(() => window.dra.videos.update(id, patch))
+    : await post("/api/videos/update", { id, patch });
+  return data.video;
 }
 
 /* -------------------------------------------------------------- montaj */

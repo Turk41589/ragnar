@@ -46,6 +46,11 @@ const DEFAULTS = {
   montageMusic: "",
   montageTemplate: "hizli",
   montageTitle: "",
+  // YouTube: istemci bilgileri ve yenileme jetonu bu bilgisayarda kalir.
+  youtubeMode: false,
+  ytClientId: "",
+  ytClientSecret: "",
+  ytRefreshToken: "",
   notes: [],
   alarms: [],
 };
@@ -91,6 +96,11 @@ function coerce(saved) {
   }
   if (typeof saved.montageTemplate === "string") {
     store.montageTemplate = saved.montageTemplate.slice(0, 40);
+  }
+
+  if (typeof saved.youtubeMode === "boolean") store.youtubeMode = saved.youtubeMode;
+  for (const k of ["ytClientId", "ytClientSecret", "ytRefreshToken"]) {
+    if (typeof saved[k] === "string") store[k] = saved[k].slice(0, 400);
   }
 
   if (Number.isFinite(saved.speechRate)) {

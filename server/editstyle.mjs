@@ -174,7 +174,21 @@ function readFcpxml(xml) {
 
 /** CapCut taslagi (draft_content.json) */
 function readCapCut(text) {
-  const data = JSON.parse(text);
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      "Bu JSON dosyasi okunamadi. CapCut taslagi icin draft_content.json " +
+        "dosyasini verin.",
+    );
+  }
+  if (!data || !Array.isArray(data.tracks)) {
+    throw new Error(
+      "Bu JSON bir CapCut taslagina benzemiyor (icinde 'tracks' yok). " +
+        "CapCut'ta proje klasorundeki draft_content.json dosyasini verin.",
+    );
+  }
   const tuval = data.canvas_config || {};
   const fps = Number(data.fps) || 30;
 

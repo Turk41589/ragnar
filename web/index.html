@@ -299,6 +299,63 @@
               </small>
             </li>
 
+            <li>
+              <span>YouTube</span>
+              <button class="switch" type="button" id="set-youtube" role="switch" aria-checked="false"></button>
+            </li>
+            <li class="settings__stack" id="youtube-fields" hidden>
+              <label for="set-yt-id">Istemci Kimligi</label>
+              <input id="set-yt-id" type="text" placeholder="...apps.googleusercontent.com"
+                     autocomplete="off" maxlength="400" />
+              <label for="set-yt-secret">Gizli Anahtar</label>
+              <input id="set-yt-secret" type="password" placeholder="Client secret"
+                     autocomplete="off" maxlength="400" />
+              <button class="btn btn--icon btn--wide btn--go" type="button" id="yt-link">
+                Kanali bagla
+              </button>
+              <p class="nextalarm" id="youtube-status">Bagli degil</p>
+
+              <h3 class="pane__title">Yayin sirasi</h3>
+              <ul class="settings" id="video-list"></ul>
+              <p class="nextalarm" id="video-summary">Sirada video yok</p>
+
+              <button class="btn btn--icon btn--wide" type="button" id="pick-video-file">
+                Video dosyasini sec
+              </button>
+              <p class="nextalarm" id="video-file-info">Dosya secilmedi</p>
+
+              <label for="set-video-title">Baslik</label>
+              <input id="set-video-title" type="text" placeholder="Video basligi" maxlength="100" />
+
+              <button class="btn btn--icon btn--wide" type="button" id="pick-video-thumb">
+                Baslik gorselini sec
+              </button>
+              <p class="nextalarm" id="video-thumb-info">Gorsel secilmedi</p>
+
+              <label for="set-video-when">Yayin zamani</label>
+              <input id="set-video-when" type="datetime-local" />
+
+              <label for="set-video-privacy">Gizlilik</label>
+              <select id="set-video-privacy">
+                <option value="public">Herkese acik</option>
+                <option value="unlisted">Baglanti ile</option>
+                <option value="private">Gizli</option>
+              </select>
+
+              <button class="btn btn--icon btn--wide" type="button" id="video-add">
+                Siraya ekle
+              </button>
+
+              <small class="hint">
+                Google Cloud'da bir <strong>Masaustu uygulamasi</strong> istemcisi
+                acip kimlik ve gizli anahtari buraya girin, sonra
+                &laquo;Kanali bagla&raquo; deyin &mdash; tarayici acilir, onay
+                verirsiniz, bir daha sorulmaz. Siraya kendiniz eklemediginiz
+                hicbir video yuklenmez. Zamanlanmis videolar YouTube kuralı
+                geregi once gizli yuklenir, saati gelince yayina alinir.
+              </small>
+            </li>
+
           </ul>
 
           <h3 class="pane__title">Erisim izinleri</h3>

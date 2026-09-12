@@ -73,7 +73,9 @@ function ffmpegPath() {
 let filterCache = null;
 
 export async function filterAvailable(name) {
-  if (!filterCache) {
+  // `""` de gecerli bir sonuc (probe basarisiz oldu). Falsy denetimi
+  // yapilirsa her cagrida ffmpeg yeniden calisiyor ve 15 saniye bekleniyordu.
+  if (filterCache === null) {
     try {
       const { stdout } = await execFileAsync(ffmpegPath(), ["-hide_banner", "-filters"], {
         timeout: 15_000,
@@ -143,6 +145,9 @@ export async function listClips(dir) {
 
   const klipler = girdiler
     .filter((e) => e.isFile() && VIDEO.has(extname(e.name).toLowerCase()))
+    // Kendi urettigimiz montajlar kaynak sayilmamali; yoksa ikinci
+    // calistirmada onceki cikti da klip olarak iceri giriyor.
+    .filter((e) => !/^dra-montaj/i.test(e.name))
     // Siralama dosya adina gore: "01-giris.mp4", "02-orta.mp4"...
     .map((e) => e.name)
     .sort((a, b) => a.localeCompare(b, "tr", { numeric: true }));
@@ -191,8 +196,14 @@ export async function render({
   const klipler = await listClips(clipsDir);
   const { width, height, fps, cutSeconds, titleSeconds } = plan;
 
-  const gecici = join(DATA_DIR, "montaj-gecici");
-  await rm(gecici, { recursive: true, force: true });
+  // Cikti kaynak klasorunun disinda bir alt klasore yaziliyor; o klasor
+  // heniz yoksa ffmpeg dosyayi acamaz.
+  await mkdir(dirname(out), { recursive: true });
+
+  // Her montaj kendi gecici klasorunde calisir. Sabit bir klasor, ayni
+  // anda baslatilan iki montajin (dugme + sesli komut) birbirinin
+  // parcalarini silmesine yol aciyordu.
+  const gecici = join(DATA_DIR, `montaj-gecici-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   await mkdir(gecici, { recursive: true });
 
   const parcalar = [];
@@ -303,7 +314,10 @@ export async function render({
         "-i", birlesik, "-i", music,
         // Muzik kisik, konusma duyulsun; video bitince muzik de biter.
         "-filter_complex",
-        "[1:a]volume=0.18,aloop=loop=-1:size=2e9[m];[0:a][m]amix=inputs=2:duration=first[a]",
+        // normalize=0 sart: amix varsayilan olarak girdi sayisina boler,
+        // yani muzik eklendiginde konusma da yariya iniyordu.
+        "[1:a]volume=0.18,aloop=loop=-1:size=2e9[m];" +
+          "[0:a][m]amix=inputs=2:duration=first:normalize=0[a]",
         "-map", "0:v", "-map", "[a]",
         "-c:v", "copy", "-c:a", "aac", "-y", out,
       ]);

@@ -220,6 +220,12 @@ export async function run(_page, _base, t) {
   }
   t.has(bosHata?.message || "", "video bulamadim", "videosuz klasor anlasilir hata veriyor");
 
+  // Kendi urettigimiz montaj, sonraki calistirmada KAYNAK sayilmamali.
+  await uret(["-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=1",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", join(klipDir, "dra-montaj-999.mp4")]);
+  const kliplerSonra = await montage.listClips(klipDir);
+  t.eq(kliplerSonra.length, 3, "onceki montaj ciktisi kaynak olarak alinmiyor");
+
   // --- gercek montaj ---
   const plan = { ...montage.planFromStyle(null, { template: "hizli" }), cutSeconds: 2 };
   const cikti = join(kok, "montaj.mp4");
@@ -271,4 +277,30 @@ export async function run(_page, _base, t) {
     out: join(kok, "muzikli.mp4"),
   });
   t.ok(muzikli.bytes > 10_000, "fon muzikli montaj da uretiliyor");
+
+  // Cikti klasoru yoksa kendisi olusturmali (cikti alt klasore yaziliyor).
+  const altYol = join(kok, "yeni", "alt", "montaj.mp4");
+  const alt = await montage.render({ clipsDir: klipDir, plan, out: altYol });
+  t.ok(alt.bytes > 10_000, "olmayan cikti klasoru kendiliginden olusturuluyor");
+
+  // Bozuk JSON, CapCut sanilip ham cozumleyici hatasi vermemeli.
+  const bozuk = join(kok, "bozuk.json");
+  await writeFile(bozuk, "{ bu json degil");
+  let jHata = null;
+  try {
+    await style.read(bozuk);
+  } catch (err) {
+    jHata = err;
+  }
+  t.has(jHata?.message || "", "draft_content.json", "bozuk JSON yol gosteren hata veriyor");
+
+  const yanlisJson = join(kok, "baska.json");
+  await writeFile(yanlisJson, JSON.stringify({ merhaba: 1 }));
+  jHata = null;
+  try {
+    await style.read(yanlisJson);
+  } catch (err) {
+    jHata = err;
+  }
+  t.has(jHata?.message || "", "CapCut", "ilgisiz JSON anlasilir sekilde reddediliyor");
 }

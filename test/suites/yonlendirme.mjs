@@ -44,6 +44,7 @@ const CASES = [
   ["bilgisayar güncel mi","rapor"],
   ["montajı başlat","montaj"],["montaj yap","montaj"],["klipleri birleştir","montaj"],
   ["mail var mı","eposta"],["maillerim","eposta"],["gelen kutusu","eposta"],
+  ["kanal raporu","youtube"],["kaç abonem var","youtube"],["yayın sırası","youtube"],
   ["ayarları aç","panel-ac"],["ayarlar","panel-ac"],
   ["sesini kapat","sesi-kapat"],["sus","sesi-kapat"],["sessiz ol","sesi-kapat"],
   ["sesini aç","sesi-ac"],

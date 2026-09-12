@@ -341,14 +341,31 @@ const RULES = [
       "bilgisayar guncel mi", "son guncelleme ne zaman",
       "disk ne kadar dolu", "disk durumu",
     ],
-    // "alarm raporu" gibi baska bir seyi kastediyorsa bu kural devreye girmesin.
-    exclude: ["alarm", "not", "sohbet"],
+    // "alarm raporu" ya da "kanal raporu" gibi baska bir seyi
+    // kastediyorsa bu kural devreye girmesin.
+    exclude: ["alarm", "not", "sohbet", "kanal", "youtube", "abone", "mail", "eposta"],
     // Rapor istegi, DRA'nin kendi durumunu anlatan "durum" kuralindan
     // once gelmeli: kullanici "rapor" derken bilgisayari kastediyor.
     priority: 2,
     run: async (n, raw, ctx) => {
       const ozet = await ctx.computerReport();
       // null: kullanici izin vermedi — uyari zaten ekranda, sessiz gec.
+      if (!ozet) return { text: "" };
+      return ozet;
+    },
+  },
+
+  {
+    name: "youtube",
+    example: "kanal raporu",
+    phrases: [
+      "kanal raporu", "youtube raporu", "kanalim nasil", "kac abonem var",
+      "abone sayim", "kanal durumu", "youtube durumu", "sirada ne var",
+      "yayin sirasi", "kac video bekliyor",
+    ],
+    priority: 2,
+    run: async (n, raw, ctx) => {
+      const ozet = await ctx.youtubeReport();
       if (!ozet) return { text: "" };
       return ozet;
     },

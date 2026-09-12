@@ -63,8 +63,9 @@ export const SCOPES = {
   youtube: {
     title: "YouTube kanali",
     detail:
-      "Kanal istatistiklerinizi okur, hazirladiginiz videolari belirlenen " +
-      "saatte yukler. Yukleme oncesi ayrica onay ister.",
+      "Kanal istatistiklerinizi okur ve SIRAYA KOYDUGUNUZ videolari " +
+      "verdiginiz saatte yukler. Siraya kendiniz eklemediginiz hicbir " +
+      "video yuklenmez; sirayi Modlar sekmesinden gorup silebilirsiniz.",
     writes: true,
   },
   isletme: {
@@ -78,11 +79,22 @@ export const SCOPES = {
 
 /** Verilen izinler: { [scope]: { grantedAt } } */
 let grants = {};
-let loaded = false;
+/**
+ * Yukleme SOZU (promise) tutuluyor, bayrak degil.
+ *
+ * Onceki hali `loaded = true`'yu await'ten ONCE yaziyordu: ayni anda gelen
+ * ikinci cagri dosya daha okunmadan "yuklendi" sanip bos grants goruyordu.
+ * Sonucu: izin verilmis olmasina ragmen NEED_PERMISSION, ve ayni anda gelen
+ * bir grant() diske yalnizca yeni yetkiyi yazip digerlerini siliyordu.
+ */
+let loading = null;
 
-async function load() {
-  if (loaded) return;
-  loaded = true;
+function load() {
+  if (!loading) loading = doLoad();
+  return loading;
+}
+
+async function doLoad() {
   try {
     const data = JSON.parse(await readFile(FILE, "utf8"));
     if (data && typeof data.grants === "object") {
@@ -176,5 +188,5 @@ export async function require(scope) {
 /** Testler icin: bellekteki durumu diske dokunmadan sifirlar. */
 export function _resetForTests() {
   grants = {};
-  loaded = true;
+  loading = Promise.resolve();
 }

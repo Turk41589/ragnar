@@ -259,8 +259,22 @@ export function syncSettings() {
   $("set-kick-channel").value = store.kickChannel;
   $("set-kick-token").value = store.kickToken;
 
+  syncSwitch($("set-youtube"), store.youtubeMode);
+  $("youtube-fields").hidden = !store.youtubeMode;
+  $("set-yt-id").value = store.ytClientId;
+  $("set-yt-secret").value = store.ytClientSecret;
+  $("set-video-title").value = videoTaslak.title;
+  $("video-file-info").textContent = videoTaslak.file || "Dosya secilmedi";
+  $("video-thumb-info").textContent = videoTaslak.thumbnail || "Gorsel secilmedi";
+
   syncSwitch($("set-montage"), store.montageMode);
   $("montage-fields").hidden = !store.montageMode;
+  // Mod acik kaydedilmis olabilir; ffmpeg denetimi yalnizca anahtara
+  // basildiginda yapilsaydi dugme ffmpeg'siz acik kalirdi.
+  if (store.montageMode && !montageChecked) {
+    montageChecked = true;
+    refreshMontageStatus();
+  }
   $("set-montage-template").value = store.montageTemplate;
   $("montage-project-row").hidden = store.montageTemplate !== "proje";
   $("set-montage-title").value = store.montageTitle;
@@ -289,12 +303,136 @@ export function syncSettings() {
   renderSwatches();
 }
 
+/* ----------------------------------------------------------------- youtube */
+
+/** Siraya eklenecek videonun taslagi (kaydedilmez, gecici). */
+const videoTaslak = { file: "", thumbnail: "", title: "" };
+
+const DURUM_ETIKET = {
+  bekliyor: "bekliyor",
+  yukleniyor: "yukleniyor",
+  yuklendi: "yuklendi",
+  hata: "hata",
+};
+
+async function pushYoutube() {
+  if (!store.youtubeMode) return;
+  try {
+    await system.configureYoutube(store.ytClientId, store.ytClientSecret, store.ytRefreshToken);
+  } catch (err) {
+    ctx.toast(`YouTube ayarlanamadi: ${err.message}`, 5000);
+  }
+}
+
+async function refreshYoutubeStatus() {
+  const el = $("youtube-status");
+  if (!el) return;
+  if (!store.youtubeMode) {
+    el.textContent = "Kapali";
+    return;
+  }
+  if (!store.ytClientId || !store.ytClientSecret) {
+    el.textContent = "Istemci bilgileri girilmedi";
+    return;
+  }
+  if (!store.ytRefreshToken) {
+    el.textContent = "Kanal bagli degil — «Kanali bagla»";
+    return;
+  }
+  try {
+    const kanal = await ctx.withPermission(() => system.youtubeChannel());
+    if (!kanal) {
+      el.textContent = "Izin verilmedi";
+      return;
+    }
+    el.textContent =
+      `${kanal.title} — ${kanal.subscribers.toLocaleString("tr")} abone, ` +
+      `${kanal.videos} video`;
+  } catch (err) {
+    el.textContent = `Kanal okunamadi: ${err.message}`;
+  }
+}
+
+/** Yayin sirasini listeler. */
+export async function renderVideos() {
+  const liste = $("video-list");
+  if (!liste) return;
+
+  let veri;
+  try {
+    veri = await system.videoList();
+  } catch {
+    return;
+  }
+
+  liste.replaceChildren();
+  for (const v of veri.videos) {
+    const li = document.createElement("li");
+    li.className = "settings__stack";
+    li.dataset.video = v.id;
+
+    const satir = document.createElement("div");
+    satir.className = "permrow";
+    const ad = document.createElement("span");
+    ad.textContent = v.title;
+    const durum = document.createElement("b");
+    durum.className = "permrow__state";
+    durum.dataset.granted = String(v.status === "yuklendi");
+    durum.textContent = DURUM_ETIKET[v.status] || v.status;
+    satir.append(ad, durum);
+    li.append(satir);
+
+    const bilgi = document.createElement("small");
+    bilgi.className = "hint";
+    bilgi.textContent = v.publishAt
+      ? `${new Date(v.publishAt).toLocaleString("tr")} — ${v.name}`
+      : `Zamansiz (elle yuklenir) — ${v.name}`;
+    li.append(bilgi);
+
+    if (v.error) {
+      const h = document.createElement("small");
+      h.className = "hint";
+      h.textContent = `Hata: ${v.error}`;
+      li.append(h);
+    }
+
+    const sil = document.createElement("button");
+    sil.className = "btn btn--icon btn--wide btn--danger";
+    sil.type = "button";
+    sil.textContent = "Siradan cikar";
+    sil.addEventListener("click", async () => {
+      try {
+        await system.videoRemove(v.id);
+        renderVideos();
+      } catch (err) {
+        ctx.toast(`Silinemedi: ${err.message}`, 5000);
+      }
+    });
+    li.append(sil);
+
+    liste.append(li);
+  }
+
+  const o = veri.summary;
+  $("video-summary").textContent = o.total
+    ? `${o.bekliyor} bekliyor, ${o.yuklendi} yuklendi` +
+      (o.hata ? `, ${o.hata} hata` : "") +
+      (o.next ? ` — siradaki: ${new Date(o.next.publishAt).toLocaleString("tr")}` : "")
+    : "Sirada video yok";
+}
+
 /* ------------------------------------------------------------------ montaj */
+
+/** Acilista bir kez denetlemek icin. */
+let montageChecked = false;
 
 /** ffmpeg var mi? Yoksa nasil kurulacagini yaziyoruz. */
 async function refreshMontageStatus() {
   const el = $("montage-ffmpeg");
   if (!el) return;
+  // Denetim bitene kadar dugme kapali dursun: ffmpeg yoksa tiklanip
+  // anlamsiz bir hataya dusmesin.
+  $("montage-run").disabled = true;
   try {
     const { ffmpeg } = await system.montageStatus();
     el.textContent = ffmpeg.ready
@@ -719,6 +857,113 @@ export function mountPanel(context) {
     });
   }
 
+  /* --------------------------------------------------------- youtube -- */
+
+  $("set-youtube").addEventListener("click", async () => {
+    store.youtubeMode = !store.youtubeMode;
+    saveStore();
+    syncSettings();
+    if (store.youtubeMode) {
+      ctx.log(
+        "system",
+        "YouTube modu acildi. Google Cloud'dan aldiginiz istemci bilgilerini " +
+          "girip «Kanali bagla» deyin.",
+      );
+      await pushYoutube();
+      renderVideos();
+    }
+    refreshYoutubeStatus();
+  });
+
+  for (const [id, alan] of [["set-yt-id", "ytClientId"], ["set-yt-secret", "ytClientSecret"]]) {
+    $(id).addEventListener("change", async (event) => {
+      store[alan] = event.target.value.trim();
+      saveStore();
+      await pushYoutube();
+      refreshYoutubeStatus();
+    });
+  }
+
+  $("yt-link").addEventListener("click", async () => {
+    if (!store.ytClientId || !store.ytClientSecret) {
+      ctx.toast("Once istemci kimligi ve gizli anahtari girin");
+      return;
+    }
+    $("youtube-status").textContent = "Tarayici aciliyor, onayinizi bekliyorum…";
+    try {
+      await pushYoutube();
+      const sonuc = await ctx.withPermission(() => system.linkYoutube());
+      if (!sonuc) {
+        $("youtube-status").textContent = "Izin verilmedi";
+        return;
+      }
+      // Yenileme jetonu bu bilgisayarda kalir; bir daha giris istenmez.
+      store.ytRefreshToken = sonuc.refreshToken;
+      saveStore();
+      await pushYoutube();
+      await refreshYoutubeStatus();
+      ctx.toast("Kanal baglandi");
+    } catch (err) {
+      $("youtube-status").textContent = `Baglanamadi: ${err.message}`;
+      ctx.log("system", `YouTube baglanamadi: ${err.message}`);
+    }
+  });
+
+  for (const [id, kind, alan] of [
+    ["pick-video-file", "video", "file"],
+    ["pick-video-thumb", "image", "thumbnail"],
+  ]) {
+    $(id).addEventListener("click", async () => {
+      if (!system.isDesktop()) {
+        ctx.toast("Dosya secimi yalnizca uygulama surumunde");
+        return;
+      }
+      const yol = await system.montagePick(kind).catch(() => null);
+      if (!yol) return;
+      videoTaslak[alan] = yol;
+      syncSettings();
+    });
+  }
+
+  $("set-video-title").addEventListener("change", (event) => {
+    videoTaslak.title = event.target.value.trim();
+  });
+
+  $("video-add").addEventListener("click", async () => {
+    if (!videoTaslak.file) {
+      ctx.toast("Once video dosyasini secin");
+      return;
+    }
+    const ne_zaman = $("set-video-when").value;
+    try {
+      const video = await ctx.withPermission(() =>
+        system.videoAdd({
+          file: videoTaslak.file,
+          title: videoTaslak.title || undefined,
+          thumbnail: videoTaslak.thumbnail || undefined,
+          // datetime-local yerel saat verir; Date bunu dogru yorumluyor.
+          publishAt: ne_zaman ? new Date(ne_zaman).getTime() : null,
+          privacy: $("set-video-privacy").value,
+        }),
+      );
+      if (!video) return;
+      ctx.log(
+        "system",
+        `"${video.title}" siraya eklendi` +
+          (video.publishAt ? ` — ${new Date(video.publishAt).toLocaleString("tr")}` : ""),
+      );
+      ctx.toast("Siraya eklendi");
+      videoTaslak.file = "";
+      videoTaslak.thumbnail = "";
+      videoTaslak.title = "";
+      $("set-video-when").value = "";
+      syncSettings();
+      renderVideos();
+    } catch (err) {
+      ctx.toast(`Eklenemedi: ${err.message}`, 6000);
+    }
+  });
+
   /* ---------------------------------------------------------- montaj -- */
 
   $("set-montage").addEventListener("click", async () => {
@@ -770,7 +1015,12 @@ export function mountPanel(context) {
     });
   }
 
-  $("montage-run").addEventListener("click", () => ctx.runMontage());
+  $("montage-run").addEventListener("click", async () => {
+    // runMontage erken donerse ("klasor secilmedi" gibi) bu metin
+    // kullaniciya ulasmali; yoksa dugme hicbir sey yapmiyor gorunuyordu.
+    const sonuc = await ctx.runMontage();
+    if (sonuc) ctx.log("system", sonuc);
+  });
 
   /* --------------------------------------------------------- e-posta -- */
 

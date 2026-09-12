@@ -45,6 +45,13 @@ const MESAJLAR = [
   header({ from: "no-reply@banka.com", subject: "Hesap hareketi bildirimi" }),
   // 7 — Precedence: bulk ile toplu (List-Unsubscribe yok)
   header({ from: "Duyuru <duyuru@platform.com>", subject: "Yeni surum yayinda", precedence: "bulk" }),
+  // 8 — HAM UTF-8 baslik. Kodlanmis sozcuk kullanmayan gondericiler var ve
+  // Turkce harfler iki bayt tutuyor. Literal blok BAYT sayisiyla verildigi
+  // icin okuyucu karakter sayarsa tam burada kayiyordu.
+  header({
+    from: "Şükrü Çağlayan <sukru@ornek.com.tr>",
+    subject: "Görüşme için müsait misiniz — ölçüm çizelgesi ğüşıöç",
+  }),
 ];
 
 /**
@@ -126,6 +133,15 @@ export async function run(_page, _base, t) {
     "Yarın görüşürüz",
     "Q kodlamasi da cozuluyor",
   );
+  // ISO-8859-9 (Turkce latin) latin1 ile cozulemez: "ş" → "þ" oluyordu ve
+  // bu yalnizca goruntuyu degil, siniflamayi da bozuyordu.
+  const iso = Buffer.from([0x67, 0xf6, 0x72, 0xfc, 0xfe, 0x6d, 0x65]); // görüşme
+  t.eq(
+    decodeWords(`=?ISO-8859-9?B?${iso.toString("base64")}?=`),
+    "görüşme",
+    "ISO-8859-9 basliklar dogru cozuluyor",
+  );
+
   t.eq(parseFrom("Ahmet Yilmaz <a@b.com>").name, "Ahmet Yilmaz", "gonderen adi okunuyor");
   t.eq(parseFrom("Ahmet Yilmaz <A@B.com>").email, "a@b.com", "adres kucuk harfe iniyor");
   t.eq(parseFrom("tek@adres.com").name, "tek", "ad yoksa adresten turetiliyor");
@@ -172,6 +188,13 @@ export async function run(_page, _base, t) {
     const ozet = await mail.summary({ days: 2 });
 
     t.eq(ozet.total, MESAJLAR.length, "tum mesajlarin basligi okundu");
+
+    // BAYT/KARAKTER: cok baytli harfler iceren blok dogru okunmali.
+    const turkce = [...(ozet.groups.is || []), ...(ozet.groups.kisisel || [])]
+      .find((m) => /Görüşme/.test(m.subject));
+    t.ok(turkce, "cok baytli (Turkce) basliklar bozulmadan okunuyor");
+    t.has(turkce?.from || "", "Şükrü", "gonderen adindaki Turkce harfler dogru");
+    t.has(turkce?.subject || "", "ölçüm", "konudaki Turkce harfler dogru");
     t.ok(
       sahte.kayit.some((k) => /UID SEARCH SINCE \d+-[A-Z][a-z]{2}-\d{4}/.test(k)),
       "arama IMAP tarih bicimiyle yapiliyor",
@@ -187,10 +210,15 @@ export async function run(_page, _base, t) {
 
     /* --- siniflama: istenen tam olarak buydu --- */
     t.eq(ozet.counts.sponsor, 1, "sponsor teklifi ayri sayiliyor");
-    t.eq(ozet.counts.is, 1, "is gorusmesi ayri sayiliyor");
+    // Iki tane: kodlanmis "Mülakat daveti" ve ham UTF-8 "Görüşme için...".
+    t.eq(ozet.counts.is, 2, "is gorusmeleri ayri sayiliyor");
     t.eq(ozet.counts.reklam, 1, "reklam sayiliyor");
     t.eq(ozet.counts.bulten, 2, "bulten sayiliyor (List-Unsubscribe ve Precedence: bulk)");
     t.eq(ozet.counts.kisisel, 1, "kisisel mesaj ayirt ediliyor");
+    t.ok(
+      ozet.groups.is.some((m) => /Görüşme/.test(m.subject)),
+      "ham UTF-8 baslikli mesaj da siniflanabiliyor",
+    );
     t.eq(ozet.counts.diger, 1, "otomatik bildirim ayirt ediliyor");
 
     t.has(
