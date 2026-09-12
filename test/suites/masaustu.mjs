@@ -161,8 +161,9 @@ export async function run(_page, _base, t) {
     t.ok(!bridge.nodeSizinti, "Node arayuze sizmiyor (yalitim acik)");
     t.eq(
       bridge.anahtarlar,
-      ["apps", "desktop", "health", "kick", "mail", "montage", "on", "perm", "report",
-       "search", "stt", "tts", "version", "videos", "window", "youtube"],
+      ["apps", "desktop", "health", "kick", "mail", "messages", "montage", "on", "perm",
+       "report", "search", "sources", "stt", "tts", "version", "videos", "window",
+       "youtube"],
       "kopru yalnizca beklenen yuzeyi aciyor",
     );
 
@@ -279,6 +280,24 @@ export async function run(_page, _base, t) {
     // Depoyu OKUMAK izin gerektirmez (kendi kaydimiz), YAZMAK gerektirir.
     const depo = await window.evaluate(() => window.dra.videos.list());
     t.ok(Array.isArray(depo.videos), "video deposu okunabiliyor");
+
+    // Kaynak KATALOGU izin gerektirmez (yalnizca ne istediklerinin listesi),
+    // ama yapilandirmak ve mesaj cekmek gerektirir.
+    const katalog = await window.evaluate(() => window.dra.sources.list());
+    t.eq(katalog.sources.length, 4, "dort musteri kaynagi arayuze geliyor");
+    t.ok(
+      katalog.sources.every((k) => Array.isArray(k.fields)),
+      "her kaynak isteyecegi bilgileri bildiriyor",
+    );
+
+    const izinsizKaynak = await window.evaluate(() =>
+      window.dra.sources.collect(["gmail"]).then(
+        () => ({ kod: null }),
+        (err) => ({ kod: err.code, scope: err.scope }),
+      ),
+    );
+    t.eq(izinsizKaynak.kod, "NEED_PERMISSION", "izinsiz mesaj toplanmiyor");
+    t.eq(izinsizKaynak.scope, "isletme", "isletme yetkisi isteniyor");
     t.eq(health.mail.ready, false, "e-posta varsayilan kapali");
     t.ok(!("pass" in health.mail), "e-posta sifresi IPC'de tasinmiyor");
     t.eq(izinsiz.scope, "sistem", "hangi yetkinin gerektigi arayuze ulasiyor");

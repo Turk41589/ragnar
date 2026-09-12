@@ -189,7 +189,7 @@ yeniden sorulmaması için diske yazılır.
 | E-posta okuma | Gelen kutusunu okur, reklam/bülten ayıklar; mesaj göndermez |
 | YouTube kanalı | Kanal istatistiği okur; **sıraya koyduğunuz** videoları verdiğiniz saatte yükler |
 | Video montajı | Gösterdiğiniz klasördeki videoları okur, projenizden üslup çıkarır, yeni video üretir |
-| İşletme verileri | İşletmenizle ilgili anlattıklarınızı bu bilgisayarda tutar |
+| İşletme verileri | Seçtiğiniz kaynaklardan müşteri mesajlarını okur ve bu bilgisayarda tutar |
 
 ### Bilgisayar raporu
 
@@ -330,6 +330,50 @@ ayarlama `fetch` + `node:http` ile yazıldı.
 > Google'ın uçlarını taklit eden **gerçek bir yerel sunucuya** karşı sınandı
 > (68 test: yetkilendirme döngüsü, jeton yenileme, iki adımlı yükleme,
 > zamanlanmış yayında gizlilik kuralı, zamanlayıcı) — canlı doğrulanmadı.
+
+### İşletme modu — müşteri mesajları
+
+Modlar → **İşletme modu**. Müşteri mesajlarının **nereden geleceğini siz
+seçersiniz**; DRA da yalnızca o kaynağın ihtiyaç duyduğu bilgileri ister.
+Kaynak açtığınız anda ne isteyeceğini sohbete yazar, alanlar da ekranda
+belirir — her alanın altında o bilgiyi nereden alacağınız yazılı.
+
+| Kaynak | İstediği bilgi | Gelen mesaj |
+|---|---|---|
+| **Gmail** | adres + uygulama şifresi | sorarak alınır |
+| **Instagram DM** | hesap kimliği + sayfa erişim jetonu | sorarak alınır |
+| **WhatsApp** | numara kimliği + kalıcı jeton (+ doğrulama jetonu) | **yalnızca webhook** |
+| **Elle giriş** | — | kendiniz yazarsınız |
+
+Sonra **"DRA mesajları topla"** deyin; hepsi tek bir listede toplanır.
+**"DRA müşteri mesajları"** hangi kaynaktan kaç mesaj geldiğini ve yanıt
+bekleyenleri kart olarak gösterir. Bir kaynak çalışmazsa diğerleri devam
+eder — tek bozuk hesap bütün raporu engellemez, hangisinin neden
+çalışmadığı ayrıca yazılır.
+
+Aynı mesaj iki kez kaydedilmez: her kaynak kendi kimliğini verir.
+
+**Instagram'ı neden resmî API ile okuyoruz:** "giriş yapıp sayfayı kazı"
+yöntemi hesabın kapatılmasına yol açıyor ve her arayüz değişikliğinde
+kırılıyor. Resmî yol daha zahmetli kuruluyor ama hesabınızı riske atmıyor.
+İşletme/İçerik Üreticisi hesabı ve bağlı bir Facebook Sayfası gerekiyor.
+
+**WhatsApp'ta bir kısıt var, baştan söyleyelim:** Cloud API'de gelen
+mesajlar *sorularak alınamıyor.* "Son mesajları getir" diye bir uç yok;
+Meta mesajları yalnızca **webhook** ile, yani sizin verdiğiniz bir adrese
+POST ederek iletiyor. Yani gelen WhatsApp mesajlarını alabilmek için
+DRA'nın internetten ulaşılabilir olması gerekiyor — sabit IP, port
+yönlendirme ya da bir tünel servisi. DRA kendi tarafını hazır tutuyor
+(`/webhook/whatsapp` ucu doğrulamayı da karşılıyor), adresi dışarı açmak
+sizin tarafınız.
+
+**Yanıt göndermekte** böyle bir kısıt yok: o düz bir HTTP isteği,
+her yerden çalışır. Gmail'den yanıt gönderilmez (IMAP okuma protokolü);
+DRA bunu söyler, sessizce yutmaz.
+
+> Not: Geliştirme ortamında Meta hesabı ve dışarı çıkış yok. Instagram ve
+> WhatsApp, Graph API'yi taklit eden **gerçek bir yerel sunucuya** karşı
+> sınandı (60 test) — canlı doğrulanmadı.
 
 ## Ses ve gizlilik — okumaya değer
 
@@ -499,7 +543,7 @@ Açıkken sesli moderasyon:
 | Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm; uygulama taraması |
 | Not | not ekle, tek tek sil, hepsini temizle |
 | Alarm | saatli alarm kur, etiket ver, her gün tekrarla, aç/kapa, sil |
-| Modlar | çalışma modları (açılışta başlat, arka planda dinle, web araması, yayıncı desteği, **e-posta raporu**, **video montajı**, **YouTube**) ve **erişim izinleri** |
+| Modlar | çalışma modları (açılışta başlat, arka planda dinle, web araması, yayıncı desteği, **e-posta raporu**, **video montajı**, **YouTube**, **işletme modu**) ve **erişim izinleri** |
 | Ayar | ses, mikrofon, ses tanıma motoru ve modeli, sesi cihazda tut, açılış dizisi, **DRA'nın sesi** (yerel / ElevenLabs), konuşma hızı, otomatik uyku, tema rengi, ek uyandırma sözcükleri, sıfırlama |
 
 **Orta** — reaktör. Dönen halkalar, glif şeridi ve yörüngedeki parçalar;
@@ -599,6 +643,10 @@ server/montage.mjs   ffmpeg ile montaj (ffmpeg yoksa mod kapali kalir)
 server/videos.mjs    stok video deposu (baslik, kapak, yayin saati)
 server/youtube.mjs   YouTube OAuth + devam ettirilebilir yukleme
 server/scheduler.mjs yayin zamanlayicisi (yetki yoksa hicbir sey yapmaz)
+server/sources.mjs   musteri mesaji kaynaklari (her kaynak ne istedigini bildirir)
+server/messages.mjs  birlesik musteri mesaji deposu
+server/instagram.mjs Instagram DM (Meta Graph API)
+server/whatsapp.mjs  WhatsApp Cloud API (gonderim + webhook alicisi)
 web/js/system.js     sunucu köprüsü (istemci tarafı)
 ```
 

@@ -27,6 +27,7 @@ const SUITES = [
   await import("./suites/eposta.mjs"),
   await import("./suites/montaj.mjs"),
   await import("./suites/youtube.mjs"),
+  await import("./suites/kaynaklar.mjs"),
   await import("./suites/masaustu.mjs"),
   await import("./suites/alarm.mjs"),
 ];

@@ -224,6 +224,56 @@ export async function systemReport() {
   return data.report;
 }
 
+/* --------------------------------------------------- musteri kaynaklari */
+
+export async function sourceList() {
+  return desktop ? await bridge(() => window.dra.sources.list()) : await post("/api/sources");
+}
+
+export async function sourceConfigure(id, values) {
+  return desktop
+    ? await bridge(() => window.dra.sources.configure(id, values))
+    : await post("/api/sources/configure", { id, values });
+}
+
+export async function sourceTest(id) {
+  const data = desktop
+    ? await bridge(() => window.dra.sources.test(id))
+    : await post("/api/sources/test", { id });
+  return data.result;
+}
+
+export async function sourceCollect(ids) {
+  const data = desktop
+    ? await bridge(() => window.dra.sources.collect(ids))
+    : await post("/api/sources/collect", { ids });
+  return data.result;
+}
+
+export async function sourceReply(o) {
+  return desktop
+    ? await bridge(() => window.dra.sources.reply(o))
+    : await post("/api/sources/reply", o);
+}
+
+export async function messageList(o = {}) {
+  return desktop
+    ? await bridge(() => window.dra.messages.list(o))
+    : await post("/api/messages", o);
+}
+
+export async function messageAdd(from, text) {
+  return desktop
+    ? await bridge(() => window.dra.messages.add(from, text))
+    : await post("/api/messages/add", { from, text });
+}
+
+export async function messageMark(id, reply) {
+  return desktop
+    ? await bridge(() => window.dra.messages.mark(id, reply))
+    : await post("/api/messages/mark", { id, reply });
+}
+
 /* ------------------------------------------------------------- youtube */
 
 export async function configureYoutube(clientId, clientSecret, refreshToken) {

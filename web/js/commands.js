@@ -356,6 +356,37 @@ const RULES = [
   },
 
   {
+    name: "musteri-topla",
+    example: "mesajlari topla",
+    phrases: [
+      "mesajlari topla", "musteri mesajlarini topla", "yeni mesaj var mi",
+      "mesajlari cek", "musterileri kontrol et", "gelen mesajlari topla",
+    ],
+    priority: 3,
+    run: async (n, raw, ctx) => {
+      const sonuc = await ctx.collectMessages();
+      if (!sonuc) return { text: "" };
+      return sonuc;
+    },
+  },
+
+  {
+    name: "musteri-mesajlari",
+    example: "musteri mesajlari",
+    phrases: [
+      "musteri mesajlari", "musteri mesajlarim", "musteri raporu",
+      "kac musteri yazmis", "yanit bekleyen var mi", "musteriler ne diyor",
+      "yanitsiz mesajlar",
+    ],
+    priority: 2,
+    run: async (n, raw, ctx) => {
+      const sonuc = await ctx.messageReport();
+      if (!sonuc) return { text: "" };
+      return sonuc;
+    },
+  },
+
+  {
     name: "youtube",
     example: "kanal raporu",
     phrases: [

@@ -45,6 +45,8 @@ const CASES = [
   ["montajı başlat","montaj"],["montaj yap","montaj"],["klipleri birleştir","montaj"],
   ["mail var mı","eposta"],["maillerim","eposta"],["gelen kutusu","eposta"],
   ["kanal raporu","youtube"],["kaç abonem var","youtube"],["yayın sırası","youtube"],
+  ["mesajları topla","musteri-topla"],["müşteri mesajlarını topla","musteri-topla"],
+  ["müşteri mesajları","musteri-mesajlari"],["yanıt bekleyen var mı","musteri-mesajlari"],
   ["ayarları aç","panel-ac"],["ayarlar","panel-ac"],
   ["sesini kapat","sesi-kapat"],["sus","sesi-kapat"],["sessiz ol","sesi-kapat"],
   ["sesini aç","sesi-ac"],

@@ -25,6 +25,8 @@ import * as montage from "../server/montage.mjs";
 import * as youtube from "../server/youtube.mjs";
 import * as videos from "../server/videos.mjs";
 import * as scheduler from "../server/scheduler.mjs";
+import * as sources from "../server/sources.mjs";
+import * as messages from "../server/messages.mjs";
 import * as stt from "./speech-engine.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -335,6 +337,49 @@ function registerIpc() {
     await permissions.require("sistem");
     return { report: await report.system() };
   });
+
+  /* ------------------------------------------------ musteri kaynaklari */
+
+  handle("dra:sources:list", async () => ({
+    sources: sources.catalog(),
+    summary: await messages.summary(),
+  }));
+
+  handle("dra:sources:configure", async ({ id, values }) => {
+    await permissions.require("isletme");
+    return sources.configure(id, values);
+  });
+
+  handle("dra:sources:test", async ({ id }) => {
+    await permissions.require("isletme");
+    return { result: await sources.test(id) };
+  });
+
+  handle("dra:sources:collect", async ({ ids }) => {
+    await permissions.require("isletme");
+    return { result: await sources.collect(ids || []) };
+  });
+
+  handle("dra:sources:reply", async ({ id, target, text, messageId }) => {
+    await permissions.require("isletme");
+    await sources.reply(id, target, text);
+    if (messageId) await messages.markReplied(messageId, text);
+    return { sent: true };
+  });
+
+  handle("dra:messages:list", async (o) => ({
+    messages: await messages.list(o || {}),
+    summary: await messages.summary(o || {}),
+  }));
+
+  handle("dra:messages:add", async ({ from, text }) => {
+    const { added } = await messages.ingest("manuel", [{ from, text, at: Date.now() }]);
+    return { added };
+  });
+
+  handle("dra:messages:mark", async ({ id, reply }) => ({
+    message: reply ? await messages.markReplied(id, reply) : await messages.markRead(id),
+  }));
 
   /* ---------------------------------------------------- youtube ---- */
 

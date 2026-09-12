@@ -356,6 +356,27 @@
               </small>
             </li>
 
+            <li>
+              <span>Isletme modu</span>
+              <button class="switch" type="button" id="set-business" role="switch" aria-checked="false"></button>
+            </li>
+            <li class="settings__stack" id="business-fields" hidden>
+              <label for="set-business-name">Isletmenizin adi</label>
+              <input id="set-business-name" type="text" placeholder="Ornek Kahve" maxlength="120" />
+
+              <h3 class="pane__title">Musteri mesajlari nereden gelsin?</h3>
+              <p class="nextalarm" id="source-info">
+                Sectiginiz her kaynak icin DRA yalnizca o kaynagin ihtiyac
+                duydugu bilgileri ister.
+              </p>
+              <ul class="settings" id="source-list"></ul>
+
+              <button class="btn btn--icon btn--wide btn--go" type="button" id="source-collect">
+                Mesajlari topla
+              </button>
+              <p class="nextalarm" id="message-summary">Henuz mesaj yok</p>
+            </li>
+
           </ul>
 
           <h3 class="pane__title">Erisim izinleri</h3>

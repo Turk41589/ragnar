@@ -51,6 +51,12 @@ const DEFAULTS = {
   ytClientId: "",
   ytClientSecret: "",
   ytRefreshToken: "",
+  // Isletme modu: hangi kaynaklardan musteri mesaji alinacak ve
+  // her kaynak icin girilen bilgiler.
+  businessMode: false,
+  businessName: "",
+  sourcesOn: [],
+  sourceValues: {},
   notes: [],
   alarms: [],
 };
@@ -101,6 +107,26 @@ function coerce(saved) {
   if (typeof saved.youtubeMode === "boolean") store.youtubeMode = saved.youtubeMode;
   for (const k of ["ytClientId", "ytClientSecret", "ytRefreshToken"]) {
     if (typeof saved[k] === "string") store[k] = saved[k].slice(0, 400);
+  }
+
+  if (typeof saved.businessMode === "boolean") store.businessMode = saved.businessMode;
+  if (typeof saved.businessName === "string") {
+    store.businessName = saved.businessName.slice(0, 120);
+  }
+  if (Array.isArray(saved.sourcesOn)) {
+    store.sourcesOn = saved.sourcesOn.filter((x) => typeof x === "string").slice(0, 10);
+  }
+  if (saved.sourceValues && typeof saved.sourceValues === "object") {
+    // Kaynak basina alan degerleri; her biri kisa metin.
+    const temiz = {};
+    for (const [kaynak, alanlar] of Object.entries(saved.sourceValues)) {
+      if (!alanlar || typeof alanlar !== "object") continue;
+      temiz[kaynak] = {};
+      for (const [k, v] of Object.entries(alanlar)) {
+        if (typeof v === "string") temiz[kaynak][k] = v.slice(0, 400);
+      }
+    }
+    store.sourceValues = temiz;
   }
 
   if (Number.isFinite(saved.speechRate)) {

@@ -259,6 +259,10 @@ export function syncSettings() {
   $("set-kick-channel").value = store.kickChannel;
   $("set-kick-token").value = store.kickToken;
 
+  syncSwitch($("set-business"), store.businessMode);
+  $("business-fields").hidden = !store.businessMode;
+  $("set-business-name").value = store.businessName;
+
   syncSwitch($("set-youtube"), store.youtubeMode);
   $("youtube-fields").hidden = !store.youtubeMode;
   $("set-yt-id").value = store.ytClientId;
@@ -301,6 +305,159 @@ export function syncSettings() {
   $("set-sleep").value = String(store.autoSleepMinutes);
   $("set-wake").value = store.extraWakeWords.join(", ");
   renderSwatches();
+}
+
+/* -------------------------------------------------------- musteri kaynaklari */
+
+/**
+ * Kaynak listesini cizer.
+ *
+ * ONEMLI: buradaki alanlarin hicbiri elle yazilmadi. Her kaynak hangi
+ * bilgiye ihtiyaci oldugunu kendi taniminda soyluyor (server/sources.mjs),
+ * arayuz de onu okuyup ekrani kuruyor. Yeni bir kaynak eklendiginde bu
+ * dosyada hicbir sey degismiyor.
+ */
+export async function renderSources() {
+  const liste = $("source-list");
+  if (!liste) return;
+
+  let veri;
+  try {
+    veri = await system.sourceList();
+  } catch (err) {
+    $("source-info").textContent = `Kaynaklar okunamadi: ${err.message}`;
+    return;
+  }
+
+  liste.replaceChildren();
+
+  for (const kaynak of veri.sources) {
+    const acik = store.sourcesOn.includes(kaynak.id);
+
+    const li = document.createElement("li");
+    li.className = "settings__stack";
+    li.dataset.source = kaynak.id;
+
+    // --- baslik + anahtar ---
+    const satir = document.createElement("div");
+    satir.className = "permrow";
+    const ad = document.createElement("span");
+    ad.textContent = kaynak.label;
+    const anahtar = document.createElement("button");
+    anahtar.className = "switch";
+    anahtar.type = "button";
+    anahtar.setAttribute("role", "switch");
+    anahtar.setAttribute("aria-checked", String(acik));
+    anahtar.addEventListener("click", async () => {
+      if (store.sourcesOn.includes(kaynak.id)) {
+        store.sourcesOn = store.sourcesOn.filter((x) => x !== kaynak.id);
+      } else {
+        store.sourcesOn.push(kaynak.id);
+        // Acar acmaz ne isteyecegimizi soyluyoruz; kullanici alanlari
+        // aramak zorunda kalmasin.
+        if (kaynak.fields.length) {
+          ctx.log(
+            "system",
+            `${kaynak.label} icin su bilgiler gerekiyor: ` +
+              kaynak.fields.map((f) => f.label).join(", ") + ".",
+          );
+        }
+        if (kaynak.warning) ctx.log("system", kaynak.warning);
+      }
+      saveStore();
+      renderSources();
+    });
+    satir.append(ad, anahtar);
+    li.append(satir);
+
+    const aciklama = document.createElement("small");
+    aciklama.className = "hint";
+    aciklama.textContent = kaynak.detail;
+    li.append(aciklama);
+
+    // --- alanlar: yalnizca acikken ve kaynagin tanimindan ---
+    if (acik && kaynak.fields.length) {
+      const degerler = store.sourceValues[kaynak.id] || {};
+
+      for (const alan of kaynak.fields) {
+        const etiket = document.createElement("label");
+        etiket.textContent = alan.required ? alan.label : `${alan.label} (istege bagli)`;
+        etiket.htmlFor = `src-${kaynak.id}-${alan.key}`;
+
+        const girdi = document.createElement("input");
+        girdi.id = etiket.htmlFor;
+        girdi.type = alan.type === "password" ? "password" : "text";
+        girdi.autocomplete = "off";
+        girdi.maxLength = 400;
+        girdi.value = degerler[alan.key] || "";
+        girdi.addEventListener("change", async (event) => {
+          store.sourceValues[kaynak.id] ??= {};
+          store.sourceValues[kaynak.id][alan.key] = event.target.value.trim();
+          saveStore();
+          await pushSource(kaynak.id);
+        });
+
+        const ipucu = document.createElement("small");
+        ipucu.className = "hint";
+        ipucu.textContent = alan.hint || "";
+
+        li.append(etiket, girdi, ipucu);
+      }
+
+      if (kaynak.warning) {
+        const uyari = document.createElement("small");
+        uyari.className = "hint";
+        uyari.textContent = kaynak.warning;
+        li.append(uyari);
+      }
+
+      const sina = document.createElement("button");
+      sina.className = "btn btn--icon btn--wide";
+      sina.type = "button";
+      sina.textContent = "Baglantiyi sina";
+      const durum = document.createElement("p");
+      durum.className = "nextalarm";
+      durum.textContent = kaynak.ready ? "Hazir" : "Bilgiler eksik";
+
+      sina.addEventListener("click", async () => {
+        durum.textContent = "Sinaniyor…";
+        try {
+          await pushSource(kaynak.id);
+          const sonuc = await ctx.withPermission(() => system.sourceTest(kaynak.id));
+          if (!sonuc) {
+            durum.textContent = "Izin verilmedi";
+            return;
+          }
+          durum.textContent = sonuc.warning
+            ? `${sonuc.detail} — ${sonuc.warning}`
+            : `Baglanti tamam: ${sonuc.detail}`;
+        } catch (err) {
+          durum.textContent = `Hata: ${err.message}`;
+        }
+      });
+
+      li.append(sina, durum);
+    }
+
+    liste.append(li);
+  }
+
+  const o = veri.summary;
+  $("message-summary").textContent = o.total
+    ? `Son ${o.days} gunde ${o.total} mesaj, ${o.unanswered} tanesi yanitsiz`
+    : "Henuz mesaj yok";
+}
+
+/** Girilen bilgileri arka tarafa bildirir. */
+async function pushSource(id) {
+  const degerler = store.sourceValues[id] || {};
+  try {
+    await ctx.withPermission(() => system.sourceConfigure(id, degerler));
+  } catch (err) {
+    // Eksik alan sradan bir hata degil: ne eksik oldugunu soyluyoruz.
+    if (err.code === "MISSING_FIELDS") return;
+    ctx.toast(`Kaynak ayarlanamadi: ${err.message}`, 5000);
+  }
 }
 
 /* ----------------------------------------------------------------- youtube */
@@ -856,6 +1013,37 @@ export function mountPanel(context) {
       }
     });
   }
+
+  /* -------------------------------------------------------- isletme -- */
+
+  $("set-business").addEventListener("click", async () => {
+    store.businessMode = !store.businessMode;
+    saveStore();
+    syncSettings();
+    if (store.businessMode) {
+      ctx.log(
+        "system",
+        "Isletme modu acildi. Musteri mesajlarinin hangi kaynaktan gelecegini " +
+          "secin; her kaynak icin gereken bilgileri ayri ayri isteyecegim.",
+      );
+      await renderSources();
+    }
+  });
+
+  $("set-business-name").addEventListener("change", (event) => {
+    store.businessName = event.target.value.trim();
+    saveStore();
+  });
+
+  $("source-collect").addEventListener("click", async () => {
+    if (!store.sourcesOn.length) {
+      ctx.toast("Once en az bir kaynak secin");
+      return;
+    }
+    const sonuc = await ctx.collectMessages();
+    if (sonuc) ctx.log("system", sonuc);
+    renderSources();
+  });
 
   /* --------------------------------------------------------- youtube -- */
 

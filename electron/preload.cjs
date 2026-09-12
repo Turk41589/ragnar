@@ -69,6 +69,21 @@ contextBridge.exposeInMainWorld("dra", {
     system: () => call("dra:report:system"),
   },
 
+  /** Musteri mesaji kaynaklari (izin gerektirir). */
+  sources: {
+    list: () => call("dra:sources:list"),
+    configure: (id, values) => call("dra:sources:configure", { id, values }),
+    test: (id) => call("dra:sources:test", { id }),
+    collect: (ids) => call("dra:sources:collect", { ids }),
+    reply: (o) => call("dra:sources:reply", o),
+  },
+
+  messages: {
+    list: (o) => call("dra:messages:list", o),
+    add: (from, text) => call("dra:messages:add", { from, text }),
+    mark: (id, reply) => call("dra:messages:mark", { id, reply }),
+  },
+
   /** YouTube kanali ve stok video deposu (izin gerektirir). */
   youtube: {
     configure: (clientId, clientSecret, refreshToken) =>

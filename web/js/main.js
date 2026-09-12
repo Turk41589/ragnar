@@ -467,6 +467,93 @@ function raporuSun(r) {
   return `Raporu ekrana cikardim. Kisaca: ${parcalar.join(", ")}.`;
 }
 
+/* ====================================================== musteri mesajlari */
+
+const KAYNAK_ADI = {
+  gmail: "Gmail",
+  instagram: "Instagram",
+  whatsapp: "WhatsApp",
+  manuel: "Elle giris",
+};
+
+/** Toplama sonucunu kart olarak gosterir. */
+function toplamaSun(s) {
+  const bolumler = [];
+  const satirlar = Object.entries(s.bySource).map(
+    ([id, n]) => [KAYNAK_ADI[id] || id, String(n)],
+  );
+
+  bolumler.push({
+    heading: "Toplanan mesajlar",
+    note: s.added ? `${s.added} yeni mesaj alindi.` : "Yeni mesaj yok.",
+    level: s.added ? "ok" : null,
+    rows: satirlar.length ? satirlar : null,
+  });
+
+  // Bir kaynak patladiysa digerleri yine calisti; hangisi neden
+  // calismadi acikca yazilmali.
+  const sorunlar = Object.entries(s.errors || {});
+  if (sorunlar.length) {
+    bolumler.push({
+      heading: "Ulasilamayan kaynaklar",
+      level: "warn",
+      items: sorunlar.map(([id, hata]) => `${KAYNAK_ADI[id] || id}: ${hata}`),
+    });
+  }
+
+  hud.logCard({
+    title: "Musteri mesajlari",
+    subtitle: new Date().toLocaleString("tr"),
+    sections: bolumler,
+  });
+
+  if (!s.added && sorunlar.length) {
+    return `Yeni mesaj alamadim. ${sorunlar.length} kaynakta sorun var, ekrana yazdim.`;
+  }
+  return s.added
+    ? `${s.added} yeni musteri mesaji topladim.`
+    : "Yeni musteri mesaji yok efendim.";
+}
+
+/** Mesaj listesini kart olarak gosterir. */
+function mesajlariSun(veri) {
+  const o = veri.summary;
+  if (!o.total) {
+    hud.logCard({
+      title: "Musteri mesajlari",
+      sections: [{ note: "Henuz mesaj yok. «Mesajlari topla» ile cekebilirim." }],
+    });
+    return "Kayitli musteri mesaji yok efendim.";
+  }
+
+  const bolumler = [{
+    heading: `Son ${o.days} gun — ${o.total} mesaj`,
+    rows: Object.entries(o.bySource).map(([id, n]) => [
+      KAYNAK_ADI[id] || id, String(n), Math.round((n / o.total) * 100),
+    ]),
+  }];
+
+  const yanitsiz = veri.messages.filter((m) => m.status !== "yanitlandi").slice(0, 8);
+  if (yanitsiz.length) {
+    bolumler.push({
+      heading: `Yanit bekleyenler (${o.unanswered})`,
+      items: yanitsiz.map((m) => {
+        const kisa = m.text.length > 70 ? `${m.text.slice(0, 70)}…` : m.text;
+        return `${m.from} (${KAYNAK_ADI[m.source] || m.source}) — ${kisa}`;
+      }),
+    });
+  }
+
+  hud.logCard({
+    title: "Musteri mesajlari",
+    subtitle: new Date().toLocaleString("tr"),
+    sections: bolumler,
+  });
+
+  return `Son ${o.days} gunde ${o.total} musteri mesaji var, ` +
+    `${o.unanswered} tanesi yanit bekliyor.`;
+}
+
 /* ================================================================ youtube */
 
 function kanalSun(k, sira) {
@@ -870,6 +957,40 @@ const ctx = {
     } finally {
       bitir();
     }
+  },
+
+  /** Secili kaynaklardan mesaj toplar. Izin gerektirir. */
+  collectMessages: async () => {
+    if (!store.businessMode) {
+      return "Isletme modu kapali. Modlar sekmesinden acabilirsiniz.";
+    }
+    if (!store.sourcesOn.length) {
+      return "Once musteri mesajlarinin nereden gelecegini secin.";
+    }
+
+    const sonuc = await izinliCalis(async () => {
+      // Her acilista bilgileri yeniden bildiriyoruz; jetonlar surecte durmuyor.
+      for (const id of store.sourcesOn) {
+        const degerler = store.sourceValues[id] || {};
+        try {
+          await system.sourceConfigure(id, degerler);
+        } catch {
+          /* eksik yapilandirma asagida "errors" olarak bildirilecek */
+        }
+      }
+      return system.sourceCollect(store.sourcesOn);
+    });
+    if (!sonuc) return null;
+    return toplamaSun(sonuc);
+  },
+
+  /** Musteri mesajlari raporu. */
+  messageReport: async () => {
+    if (!store.businessMode) {
+      return "Isletme modu kapali. Modlar sekmesinden acabilirsiniz.";
+    }
+    const veri = await system.messageList({ limit: 100 });
+    return mesajlariSun(veri);
   },
 
   /** YouTube kanal raporu. Izin gerektirir. */

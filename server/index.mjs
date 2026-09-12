@@ -32,6 +32,9 @@ import * as montage from "./montage.mjs";
 import * as youtube from "./youtube.mjs";
 import * as videos from "./videos.mjs";
 import * as scheduler from "./scheduler.mjs";
+import * as sources from "./sources.mjs";
+import * as messages from "./messages.mjs";
+import * as whatsapp from "./whatsapp.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -375,6 +378,103 @@ const server = createServer(async (req, res) => {
     return handleAction(req, res, async (body) => ({
       video: await videos.update(body.id, body.patch || {}),
     }));
+  }
+
+  /* ------------------------------------------------ musteri kaynaklari */
+
+  if (url.pathname === "/api/sources" && req.method === "POST") {
+    return handleAction(req, res, async () => ({
+      sources: sources.catalog(),
+      summary: await messages.summary(),
+    }));
+  }
+
+  if (url.pathname === "/api/sources/configure" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      await permissions.require("isletme");
+      return sources.configure(body.id, body.values);
+    });
+  }
+
+  if (url.pathname === "/api/sources/test" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      await permissions.require("isletme");
+      return { result: await sources.test(body.id) };
+    });
+  }
+
+  if (url.pathname === "/api/sources/collect" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      await permissions.require("isletme");
+      return { result: await sources.collect(body.ids || []) };
+    });
+  }
+
+  if (url.pathname === "/api/sources/reply" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      await permissions.require("isletme");
+      await sources.reply(body.id, body.target, body.text);
+      if (body.messageId) await messages.markReplied(body.messageId, body.text);
+      return { sent: true };
+    });
+  }
+
+  if (url.pathname === "/api/messages" && req.method === "POST") {
+    return handleAction(req, res, async (body) => ({
+      messages: await messages.list(body || {}),
+      summary: await messages.summary(body || {}),
+    }));
+  }
+
+  if (url.pathname === "/api/messages/add" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      // Elle giris hicbir hesaba baglanmadigi icin yetki gerektirmiyor;
+      // kullanicinin kendi yazdigi kendi verisi.
+      const { added } = await messages.ingest("manuel", [{
+        from: body.from, text: body.text, at: Date.now(),
+      }]);
+      return { added };
+    });
+  }
+
+  if (url.pathname === "/api/messages/mark" && req.method === "POST") {
+    return handleAction(req, res, async (body) => ({
+      message: body.reply
+        ? await messages.markReplied(body.id, body.reply)
+        : await messages.markRead(body.id),
+    }));
+  }
+
+  /* WhatsApp webhook: Meta buraya POST eder. Guard'dan GECMEZ cunku
+     istek bizim sayfamizdan degil Meta'dan geliyor; korumasi kendi
+     dogrulama jetonu. */
+  if (url.pathname === "/webhook/whatsapp") {
+    if (req.method === "GET") {
+      const sonuc = whatsapp.verifyWebhook(Object.fromEntries(url.searchParams));
+      if (!sonuc.ok) {
+        res.writeHead(403, { "content-type": "text/plain" });
+        return res.end("dogrulanamadi");
+      }
+      res.writeHead(200, { "content-type": "text/plain" });
+      return res.end(sonuc.challenge);
+    }
+    if (req.method === "POST") {
+      let govde = null;
+      try {
+        govde = await readBody(req);
+      } catch {
+        govde = null;
+      }
+      try {
+        const gelen = whatsapp.handleWebhook(govde || {});
+        if (gelen.length) await messages.ingest("whatsapp", gelen);
+      } catch (err) {
+        console.warn("[dra] whatsapp webhook:", err.message);
+      }
+      // Meta 200 gormezse tekrar tekrar gonderiyor.
+      res.writeHead(200, { "content-type": "text/plain" });
+      return res.end("ok");
+    }
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {
