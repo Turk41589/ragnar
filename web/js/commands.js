@@ -386,6 +386,223 @@ const RULES = [
     },
   },
 
+  /* -- bilgisayar kontrolu: fare ve klavye olmadan -------------------- */
+  {
+    name: "ses-ac",
+    example: "sesi ac",
+    phrases: [
+      "sesi ac", "sesi yukselt", "sesi artir", "ses ac", "sesi acar misin",
+      "sesi biraz ac", "sesi cok ac", "kulakligin sesini ac",
+      "bilgisayarin sesini ac", "sesi arttir",
+    ],
+    /**
+     * "sesini ac" DRA'nin KENDI sesi, "sesi ac" cihazin sesi.
+     * Ama "kulakligin sesini ac" da cihaz sesi — icinde "sesini"
+     * gectigi icin duz bir exclude bunu da elerdi. O yuzden: bir cihaz
+     * kelimesi geciyorsa her zaman bu kural gecerli.
+     */
+    guard: (n) => {
+      const cihaz = /kulakl|bilgisayar|hoparlor|ses seviye/.test(n);
+      if (cihaz) return true;
+      // Cihazdan bahsedilmiyorsa "sesini" DRA'ya aittir.
+      return !/sesini|kendi/.test(n);
+    },
+    priority: 3,
+    run: async (n, raw, ctx) => {
+      // "cok" derse daha buyuk adim; "biraz" derse kucuk.
+      const adim = has(n, "cok") ? 10 : has(n, "biraz", "az") ? 2 : 5;
+      const r = await ctx.control({ action: "volume", direction: "up", steps: adim });
+      return r ? "Sesi actim." : null;
+    },
+  },
+
+  {
+    name: "ses-kis",
+    example: "sesi kis",
+    phrases: [
+      "sesi kis", "sesi azalt", "sesi dusur", "ses kis", "sesi biraz kis",
+      "sesi alcalt", "kulakligin sesini kis", "bilgisayarin sesini kis",
+    ],
+    exclude: ["kendi sesini"],
+    priority: 3,
+    run: async (n, raw, ctx) => {
+      const adim = has(n, "cok") ? 10 : has(n, "biraz", "az") ? 2 : 5;
+      const r = await ctx.control({ action: "volume", direction: "down", steps: adim });
+      return r ? "Sesi kistim." : null;
+    },
+  },
+
+  {
+    name: "ses-sustur",
+    example: "bilgisayari sustur",
+    phrases: [
+      "bilgisayari sustur", "sesi sustur", "sessize al", "sesi kapat tamamen",
+      "mute yap", "sesi ac kapat",
+    ],
+    exclude: ["sesini kapat", "kendi sesini"],
+    priority: 3,
+    run: async (n, raw, ctx) => {
+      const r = await ctx.control({ action: "mute" });
+      return r ? "Sesi susturdum." : null;
+    },
+  },
+
+  {
+    name: "medya",
+    example: "duraklat",
+    phrases: [
+      "duraklat", "durdur", "oynat", "devam ettir", "devam et", "pause",
+      "sonraki sarki", "siradaki sarki", "sarkiyi gec", "onceki sarki",
+      "bir onceki sarki", "basa al",
+    ],
+    exclude: ["alarm", "zamanlayici", "video hazirla"],
+    priority: 3,
+    run: async (n, raw, ctx) => {
+      const what = has(n, "sonraki", "siradaki", "gec")
+        ? "sonraki"
+        : has(n, "onceki", "basa")
+          ? "onceki"
+          : "oynat";
+      const r = await ctx.control({ action: "media", what });
+      if (!r) return null;
+      return what === "sonraki" ? "Sonraki parcaya gectim."
+        : what === "onceki" ? "Onceki parcaya dondum."
+        : "Tamam.";
+    },
+  },
+
+  {
+    name: "ileri-sar",
+    example: "ileri sar",
+    phrases: [
+      "ileri sar", "on saniye ileri", "10 saniye ileri sar", "ileri al",
+      "geri sar", "on saniye geri", "10 saniye geri sar", "geri al",
+      "biraz ileri sar", "biraz geri sar",
+    ],
+    priority: 3,
+    run: async (n, raw, ctx) => {
+      const geri = has(n, "geri");
+      // "30 saniye ileri sar" gibi bir sayi varsa onu kullan.
+      const sayi = /(\d+)\s*saniye/.exec(n)?.[1];
+      const saniye = Math.min(120, Math.max(10, Number(sayi) || 10));
+      const r = await ctx.control({
+        action: "seek",
+        seconds: geri ? -saniye : saniye,
+      });
+      if (!r) return null;
+      return `${saniye} saniye ${geri ? "geri" : "ileri"} sardim.`;
+    },
+  },
+
+  {
+    name: "youtube-ac",
+    example: "youtubede sunu ac",
+    phrases: [
+      "youtubede ac", "youtube da ac", "youtubeda ac",
+      "youtubede oynat", "youtubede izle", "youtubede bul",
+      "youtubeden ac", "youtubede calistir",
+    ],
+    // "youtubede muzik arat" arama komutudur, video oynatma degil.
+    exclude: ["arat", "arama yap"],
+    /**
+     * Aranacak bir sey SOYLENMIS olmali: "youtube ac" siteyi acmak
+     * demek (site-ac kurali), "youtubede kara murat ac" video oynatmak.
+     */
+    guard: (n) => {
+      const kalan = n
+        .replace(/youtube\S*/g, " ")
+        .replace(/\b(ac|acar|misin|oynat|izle|bul|calistir|video|videoyu|videosunu|da|de|den|dan)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      return kalan.length >= 2;
+    },
+    priority: 4,
+    run: async (n, raw, ctx) => {
+      // "youtubede kara murat ac" → aranacak: "kara murat"
+      const sorgu = raw
+        .replace(/youtube('?da|'?de|\s?da|\s?de)?/gi, " ")
+        .replace(/\b(ac|acar misin|arat|oynat|izle|bul|videosunu|videoyu|video)\b/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      if (!sorgu) return "Neyi acayim? Kanal ya da video adini soyleyin.";
+
+      const r = await ctx.control({ action: "youtube", query: sorgu });
+      if (!r) return null;
+      const v = r.video;
+      // Hangi videoyu actigini SOYLUYORUZ: "en yakin" her zaman
+      // istenen olmayabilir, kullanici yanlissa hemen anlasin.
+      return v.title
+        ? `${v.title}${v.channel ? ` — ${v.channel}` : ""} aciliyor.`
+        : `"${sorgu}" icin bulduğum ilk videoyu aciyorum.`;
+    },
+  },
+
+  {
+    name: "muzik-ac",
+    example: "spotifyden muzik ac",
+    phrases: [
+      "muzik ac", "sarki ac", "muzik calar misin",
+      "spotifyden ac", "spotifyden calistir", "youtube musicten ac",
+      "soundcloudtan ac", "muzik calistir", "sarki calistir",
+      "muzik ac spotifyden",
+    ],
+    /**
+     * "spotify ac" uygulamayi acmak demek (site-ac). Bu kural ancak
+     * "muzik/sarki" denmisse ya da kaynaktan ekli soylenmisse gecerli:
+     * "spotify'DEN jazz ac".
+     */
+    guard: (n) => /muzik|sarki/.test(n) || /(den|dan|ten|tan)\b/.test(n),
+    priority: 4,
+    run: async (n, raw, ctx) => {
+      const kaynaklar = ["youtube music", "spotify", "soundcloud", "youtube"];
+      const kaynak = kaynaklar.find((k) => n.includes(k.replace(" ", ""))) ||
+        kaynaklar.find((k) => n.includes(k)) || "youtube music";
+
+      // Kaynak adini ve komut kelimelerini cikarip kalani arama yapiyoruz.
+      const sorgu = raw
+        .replace(/spotify('?den|'?dan)?|youtube music('?ten|'?tan)?|soundcloud('?tan|'?ten)?|youtube('?den|'?dan)?/gi, " ")
+        .replace(/\b(muzik|sarki|ac|acar misin|calistir|calar misin)\b/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const r = await ctx.control({ action: "music", source: kaynak, query: sorgu });
+      if (!r) return null;
+      return sorgu
+        ? `${r.source} uzerinde "${sorgu}" aciliyor.`
+        : `${r.source} aciliyor.`;
+    },
+  },
+
+  {
+    name: "ekrani-kilitle",
+    example: "ekrani kilitle",
+    phrases: ["ekrani kilitle", "bilgisayari kilitle", "kilitle ekrani"],
+    priority: 3,
+    run: async (n, raw, ctx) => {
+      const r = await ctx.control({ action: "power", what: "kilitle" });
+      return r ? "Ekrani kilitliyorum." : null;
+    },
+  },
+
+  {
+    name: "parlaklik",
+    example: "parlakligi yuzde 50 yap",
+    phrases: [
+      "parlakligi ayarla", "parlakligi yuzde", "ekran parlakligi",
+      "parlakligi dusur", "parlakligi artir", "ekrani karart", "ekrani parlat",
+    ],
+    priority: 3,
+    run: async (n, raw, ctx) => {
+      const yuzde = /(\d{1,3})/.exec(n)?.[1];
+      const deger = yuzde
+        ? Math.min(100, Math.max(0, Number(yuzde)))
+        : has(n, "dusur", "karart") ? 30 : 80;
+      const r = await ctx.control({ action: "brightness", percent: deger });
+      return r ? `Parlakligi yuzde ${deger} yaptim.` : null;
+    },
+  },
+
   {
     name: "isletme-rapor",
     example: "isletme raporu",
@@ -949,7 +1166,11 @@ const RULES = [
   {
     name: "sesi-ac",
     example: "sesini ac",
-    phrases: ["sesini ac", "konus benimle", "sesli yanit ver", "sesi ac", "sesini geri ac"],
+    phrases: ["sesini ac", "konus benimle", "sesli yanit ver", "sesini geri ac"],
+    // "kulakligin sesini ac" DRA'nin sesi degil, CIHAZIN sesi.
+    // Kokleri kullaniyoruz: "kulakligin" icinde "kulaklik" GECMIYOR
+    // (yumusak g). Ek almis haller de yakalansin.
+    exclude: ["kulakl", "bilgisayar", "hoparlor", "yukselt", "artir", "kis", "azalt"],
     run: (n, raw, ctx) => {
       ctx.setVoice(true);
       return "Sesim tekrar acik.";
@@ -1135,11 +1356,23 @@ export async function runCommand(rawText, ctx) {
  * Esik altinda kalan ama tamamen alakasiz da olmayan bir kural varsa
  * onun ornegini onerir.
  */
-export function suggestCommand(text) {
+/**
+ * Girilen metne YAKIN bir komut var mi?
+ *
+ * Arastirma hep acik oldugu icin anlasilmayan her sey internete
+ * gidebilirdi. Oysa "alrm kur" gibi bir yazim hatasi aranacak bir soru
+ * degil, yanlis yazilmis bir komut. Once buna bakiyoruz.
+ */
+export function nearestCommand(text) {
   const near = scoreRules(text).find((s) => s.score >= SUGGEST_THRESHOLD);
+  return near?.rule.example ? near.rule.example : null;
+}
 
-  if (near?.rule.example) {
-    return `Bunu tam anlayamadim. Sunu mu demek istediniz: "${near.rule.example}"?`;
+export function suggestCommand(text) {
+  const ornek = nearestCommand(text);
+
+  if (ornek) {
+    return `Bunu tam anlayamadim. Sunu mu demek istediniz: "${ornek}"?`;
   }
 
   return (

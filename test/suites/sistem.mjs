@@ -76,8 +76,12 @@ export async function run(page, base, t) {
     body: JSON.stringify({ query: "test" }),
   });
   const searchOffData = await searchOff.json();
-  t.eq(searchOffData.ok, false, "arama varsayilan olarak kapali");
-  t.has(searchOffData.error, "kapali", "kapali oldugu soyleniyor");
+  // Arama artik kapatilamiyor. Bu ortamda disari cikis olmadigi icin
+  // AG hatasi doner — yani uc calisiyor, yalnizca hedefe ulasilamiyor.
+  t.ok(
+    !/kapali/i.test(searchOffData.error || ""),
+    "arama artik 'kapali' diye reddedilmiyor",
+  );
 
   /* ---------------------------------------------------------- kick ---- */
   const kickNoToken = await fetch(`${base}/api/kick/action`, {
@@ -160,11 +164,7 @@ export async function run(page, base, t) {
   await page.click('.tab[data-tab="modlar"]');
   await page.waitForTimeout(200);
 
-  t.eq(
-    await page.locator("#set-search").getAttribute("aria-checked"),
-    "false",
-    "web aramasi varsayilan kapali",
-  );
+  // Web arastirmasi anahtari yok; hep acik.
   t.eq(
     await page.locator("#set-streamer").getAttribute("aria-checked"),
     "false",

@@ -12,7 +12,7 @@ import * as speech from "./speech.js";
 import * as audio from "./audio.js";
 import * as hud from "./hud.js";
 import { mountReactor, mountWave } from "./reactor.js";
-import { runCommand, normalize, suggestCommand, searchAnswer } from "./commands.js";
+import { runCommand, normalize, suggestCommand, nearestCommand } from "./commands.js";
 import { store, loadStore, saveStore } from "./store.js";
 import * as panel from "./panel.js";
 import * as alarms from "./alarms.js";
@@ -189,12 +189,15 @@ async function handleUtterance(rawText) {
     // Eslesme yok.
     // Web aramasi aciksa soruyu internete sorar; kapaliysa uydurmak
     // yerine ne yapabildigini soyler ve en yakin komutu onerir.
-    if (ctx.searchEnabled()) {
-      hud.log("system", "Bunu komutlarimda bulamadim, internette ariyorum…");
-      await respond(await searchAnswer(ctx, text));
+    // Yazim hatasi olan bir KOMUT ise internete gitmenin anlami yok:
+    // "alrm kur" aranacak bir soru degil, yanlis yazilmis bir komut.
+    if (nearestCommand(text)) {
+      await respond(suggestCommand(text));
       return;
     }
-    await respond(suggestCommand(text));
+
+    hud.log("system", "Bunu komutlarimda bulamadim, arastiriyorum…");
+    await respond(await ctx.research(text));
   } catch (err) {
     console.error("[dra]", err);
     hud.log("error", err.message || "Bilinmeyen hata");
@@ -229,14 +232,28 @@ function stripWakeWord(text) {
 }
 
 let waking = false;
+/**
+ * Uyandirma aninda on planda tam ekran bir uygulama var miydi?
+ * Varsa DRA bu oturum boyunca ekrana cikmaz, sesle konusur.
+ */
+let oyundaMiyiz = false;
 
 async function wakeUp(spokenRest = "", { silent = false } = {}) {
   if (waking || state.current !== S.SLEEPING) return;
   waking = true;
   setState(S.WAKING);
 
-  // Arka planda calisiyorsa once kendini goster, sonra acil.
-  if (arkaPlandaMi()) system.showWindow();
+  // Oyun oynarken pencereyi one getirmek oyunu kucultur ve bozar.
+  // On planda tam ekran bir uygulama varsa DRA gorunmez kalir ve
+  // yalnizca SESLE cevap verir.
+  const onPlan = await system.foregroundWindow();
+  oyundaMiyiz = Boolean(onPlan?.fullscreen);
+
+  if (oyundaMiyiz) {
+    hud.log("system", `${onPlan.process || "Tam ekran uygulama"} onde — arka planda kaliyorum.`);
+  } else if (arkaPlandaMi()) {
+    system.showWindow();
+  }
 
   if (store.bootSequence) await hud.playBoot();
   hud.showHud();
@@ -274,6 +291,7 @@ function goToSleep(farewell) {
   // Arka plan kipinde uyurken pencere de tepsiye iner; DRA dinlemeye
   // devam eder ve adini duyunca yeniden gorunur.
   if (arkaPlandaMi()) setTimeout(() => system.hideWindow(), 400);
+  oyundaMiyiz = false;
   hud.sleepStatus(
     state.micEnabled ? "Dinliyorum — «DRA» deyin" : "Mikrofon kapali",
     state.micEnabled ? "ok" : "warn",
@@ -473,6 +491,50 @@ function raporuSun(r) {
   if (sozlu.length) parcalar.unshift(sozlu[0]);
 
   return `Raporu ekrana cikardim. Kisaca: ${parcalar.join(", ")}.`;
+}
+
+/* ============================================================ arastirma */
+
+/**
+ * Arama sonucunu gorsel kart olarak basar.
+ * Her kaynak tiklanabilir bir bag olarak veriliyor: DRA'nin ne
+ * soyledigi kadar NEREDEN aldigi da onemli.
+ */
+function arastirmaSun(r) {
+  const bolumler = [];
+
+  if (r.summary) {
+    bolumler.push({
+      heading: r.summary.source || "Ozet",
+      note: r.summary.text,
+    });
+  }
+
+  if (r.images?.length) {
+    bolumler.push({ images: r.images.slice(0, 4) });
+  }
+
+  if (r.results?.length) {
+    bolumler.push({
+      heading: "Kaynaklar",
+      links: r.results.map((k) => ({
+        title: k.title,
+        url: k.url,
+        site: k.site,
+        snippet: k.snippet,
+      })),
+    });
+  }
+
+  hud.logCard({
+    title: `Arastirma: ${r.query}`,
+    subtitle: `${r.results?.length || 0} kaynak`,
+    sections: bolumler,
+  });
+
+  if (r.summary) return r.summary.text;
+  const ilk = r.results?.[0];
+  return ilk ? `${ilk.snippet || ilk.title} (${ilk.site})` : "Bir sey bulamadim.";
 }
 
 /* ====================================================== musteri mesajlari */
@@ -1104,6 +1166,28 @@ const ctx = {
     }
   },
 
+  /**
+   * Arastirma: birkac kaynak, ozet, gorseller ve LINKLER.
+   * Bilginin nereden geldigi gorunur olmali — kullanici kendi
+   * dogrulamasini yapabilsin.
+   */
+  research: async (query) => {
+    try {
+      const sonuc = await system.richSearch(query, 4);
+      return arastirmaSun(sonuc);
+    } catch (err) {
+      // Arastirma yapilamadiysa (ag yok, sonuc yok) kullaniciyi elde
+      // birakmiyoruz: ne yapabildigimizi soyluyoruz.
+      const sebep = err?.code === "NO_RESULT"
+        ? `"${query}" icin bir sey bulamadim.`
+        : `Arastiramadim (${err.message}).`;
+      return `${sebep} ${suggestCommand(query)}`;
+    }
+  },
+
+  /** Isimli bilgisayar islemleri. Izin gerektirir. */
+  control: async (o) => izinliCalis(() => system.control(o)),
+
   /** Secili kaynaklardan mesaj toplar. Izin gerektirir. */
   collectMessages: async () => {
     if (!store.businessMode) {
@@ -1269,7 +1353,9 @@ const ctx = {
   findApp: (query) => system.findApp(query),
   launchApp: (id) => system.launchApp(id),
   closeApp: (id) => system.closeApp(id),
-  searchEnabled: () => store.webSearch && system.searchEnabled(),
+  // Web aramasi artik hep acik: DRA bilmedigi bir soruyu uydurmak yerine
+  // arastirip kaynagiyla birlikte gosteriyor.
+  searchEnabled: () => true,
   webSearch: (query) => system.webSearch(query),
   kickReady: () => store.streamerMode && system.kickReady(),
   kickAction: (action, args) => system.kickAction(action, args),
@@ -1346,7 +1432,6 @@ async function connectServer() {
     }
 
     // Ayarlar tarayicida saklaniyor; sunucu her acilista bilgilendirilir.
-    if (store.webSearch) await system.setSearchEnabled(true);
     if (store.streamerMode && store.kickToken) {
       await system.configureKick(store.kickToken, store.kickChannel);
     }
@@ -1734,6 +1819,14 @@ function boot() {
   hud.setGauge("engine", 100, "yerel", "ok");
   bindDesktopEvents();
   connectServer();
+
+  // Ilk acilista tum yetkiler tek ekranda soruluyor. Bir kez gosterilir;
+  // sonra DRA ihtiyac aninda tek tek sorar.
+  if (!store.firstRunDone) {
+    // Sunucu baglantisi kurulsun diye kisa bir gecikme; izin listesi
+    // oradan geliyor.
+    setTimeout(() => panel.showFirstRun(), 900);
+  }
 
   dom.btnVoice.setAttribute("aria-pressed", String(store.voiceEnabled));
   dom.btnMic.setAttribute("aria-pressed", "false");

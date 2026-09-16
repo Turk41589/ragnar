@@ -692,3 +692,92 @@ body[data-state="speaking"] .backdrop__glow {
 }
 
 .permrow__state[data-granted="true"] { color: var(--ok); }
+
+/* ------------------------------------------------- arastirma karti ekleri */
+
+/* Kaynak sayfalarin onizleme gorselleri. */
+.card__shots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+
+.card__shot {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--accent-faint);
+  border-radius: 6px;
+  aspect-ratio: 16 / 10;
+  background: rgb(207 239 255 / 0.04);
+  text-decoration: none;
+}
+
+.card__shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.card__shot span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 3px 6px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  background: rgb(4 7 12 / 0.82);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card__shot:hover { border-color: var(--accent); }
+
+/* Kaynak baglari. */
+.card__links {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card__links li {
+  padding: 8px 0;
+  border-bottom: 1px solid rgb(207 239 255 / 0.05);
+}
+
+.card__links a {
+  color: var(--accent);
+  font-size: 12px;
+  text-decoration: none;
+  line-height: 1.4;
+}
+
+.card__links a:hover { text-decoration: underline; }
+
+.card__site {
+  display: block;
+  margin-top: 2px;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.card__links p {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+/* Ilk acilis kutusu izin listesi tasidigi icin daha genis. */
+.consent__box--wide {
+  width: min(640px, 100%);
+  max-height: 86vh;
+  overflow-y: auto;
+}

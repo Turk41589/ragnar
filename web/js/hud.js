@@ -441,6 +441,63 @@ export function logCard(data) {
       card.append(ul);
     }
 
+    // Gorseller: arastirma kartinda kaynak sayfalarin onizlemeleri.
+    if (section.images?.length) {
+      const serit = document.createElement("div");
+      serit.className = "card__shots";
+      for (const g of section.images) {
+        const kutu = document.createElement(g.url ? "a" : "div");
+        kutu.className = "card__shot";
+        if (g.url) {
+          kutu.href = g.url;
+          kutu.target = "_blank";
+          kutu.rel = "noopener noreferrer";
+        }
+        const img = document.createElement("img");
+        img.src = g.src;
+        img.alt = g.site || "";
+        img.loading = "lazy";
+        // Gorsel yuklenemezse bos bir kutu kalmasin.
+        img.addEventListener("error", () => kutu.remove());
+        kutu.append(img);
+        if (g.site) {
+          const etiket = document.createElement("span");
+          etiket.textContent = g.site;
+          kutu.append(etiket);
+        }
+        serit.append(kutu);
+      }
+      card.append(serit);
+    }
+
+    // Kaynak baglari: bilginin nereden geldigi tiklanabilir olmali.
+    if (section.links?.length) {
+      const ul = document.createElement("ul");
+      ul.className = "card__links";
+      for (const l of section.links) {
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = l.url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = l.title || l.url;
+        li.append(a);
+        if (l.site) {
+          const site = document.createElement("span");
+          site.className = "card__site";
+          site.textContent = l.site;
+          li.append(site);
+        }
+        if (l.snippet) {
+          const p = document.createElement("p");
+          p.textContent = l.snippet;
+          li.append(p);
+        }
+        ul.append(li);
+      }
+      card.append(ul);
+    }
+
     if (section.items?.length) {
       const ul = document.createElement("ul");
       ul.className = "card__items";

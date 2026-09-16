@@ -50,6 +50,16 @@ const CASES = [
   ["işletme raporu","isletme-rapor"],["memnuniyet raporu","isletme-rapor"],
   ["şikayet raporu","isletme-rapor"],
   ["otomatik yanıtla","otomatik-yanit"],["mesajları yanıtla","otomatik-yanit"],
+  // Bilgisayar kontrolu — "sesini kapat" (DRA'nin kendi sesi) ile
+  // "sesi kis" (bilgisayarin sesi) karismamali.
+  ["sesi aç","ses-ac"],["sesi yükselt","ses-ac"],["kulaklığın sesini aç","ses-ac"],
+  ["sesi kıs","ses-kis"],["sesi azalt","ses-kis"],
+  ["sesini kapat","sesi-kapat"],["sus","sesi-kapat"],["sesini aç","sesi-ac"],
+  ["duraklat","medya"],["sonraki şarkı","medya"],
+  ["ileri sar","ileri-sar"],["10 saniye geri sar","ileri-sar"],
+  ["youtubede kara murat aç","youtube-ac"],
+  ["spotifyden jazz aç","muzik-ac"],["müzik aç","muzik-ac"],
+  ["ekranı kilitle","ekrani-kilitle"],
   ["ayarları aç","panel-ac"],["ayarlar","panel-ac"],
   ["sesini kapat","sesi-kapat"],["sus","sesi-kapat"],["sessiz ol","sesi-kapat"],
   ["sesini aç","sesi-ac"],

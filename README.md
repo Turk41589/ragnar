@@ -155,6 +155,56 @@ değişkenini ayarlayın.
 
 ---
 
+## Fare ve klavye olmadan bilgisayar kontrolü
+
+**"DRA sesi aç"**, **"ileri sar"**, **"youtube'de kara murat aç"**,
+**"spotify'den jazz aç"**, **"ekranı kilitle"** — hepsi sesle.
+
+| Ne dersiniz | Ne olur |
+|---|---|
+| sesi aç / kıs / sustur | Sistem sesi. "biraz" küçük adım, "çok" büyük adım |
+| duraklat · oynat · sonraki şarkı | Hangi uygulama çalıyorsa ona gider |
+| ileri sar / geri sar | 10 saniye (sayı söylerseniz o kadar) |
+| youtube'de ... aç | Arar, **hangi videoyu açtığını söyler**, açar |
+| müzik aç · spotify'den ... aç | YouTube Music, Spotify, SoundCloud, YouTube |
+| ekranı kilitle | Windows kilit ekranı |
+| parlaklığı yüzde 50 yap | Dizüstü ekranlarda çalışır |
+
+**Ses ve medya için sanal tuşlar kullanılıyor.** Sebebi: Windows bu tuşları o an
+sesi çalan uygulamaya yönlendiriyor — Spotify, tarayıcı, oyun, hangisiyse.
+Uygulamaya özel kod yazmak gerekmiyor.
+
+**İleri sarma** farklı: sanal medya tuşlarında ileri/geri sarma yok. Onun için
+DRA tarayıcı penceresini öne getirip YouTube'un kendi kısayolunu gönderiyor
+(`l` = +10sn, `j` = −10sn).
+
+### Serbest komut çalıştırılmıyor
+
+"Bilgisayardaki her şeye erişebilsin" demek, DRA'nın duyduğu her kelimeyi komut
+satırına yazması demek **değil**. Yanlış duyulan tek bir kelime geri alınamaz
+bir şey yapabilir.
+
+Onun yerine **isimli işlemler** var: her biri `server/control.mjs` içinde
+yazılı, ne yaptığı belli ve sınanabilir. Yeni bir yetenek eklemek oraya bir
+kayıt eklemek demek. Adres açmada da yalnızca `http`/`https` kabul ediliyor —
+`file:` ile dosya, `cmd.exe` ile program açılamıyor.
+
+### Oyun oynarken öne çıkmaz
+
+Oyundayken DRA'nın penceresi öne gelirse oyun küçülür ve bozulur. Bu yüzden
+uyandırıldığında önce **ön plandaki pencereye bakıyor**: ekranın tamamını
+kaplayan bir uygulama varsa görünmez kalıyor ve yalnızca **sesle** cevap
+veriyor. Kenarlıksız tam ekran da tanınıyor (birkaç piksel tolerans var).
+
+## Web araştırması — her zaman açık
+
+Artık açma/kapama yok. DRA bilmediği bir soruyu uydurmak yerine araştırıyor ve
+sonucu **görsellerle ve kaynak bağlantılarıyla** gösteriyor: özet, kaynak
+sayfaların önizleme görselleri, ve tıklanabilir bağlantılar. Bilginin nereden
+geldiği görünür olmalı — kendi doğrulamanızı yapabilesiniz.
+
+Kendiliğinden dolaşmaz: yalnızca siz bir şey sorduğunuzda arar.
+
 ## Erişim izinleri
 
 DRA'nın bilgisayara ve hesaplara erişimi genişledikçe "her şeye erişebilir"
@@ -163,8 +213,11 @@ demek yeterli değil. Her yetki **ayrı ayrı** verilir, **sorularak** verilir v
 
 Nasıl çalışıyor:
 
-1. DRA bir yetkiye ihtiyaç duyduğu **ilk anda** sorar — peşin peşin yetki
-   dağıtmanız gerekmez. "Rapor ver" dediğinizde ekrana ne isteyeceğini ve ne
+0. **İlk açılışta** bütün yetkiler tek ekranda gösterilir; istediklerinizi orada
+   açarsınız. Hiçbiri önceden seçili değil — toplu bir "hepsine izin ver"
+   düğmesi okumadan tıklamayı teşvik eder.
+1. İlk ekranda vermediğiniz bir yetkiye ihtiyaç duyduğunda DRA **o anda** sorar
+   — peşin peşin yetki dağıtmanız gerekmez. "Rapor ver" dediğinizde ekrana ne isteyeceğini ve ne
    yapacağını yazan bir soru gelir.
 2. **Hayır** derseniz iş yapılmaz. **Evet** derseniz yetki kaydedilir ve iş
    kaldığı yerden tamamlanır.
@@ -185,6 +238,7 @@ yeniden sorulmaması için diske yazılır.
 | Yetki | Ne yapar |
 |---|---|
 | Bilgisayar durumu | İşletim sistemi, disk, bellek, çalışma süresi, Windows güncellemeleri — yalnızca okur |
+| Bilgisayarı kontrol etme | Ses, medya, ileri sarma, adres açma, ekran kilidi — yalnızca isimli işlemler |
 | Dosyaları okuma | İzin verdiğiniz klasörlerdeki dosyaları okur; silmez, değiştirmez |
 | E-posta okuma | Gelen kutusunu okur, reklam/bülten ayıklar; mesaj göndermez |
 | YouTube kanalı | Kanal istatistiği okur; **sıraya koyduğunuz** videoları verdiğiniz saatte yükler |
@@ -644,7 +698,7 @@ Açıkken sesli moderasyon:
 | Sistem | mikrofon seviyesi, ağ, komut motoru, batarya; geri sayımlar; sıradaki alarm; uygulama taraması |
 | Not | not ekle, tek tek sil, hepsini temizle |
 | Alarm | saatli alarm kur, etiket ver, her gün tekrarla, aç/kapa, sil |
-| Modlar | çalışma modları (açılışta başlat, arka planda dinle, web araması, yayıncı desteği, **e-posta raporu**, **video montajı**, **YouTube**, **işletme modu**) ve **erişim izinleri** |
+| Modlar | çalışma modları (açılışta başlat, arka planda dinle, yayıncı desteği, **e-posta raporu**, **video montajı**, **YouTube**, **işletme modu**) ve **erişim izinleri** |
 | Ayar | ses, mikrofon, ses tanıma motoru ve modeli, sesi cihazda tut, açılış dizisi, **DRA'nın sesi** (yerel / ElevenLabs), konuşma hızı, otomatik uyku, tema rengi, ek uyandırma sözcükleri, sıfırlama |
 
 **Orta** — reaktör. Dönen halkalar, glif şeridi ve yörüngedeki parçalar;
@@ -737,6 +791,8 @@ server/search.mjs    web araması (kapalıyken hiç yüklenmez)
 server/kick.mjs      Kick moderasyon köprüsü
 server/tts.mjs       ElevenLabs seslendirmesi (anahtar girilmeden istek atmaz)
 server/piper.mjs     Piper: cihazda calisan ucretsiz seslendirme
+server/control.mjs   bilgisayar kontrolu (isimli islemler, serbest komut yok)
+server/media.mjs     YouTube arama ve muzik kaynaklari (anahtarsiz)
 server/permissions.mjs  erisim izinleri — yetki denetiminin yapildigi yer
 server/report.mjs    bilgisayar raporu (disk, bellek, Windows guncellemeleri)
 server/mail.mjs      e-posta raporu (bagimliliksiz IMAP, yalnizca basliklar)

@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld("dra", {
   search: {
     setEnabled: (enabled) => call("dra:search:toggle", { enabled }),
     query: (q) => call("dra:search", { query: q }),
+    rich: (q, limit) => call("dra:search:rich", { query: q, limit }),
   },
 
   kick: {
@@ -136,6 +137,13 @@ contextBridge.exposeInMainWorld("dra", {
     configure: (user, pass, host) => call("dra:mail:configure", { user, pass, host }),
     test: () => call("dra:mail:test"),
     summary: (days) => call("dra:mail:summary", { days }),
+  },
+
+  /** Bilgisayar kontrolu: ses, medya, pencere, guc (izin gerektirir). */
+  control: {
+    run: (o) => call("dra:control", o),
+    foreground: () => call("dra:control:foreground"),
+    findVideo: (query) => call("dra:media:find", { query }),
   },
 
   /** Piper: cihazda calisan ucretsiz seslendirme. */

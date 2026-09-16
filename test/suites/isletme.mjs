@@ -145,7 +145,16 @@ export async function run(_page, _base, t) {
 
     t.eq(sonuc.sent.length, 2, "iki mesaj yanitlandi");
     t.eq(gonderilenler.length, 2, "yanitlar gercekten gonderildi");
-    t.has(gonderilenler[0].metin, "09:00", "gonderilen metin dogru");
+    // Sira garanti degil: mesajlar ayni milisaniyede eklendigi icin
+    // siralama kararsiz. Icerige bakiyoruz, sirasina degil.
+    t.ok(
+      gonderilenler.some((g) => g.metin.includes("09:00")),
+      "calisma saati yaniti gonderildi",
+    );
+    t.ok(
+      gonderilenler.some((g) => g.metin.includes("Fiyat listemiz")),
+      "fiyat yaniti gonderildi",
+    );
 
     const zeynep = (await messages.list()).find((m) => m.from === "Zeynep");
     t.eq(zeynep.status, "yanitlandi", "yanitlanan mesaj isaretlendi");

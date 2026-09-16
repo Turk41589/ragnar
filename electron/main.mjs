@@ -18,6 +18,8 @@ import * as apps from "../server/apps.mjs";
 import * as kick from "../server/kick.mjs";
 import * as tts from "../server/tts.mjs";
 import * as piper from "../server/piper.mjs";
+import * as control from "../server/control.mjs";
+import * as media from "../server/media.mjs";
 import * as permissions from "../server/permissions.mjs";
 import * as report from "../server/report.mjs";
 import * as mail from "../server/mail.mjs";
@@ -47,7 +49,8 @@ const GIZLI_BASLAT = process.argv.includes("--gizli");
 let mainWindow = null;
 let splashWindow = null;
 let tray = null;
-let searchEnabled = false;
+/** Web arastirmasi artik HEP ACIK (kullanici boyle istedi). */
+const searchEnabled = true;
 let quitting = false;
 
 /* ------------------------------------------------------------ izinler */
@@ -259,6 +262,45 @@ function handle(channel, work) {
   });
 }
 
+/**
+ * Isimli kontrol islemleri. Sunucu surumuyle ayni kume; serbest komut yok.
+ */
+async function runControl(body) {
+  const what = String(body?.action || "");
+  switch (what) {
+    case "volume": return control.volume(body.direction, Number(body.steps) || 5);
+    case "mute": return control.mute();
+    case "media": return control.media(body.what);
+    case "seek": {
+      const ileri = Number(body.seconds ?? 10) >= 0;
+      const kere = Math.max(1, Math.min(12, Math.round(Math.abs(Number(body.seconds ?? 10)) / 10)));
+      return control.sendKeysTo(body.window || "YouTube", (ileri ? "l" : "j").repeat(kere));
+    }
+    case "keys": return control.sendKeysTo(body.window, body.keys);
+    case "power": return control.power(body.what);
+    case "brightness": return control.brightness(body.percent);
+    case "open": return control.openUrl(body.url);
+    case "youtube": {
+      const video = await media.findVideo(body.query);
+      await control.openUrl(video.url);
+      return { action: "youtube", video };
+    }
+    case "music": {
+      const kaynak = media.resolveMusicSource(body.source);
+      if (!kaynak) {
+        throw new Error(
+          `"${body.source}" bilinmiyor. Su kaynaklardan calabilirim: ` +
+            Object.values(media.MUZIK).map((m) => m.label).join(", ") + ".",
+        );
+      }
+      const adres = kaynak.url(body.query || "");
+      await control.openUrl(adres);
+      return { action: "music", source: kaynak.label, query: body.query || "", url: adres };
+    }
+    default: throw new Error(`Bilinmeyen islem: ${what}`);
+  }
+}
+
 function registerIpc() {
   // Ses motoru ayri bir surecte; coktugunde uygulama olmuyor ama
   // kullanicinin bunu bilmesi gerekiyor.
@@ -305,12 +347,11 @@ function registerIpc() {
   });
 
   handle("dra:search:toggle", async ({ enabled }) => {
-    searchEnabled = Boolean(enabled);
-    return { enabled: searchEnabled };
+    // Arama artik kapatilamiyor; eski cagrilar sessizce basarili donsun.
+    return { enabled: true };
   });
 
   handle("dra:search", async ({ query }) => {
-    if (!searchEnabled) throw new Error("Web aramasi kapali. Ayar sekmesinden acabilirsiniz.");
     // Kapaliyken modul hic yuklenmez.
     const { search } = await import("../server/search.mjs");
     return { result: await search(query) };
@@ -507,6 +548,21 @@ function registerIpc() {
   handle("dra:mail:summary", async ({ days }) => {
     await permissions.require("eposta");
     return { summary: await mail.summary({ days: Number(days) || 2 }) };
+  });
+
+  /* ---------------------------------------------- bilgisayar kontrolu */
+
+  handle("dra:control", async (o) => {
+    await permissions.require("kontrol");
+    return { result: await runControl(o) };
+  });
+
+  handle("dra:control:foreground", async () => ({ foreground: await control.foreground() }));
+  handle("dra:media:find", async ({ query }) => ({ video: await media.findVideo(query) }));
+
+  handle("dra:search:rich", async ({ query, limit }) => {
+    const { richSearch } = await import("../server/search.mjs");
+    return { result: await richSearch(query, { limit: Number(limit) || 4 }) };
   });
 
   /* ----------------------------------------------------- piper ----- */

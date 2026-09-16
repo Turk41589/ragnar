@@ -436,6 +436,43 @@ export async function mailSummary(days = 2) {
   return data.summary;
 }
 
+/* --------------------------------------------------- bilgisayar kontrolu */
+
+export async function control(o) {
+  const d = desktop
+    ? await bridge(() => window.dra.control.run(o))
+    : await post("/api/control", o);
+  return d.result;
+}
+
+/** On plandaki pencere; oyun oynanirken DRA one cikmamali. */
+export async function foregroundWindow() {
+  try {
+    const d = desktop
+      ? await bridge(() => window.dra.control.foreground())
+      : await post("/api/control/foreground");
+    return d.foreground;
+  } catch {
+    // Bilinemiyorsa "oyun degil" varsayiyoruz: pencereyi hic gostermemek,
+    // yanlislikla gostermekten daha kotu olurdu.
+    return null;
+  }
+}
+
+export async function findVideo(query) {
+  const d = desktop
+    ? await bridge(() => window.dra.control.findVideo(query))
+    : await post("/api/media/find", { query });
+  return d.video;
+}
+
+export async function richSearch(query, limit = 4) {
+  const d = desktop
+    ? await bridge(() => window.dra.search.rich(query, limit))
+    : await post("/api/search/rich", { query, limit });
+  return d.result;
+}
+
 /* --------------------------------------------------------------- piper */
 
 export async function configurePiper(bin, voice) {

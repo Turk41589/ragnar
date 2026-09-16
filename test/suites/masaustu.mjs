@@ -161,9 +161,9 @@ export async function run(_page, _base, t) {
     t.ok(!bridge.nodeSizinti, "Node arayuze sizmiyor (yalitim acik)");
     t.eq(
       bridge.anahtarlar,
-      ["apps", "autoreply", "business", "desktop", "health", "kick", "mail", "messages",
-       "montage", "on", "perm", "piper", "report", "search", "sources", "stt", "tts",
-       "version", "videos", "window", "youtube"],
+      ["apps", "autoreply", "business", "control", "desktop", "health", "kick", "mail",
+       "messages", "montage", "on", "perm", "piper", "report", "search", "sources",
+       "stt", "tts", "version", "videos", "window", "youtube"],
       "kopru yalnizca beklenen yuzeyi aciyor",
     );
 
@@ -226,7 +226,18 @@ export async function run(_page, _base, t) {
     const health = await window.evaluate(() => window.dra.health());
     t.ok(health.ok, "saglik bilgisi IPC ile geliyor");
     t.eq(health.desktop, true, "masaustu bayragi dogru");
-    t.eq(health.search.enabled, false, "web aramasi varsayilan kapali");
+    // Web arastirmasi artik hep acik: kullanici oyle istedi.
+    t.eq(health.search.enabled, true, "web arastirmasi hep acik");
+
+    // Bilgisayar kontrolu izin gerektiriyor.
+    const izinsizKontrol = await window.evaluate(() =>
+      window.dra.control.run({ action: "mute" }).then(
+        () => ({ kod: null }),
+        (err) => ({ kod: err.code, scope: err.scope }),
+      ),
+    );
+    t.eq(izinsizKontrol.kod, "NEED_PERMISSION", "izinsiz bilgisayar kontrolu yok");
+    t.eq(izinsizKontrol.scope, "kontrol", "kontrol yetkisi isteniyor");
     t.eq(health.kick.ready, false, "Kick varsayilan kapali");
     t.eq(health.tts.ready, false, "ElevenLabs varsayilan kapali");
     t.ok(!("apiKey" in health.tts), "ElevenLabs anahtari IPC'de tasinmiyor");
@@ -332,13 +343,19 @@ export async function run(_page, _base, t) {
     );
     t.has(bogus.hata || "", "listede yok", "listede olmayan uygulama uygulamada da baslatilamiyor");
 
-    const kapaliArama = await window.evaluate(() =>
+    // Arama artik hep acik; kapali olduğu icin reddedilmiyor. Disari
+    // cikis olmayan bu ortamda AG hatasi veriyor — yani ucun kendisi
+    // calisiyor, yalnizca hedefe ulasilamiyor.
+    const aramaDenemesi = await window.evaluate(() =>
       window.dra.search.query("test").then(
         () => ({ hata: null }),
         (err) => ({ hata: err.message }),
       ),
     );
-    t.has(kapaliArama.hata || "", "kapali", "arama kapaliyken uygulamada da reddediliyor");
+    t.ok(
+      !/kapali/i.test(aramaDenemesi.hata || ""),
+      "arama artik 'kapali' diye reddedilmiyor",
+    );
 
     /* ------------------------------------------- komutlar calisiyor mu */
     await window.evaluate(async () => {

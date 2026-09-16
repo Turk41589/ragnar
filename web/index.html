@@ -191,14 +191,12 @@
               </small>
             </li>
 
-            <li>
-              <span>Web aramasi</span>
-              <button class="switch" type="button" id="set-search" role="switch" aria-checked="false"></button>
-            </li>
             <li class="settings__stack">
               <small class="hint">
-                Kapaliyken DRA hicbir dis servise baglanmaz. Acinca bilmedigi
-                sorulari DuckDuckGo uzerinden arar ve sonucu sohbete yazar.
+                <strong>Web arastirmasi her zaman acik.</strong> DRA bilmedigi
+                bir soruyu uydurmak yerine arastirir ve sonucu gorsellerle,
+                kaynak baglantilariyla birlikte gosterir. Kendiliginden
+                dolasmaz &mdash; yalnizca siz bir sey sordugunuzda arar.
               </small>
             </li>
 
@@ -652,6 +650,28 @@
           <button class="btn btn--icon btn--go" type="button" id="consent-yes">Izin ver</button>
         </div>
         <p class="consent__hint">Sesle de cevap verebilirsiniz: &laquo;evet&raquo; / &laquo;hayir&raquo;</p>
+      </div>
+    </div>
+
+    <!-- Ilk acilis: DRA'nin neler yapabilecegi ve hangi yetkileri
+         isteyecegi tek seferde gosteriliyor. -->
+    <div class="consent" id="firstrun" role="dialog" aria-modal="true"
+         aria-labelledby="firstrun-title" hidden>
+      <div class="consent__box consent__box--wide">
+        <p class="consent__eyebrow">Ilk kurulum</p>
+        <h2 class="consent__title" id="firstrun-title">DRA neler yapabilir?</h2>
+        <p class="consent__detail">
+          Asagidaki yetkileri simdi verebilir, sonra Modlar sekmesinden tek
+          tikla geri alabilirsiniz. Vermedikleriniz icin DRA ihtiyac
+          duydugunda ayrica sorar.
+        </p>
+        <ul class="settings" id="firstrun-list"></ul>
+        <div class="consent__actions">
+          <button class="btn btn--icon" type="button" id="firstrun-skip">Simdi degil</button>
+          <button class="btn btn--icon btn--go" type="button" id="firstrun-accept">
+            Secilenlere izin ver
+          </button>
+        </div>
       </div>
     </div>
 

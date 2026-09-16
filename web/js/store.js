@@ -19,8 +19,8 @@ const DEFAULTS = {
   autoSleepMinutes: 2.5, // 0 = otomatik uyku kapali
   theme: [53, 230, 255],
   extraWakeWords: [],
-  // Web aramasi: varsayilan KAPALI. Acilinca DRA disariya baglanir.
-  webSearch: false,
+  // Ilk acilis izin ekrani gosterildi mi?
+  firstRunDone: false,
   // Yayinci destegi: Kick moderasyon komutlari.
   streamerMode: false,
   // Bilgisayar acilinca DRA pencere gostermeden dinlemeye baslasin.
@@ -81,7 +81,7 @@ function coerce(saved) {
   if (saved.speechEngine === "gomulu" || saved.speechEngine === "tarayici") {
     store.speechEngine = saved.speechEngine;
   }
-  if (typeof saved.webSearch === "boolean") store.webSearch = saved.webSearch;
+  if (typeof saved.firstRunDone === "boolean") store.firstRunDone = saved.firstRunDone;
   if (typeof saved.streamerMode === "boolean") store.streamerMode = saved.streamerMode;
   if (typeof saved.backgroundListen === "boolean") store.backgroundListen = saved.backgroundListen;
   if (typeof saved.kickToken === "string") store.kickToken = saved.kickToken.slice(0, 400);

@@ -38,6 +38,14 @@ export const SCOPES = {
     // Yalnizca okur; hicbir sey degistirmez.
     writes: false,
   },
+  kontrol: {
+    title: "Bilgisayari kontrol etme",
+    detail:
+      "Sesi acip kisar, medyayi oynatip duraklatir, ileri sarar, adres " +
+      "acar, ekrani kilitler. Yalnizca bu isimli islemler yapilir; " +
+      "DRA serbest komut calistirmaz.",
+    writes: true,
+  },
   dosyalar: {
     title: "Dosyalari okuma",
     detail:

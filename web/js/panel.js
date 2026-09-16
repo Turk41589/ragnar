@@ -234,7 +234,6 @@ export function syncSettings() {
   syncSwitch($("set-mic"), ctx.isMicOn());
   syncSwitch($("set-boot"), store.bootSequence);
   syncSwitch($("set-local"), store.localSpeechOnly);
-  syncSwitch($("set-search"), store.webSearch);
 
   // Gomulu motor yalnizca uygulama surumunde var.
   const engineRow = $("row-engine");
@@ -695,6 +694,61 @@ function refreshMailStatus() {
   else el.textContent = "Hazir — «Baglantiyi sina» ile dogrulayin";
 }
 
+/* ------------------------------------------------------------ ilk acilis */
+
+/**
+ * Ilk acilista tum yetkileri tek ekranda gosterir.
+ *
+ * Kullanici "izni ilk acilista istesin" dedi. Yine de hicbiri ONCEDEN
+ * SECILI degil: toplu bir "hepsine izin ver" dugmesi, okumadan
+ * tiklamayi tesvik eder. Her satiri kullanici kendi aciyor.
+ */
+export async function showFirstRun() {
+  const kutu = $("firstrun");
+  const liste = $("firstrun-list");
+  if (!kutu || !liste) return;
+
+  let izinler;
+  try {
+    izinler = await system.permissions();
+  } catch {
+    return;
+  }
+
+  liste.replaceChildren();
+  for (const izin of izinler) {
+    const li = document.createElement("li");
+    li.className = "settings__stack";
+
+    const satir = document.createElement("div");
+    satir.className = "permrow";
+    const ad = document.createElement("span");
+    ad.textContent = izin.title;
+
+    const anahtar = document.createElement("button");
+    anahtar.className = "switch";
+    anahtar.type = "button";
+    anahtar.setAttribute("role", "switch");
+    // Onceden secili DEGIL: bilincli bir tercih olsun.
+    anahtar.setAttribute("aria-checked", String(izin.granted));
+    anahtar.dataset.scope = izin.id;
+    anahtar.addEventListener("click", () => {
+      const acik = anahtar.getAttribute("aria-checked") === "true";
+      anahtar.setAttribute("aria-checked", String(!acik));
+    });
+
+    satir.append(ad, anahtar);
+    const aciklama = document.createElement("small");
+    aciklama.className = "hint";
+    aciklama.textContent = izin.detail;
+
+    li.append(satir, aciklama);
+    liste.append(li);
+  }
+
+  kutu.hidden = false;
+}
+
 /* ----------------------------------------------------------------- izinler */
 
 /**
@@ -1060,25 +1114,42 @@ export function mountPanel(context) {
     }
   });
 
-  /* --- web aramasi --- */
-  $("set-search").addEventListener("click", async () => {
-    const next = !store.webSearch;
-    try {
-      await system.setSearchEnabled(next);
-      store.webSearch = next;
-      saveStore();
-      syncSettings();
-      ctx.toast(next ? "Web aramasi acildi" : "Web aramasi kapatildi");
-      if (next) {
-        ctx.log(
-          "system",
-          "Web aramasi acildi. Bundan sonra komutlarimda bulamadigim sorulari " +
-            "DuckDuckGo uzerinden arayacagim — yani artik disariya baglaniyorum.",
-        );
+  /* --- ilk acilis izin ekrani --- */
+  $("firstrun-accept").addEventListener("click", async () => {
+    const secili = [...document.querySelectorAll("#firstrun-list [data-scope]")]
+      .filter((el) => el.getAttribute("aria-checked") === "true")
+      .map((el) => el.dataset.scope);
+
+    let verilen = 0;
+    for (const scope of secili) {
+      try {
+        await system.grantPermission(scope);
+        verilen += 1;
+      } catch (err) {
+        ctx.toast(`${scope} verilemedi: ${err.message}`, 5000);
       }
-    } catch (err) {
-      ctx.toast(`Degistirilemedi: ${err.message}`, 5000);
     }
+
+    store.firstRunDone = true;
+    saveStore();
+    $("firstrun").hidden = true;
+    ctx.log(
+      "system",
+      verilen
+        ? `${verilen} yetki verildi. Hepsini Modlar sekmesinden geri alabilirsiniz.`
+        : "Hicbir yetki verilmedi. Ihtiyac duydugumda ayrica soracagim.",
+    );
+    renderPermissions();
+  });
+
+  $("firstrun-skip").addEventListener("click", () => {
+    store.firstRunDone = true;
+    saveStore();
+    $("firstrun").hidden = true;
+    ctx.log(
+      "system",
+      "Tamam. Bir yetkiye ihtiyac duydugumda o an size soracagim.",
+    );
   });
 
   /* --- yayinci destegi --- */

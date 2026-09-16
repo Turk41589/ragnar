@@ -101,9 +101,17 @@ export function createTester(suiteName) {
 /* ---------------------------------------------------- sayfa yardimcilari */
 
 /** Temiz bir baslangicla sayfayi acar (kayitli veri silinir, ses kapatilir). */
-export async function openApp(page, base, { voice = false } = {}) {
+export async function openApp(page, base, { voice = false, firstRun = false } = {}) {
   await page.goto(base, { waitUntil: "networkidle" });
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate((firstRun) => {
+    localStorage.clear();
+    // Ilk acilis izin ekrani butun arayuzu kapatiyor; testlerin cogu
+    // onun arkasindaki ekranla ilgileniyor. Ayri bir test o ekrani
+    // kendi acip dogruluyor.
+    if (!firstRun) {
+      localStorage.setItem("dra.state.v2", JSON.stringify({ firstRunDone: true }));
+    }
+  }, firstRun);
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForTimeout(600);
   if (!voice) {

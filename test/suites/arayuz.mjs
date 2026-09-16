@@ -79,7 +79,12 @@ export async function run(page, base, t, { external }) {
   // Calisma modlari artik kendi sekmesinde (Modlar).
   await page.click('.tab[data-tab="modlar"]');
   await page.waitForTimeout(150);
-  t.ok(await page.locator("#set-search").isVisible(), "web aramasi Modlar sekmesinde");
+  // Web arastirmasi anahtari kaldirildi: artik hep acik.
+  t.eq(
+    await page.locator("#set-search").count(),
+    0,
+    "web aramasi anahtari kaldirildi (hep acik)",
+  );
   t.ok(await page.locator("#set-streamer").isVisible(), "yayinci destegi Modlar sekmesinde");
   await page.click('.tab[data-tab="ayar"]');
 
@@ -136,6 +141,54 @@ export async function run(page, base, t, { external }) {
   t.has(report?.text ?? "", "Mikrofon seviyesi", "teshis mikrofon seviyesini yaziyor");
   t.has(diagChat.at(-1).text, "mikrofonu acin", "teshis mikrofon kapaliyken yol gosteriyor");
   await page.click('.tab[data-tab="ayar"]');
+
+  /* ------------------------------------------------- ilk acilis ekrani --- *
+   * Kullanici "izni ilk acilista istesin" dedi. Ayri bir sayfada aciyoruz
+   * cunku diger testler bu ekranin arkasindaki arayuzle ilgileniyor.    */
+  {
+    const ilk = await page.context().newPage();
+    await openApp(ilk, base, { firstRun: true });
+
+    await ilk.waitForSelector("#firstrun:not([hidden])", { timeout: 15000 });
+    t.ok(await ilk.locator("#firstrun").isVisible(), "ilk acilista izin ekrani cikiyor");
+
+    const satirlar = await ilk.$$eval("#firstrun-list [data-scope]", (els) =>
+      els.map((e) => ({ scope: e.dataset.scope, acik: e.getAttribute("aria-checked") })));
+    t.ok(satirlar.length >= 6, "tum yetkiler tek ekranda listeleniyor");
+    t.ok(
+      satirlar.every((x) => x.acik === "false"),
+      "hicbir yetki ONCEDEN SECILI degil (okumadan tiklama tesvik edilmiyor)",
+    );
+    t.ok(
+      await ilk.$$eval("#firstrun-list .hint", (e) => e.every((x) => x.textContent.trim())),
+      "her yetkinin ne yaptigi yaziyor",
+    );
+
+    // Iki yetki secip onaylayalim.
+    await ilk.click('#firstrun-list [data-scope="kontrol"]');
+    await ilk.click('#firstrun-list [data-scope="sistem"]');
+    await ilk.click("#firstrun-accept");
+    await ilk.waitForTimeout(900);
+    t.ok(await ilk.locator("#firstrun").isHidden(), "onaydan sonra ekran kapaniyor");
+
+    const verilenler = await ilk.evaluate(async () => {
+      const s = await import("/js/system.js");
+      return (await s.permissions()).filter((p) => p.granted).map((p) => p.id).sort();
+    });
+    t.eq(verilenler, ["kontrol", "sistem"], "yalnizca secilen yetkiler verildi");
+
+    // Bir daha gosterilmemeli.
+    await ilk.reload({ waitUntil: "networkidle" });
+    await ilk.waitForTimeout(1600);
+    t.ok(await ilk.locator("#firstrun").isHidden(), "ikinci acilista tekrar sorulmuyor");
+
+    // Sonraki testler etkilenmesin.
+    await ilk.evaluate(async () => {
+      const s = await import("/js/system.js");
+      await s.revokePermission("*");
+    });
+    await ilk.close();
+  }
 
   /* -------------------------------------------------- izin akisi -------- *
    * "Her seye erissin ama once izin istesin" isteginin arayuz tarafi.

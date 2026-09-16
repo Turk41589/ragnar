@@ -25,6 +25,8 @@ import * as apps from "./apps.mjs";
 import * as kick from "./kick.mjs";
 import * as tts from "./tts.mjs";
 import * as piper from "./piper.mjs";
+import * as control from "./control.mjs";
+import * as media from "./media.mjs";
 import * as permissions from "./permissions.mjs";
 import * as report from "./report.mjs";
 import * as mail from "./mail.mjs";
@@ -43,8 +45,14 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 const WEB_DIR = join(ROOT, "web");
 
-/** Web aramasi varsayilan olarak KAPALI; ayardan acilir. */
-let searchEnabled = false;
+/**
+ * Web aramasi artik HEP ACIK.
+ *
+ * Bir donem ayardan aciliyordu; kullanici "her zaman acik olsun" dedi.
+ * Arama yine de yalnizca DRA bir soruyu kendi komutlarinda bulamayinca
+ * yapiliyor — kendiliginden dolasmiyor.
+ */
+const searchEnabled = true;
 
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -133,6 +141,59 @@ async function serveStatic(req, res, pathname) {
   }
 }
 
+/**
+ * Isimli kontrol islemlerini dagitir.
+ *
+ * Serbest komut YOK: yalnizca burada listelenen isler yapilabilir.
+ * Yanlis duyulan bir kelime en fazla bilinen bir islemi tetikler.
+ */
+async function runControl(body) {
+  const what = String(body?.action || "");
+  switch (what) {
+    case "volume":
+      return control.volume(body.direction, Number(body.steps) || 5);
+    case "mute":
+      return control.mute();
+    case "media":
+      return control.media(body.what);
+    case "seek": {
+      // Ileri/geri sarma sanal medya tuslarinda yok; YouTube'un kendi
+      // kisayoslari kullaniliyor (l = +10sn, j = -10sn) ve bunun icin
+      // tarayici penceresi one getiriliyor.
+      const ileri = Number(body.seconds ?? 10) >= 0;
+      const kere = Math.max(1, Math.min(12, Math.round(Math.abs(Number(body.seconds ?? 10)) / 10)));
+      return control.sendKeysTo(body.window || "YouTube", (ileri ? "l" : "j").repeat(kere));
+    }
+    case "keys":
+      return control.sendKeysTo(body.window, body.keys);
+    case "power":
+      return control.power(body.what);
+    case "brightness":
+      return control.brightness(body.percent);
+    case "open":
+      return control.openUrl(body.url);
+    case "youtube": {
+      const video = await media.findVideo(body.query);
+      await control.openUrl(video.url);
+      return { action: "youtube", video };
+    }
+    case "music": {
+      const kaynak = media.resolveMusicSource(body.source);
+      if (!kaynak) {
+        throw new Error(
+          `"${body.source}" bilinmiyor. Su kaynaklardan calabilirim: ` +
+            Object.values(media.MUZIK).map((m) => m.label).join(", ") + ".",
+        );
+      }
+      const adres = kaynak.url(body.query || "");
+      await control.openUrl(adres);
+      return { action: "music", source: kaynak.label, query: body.query || "", url: adres };
+    }
+    default:
+      throw new Error(`Bilinmeyen islem: ${what}`);
+  }
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
@@ -204,10 +265,14 @@ const server = createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/search/toggle" && req.method === "POST") {
+    // Arama artik kapatilamiyor; eski istekler sessizce basarili donsun.
+    return handleAction(req, res, async () => ({ enabled: true }));
+  }
+
+  if (url.pathname === "/api/search/rich" && req.method === "POST") {
     return handleAction(req, res, async (body) => {
-      searchEnabled = Boolean(body.enabled);
-      console.log(`[dra] web aramasi ${searchEnabled ? "acildi" : "kapatildi"}`);
-      return { enabled: searchEnabled };
+      const { richSearch } = await import("./search.mjs");
+      return { result: await richSearch(body.query, { limit: Number(body.limit) || 4 }) };
     });
   }
 
@@ -540,6 +605,25 @@ const server = createServer(async (req, res) => {
       const { audio, type, truncated } = await piper.speak(body.text);
       return { audio: audio.toString("base64"), type, truncated };
     });
+  }
+
+  /* ---------------------------------------------- bilgisayar kontrolu */
+
+  if (url.pathname === "/api/control" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      await permissions.require("kontrol");
+      return { result: await runControl(body) };
+    });
+  }
+
+  if (url.pathname === "/api/control/foreground" && req.method === "POST") {
+    return handleAction(req, res, async () => ({ foreground: await control.foreground() }));
+  }
+
+  if (url.pathname === "/api/media/find" && req.method === "POST") {
+    return handleAction(req, res, async (body) => ({
+      video: await media.findVideo(body.query),
+    }));
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {
