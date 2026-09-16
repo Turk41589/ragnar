@@ -85,7 +85,10 @@ export async function acquireStream() {
     throw Object.assign(new Error(micError(err)), { code: "MIC", cause: err });
   }
 
-  streamUsers = 1;
+  // Sayaci SIFIRLAMIYORUZ: akis olduyse (kablo cikti) yeniden aciyoruz
+  // ama diger kullanicilarin haklari duruyor. Sifirlamak, sonraki
+  // birakmada hala kullanilan akisi kapatiyordu.
+  streamUsers += 1;
   return sharedStream;
 }
 
@@ -167,6 +170,17 @@ export async function startCapture(handler) {
 
   const stream = await acquireStream();
 
+  // Bu noktadan sonraki her hata akisi BIRAKMALI; yoksa mikrofon
+  // sonsuza kadar acik kalir (node null oldugu icin kimse kapatmaz).
+  try {
+    return await buildGraph(stream, handler);
+  } catch (err) {
+    releaseStream();
+    throw err;
+  }
+}
+
+async function buildGraph(stream, handler) {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   // 16 kHz istiyoruz; surucu vermezse asagida kendimiz indiriyoruz.
   try {
@@ -218,6 +232,17 @@ export async function startCapture(handler) {
 }
 
 export function stopCapture() {
+  /*
+   * Yalnizca GERCEKTEN yakalama yapiyorsak birakiyoruz.
+   *
+   * Kosulsuz birakmak sayaci eksiye dusuruyordu: motor ust uste iki
+   * hata verdiginde stopCapture iki kez cagriliyor, ikincisi seviye
+   * gostergesinin hala kullandigi akisi kapatiyordu. Gosterge sifir
+   * okumaya basliyor ve startMeter `if (analyser) return` ile erken
+   * donduğu icin uygulama yeniden acilmadan duzelmiyordu.
+   */
+  if (!node && !ctx) return;
+
   onChunk = null;
   try {
     node?.disconnect();

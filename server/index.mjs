@@ -116,6 +116,8 @@ async function handleAction(req, res, work) {
       error: err?.message || "Islem basarisiz.",
       ...(err?.code ? { code: err.code } : {}),
       ...(err?.scope ? { scope: err.scope, title: err.title, detail: err.detail } : {}),
+      // Arastirma hatasinda hangi kaynaklarin denendigi de tasinsin.
+      ...(Array.isArray(err?.tried) ? { tried: err.tried } : {}),
     });
   }
 }

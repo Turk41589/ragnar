@@ -68,6 +68,7 @@ function toError(raw) {
     err.title = raw.title;
     err.detail = raw.detail;
   }
+  if (Array.isArray(raw?.tried)) err.tried = raw.tried;
   return err;
 }
 
@@ -100,6 +101,7 @@ async function post(path, body = {}) {
       err.title = data.title;
       err.detail = data.detail;
     }
+    if (Array.isArray(data.tried)) err.tried = data.tried;
     throw err;
   }
   return data;

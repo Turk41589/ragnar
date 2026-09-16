@@ -28,6 +28,7 @@ const call = (channel, payload) =>
         message: res.error || "Islem basarisiz.",
         ...(res.code ? { code: res.code } : {}),
         ...(res.scope ? { scope: res.scope, title: res.title, detail: res.detail } : {}),
+        ...(Array.isArray(res.tried) ? { tried: res.tried } : {}),
       });
     }
     return res;

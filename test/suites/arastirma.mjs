@@ -71,7 +71,7 @@ export async function run(_page, _base, t) {
       ddgHtml: "http://127.0.0.1:1/",
     });
 
-    const r = await search.richSearch("istanbul", { limit: 3, withImages: false });
+    const r = await search.richSearch("istanbul", { limit: 3, withImages: true });
     t.eq(r.provider, "Wikipedia", "ilk kaynak Wikipedia");
     t.has(r.summary.text, "ozet metin", "ozet donuyor");
     t.eq(r.results.length, 2, "kaynaklar listeleniyor");
@@ -115,7 +115,7 @@ export async function run(_page, _base, t) {
       ddgHtml: "http://127.0.0.1:1/",
     });
 
-    const r = await search.richSearch("bir sey", { limit: 4, withImages: false });
+    const r = await search.richSearch("bir sey", { limit: 4, withImages: true });
     t.eq(r.provider, "DuckDuckGo", "Wikipedia patlayinca DuckDuckGo'ya dusuyor");
     t.has(r.summary.text, "DuckDuckGo ozeti", "yedek kaynagin ozeti aliniyor");
     t.eq(r.results.length, 2, "ilgili basliklar kaynak oluyor");
@@ -160,6 +160,166 @@ export async function run(_page, _base, t) {
     t.has(istek.govde, "baska+sey", "sorgu govdede gidiyor");
   } finally {
     html.server.close();
+  }
+
+  /* ============ 3b. Wikipedia HER SORGUYU kapmamali ============== */
+
+  // `list=search` neredeyse her sorguya bir baslik donduruyor. Zincirde
+  // ilk sirada oldugu icin "bugun hava nasil" sorusuna ansiklopedinin
+  // "Hava" maddesi donuyordu.
+  const guncel = await startFake((url, res) => {
+    if (url.pathname === "/w/api.php") {
+      return json(res, 200, { query: { search: [{ title: "Hava" }] } });
+    }
+    if (url.pathname.startsWith("/page/summary/")) {
+      return json(res, 200, { title: "Hava", extract: "Hava, gazlarin karisimidir." });
+    }
+    if (url.pathname === "/ddg") {
+      return json(res, 200, {
+        AbstractText: "Bugun parcali bulutlu.",
+        AbstractSource: "Hava Servisi",
+        RelatedTopics: [],
+      });
+    }
+    return json(res, 404, {});
+  });
+
+  try {
+    search._setEndpointsForTests({
+      wikiSearch: `${guncel.base}/w/api.php`,
+      wiki: `${guncel.base}/page/summary/`,
+      ddgApi: `${guncel.base}/ddg`,
+      ddgHtml: "http://127.0.0.1:1/",
+    });
+
+    const r = await search.richSearch("bugun hava nasil", { withImages: false });
+    t.eq(r.provider, "DuckDuckGo", "guncel bilgi sorusu Wikipedia'ya gitmiyor");
+    t.has(r.summary.text, "parcali bulutlu", "guncel cevap aliniyor");
+    t.ok(
+      !guncel.kayit.some((k) => k.path === "/w/api.php"),
+      "guncel soruda Wikipedia HIC sorulmuyor",
+    );
+
+    // Alakasiz baslik donerse de Wikipedia kabul edilmemeli.
+    guncel.kayit.length = 0;
+    t.eq(
+      search._internal.basligiOrtusuyorMu("kuantum bilgisayar", "Kedi"),
+      false,
+      "alakasiz baslik eleniyor",
+    );
+    t.eq(
+      search._internal.basligiOrtusuyorMu("fotosentez nedir", "Fotosentez"),
+      true,
+      "ilgili baslik kabul ediliyor",
+    );
+  } finally {
+    guncel.server.close();
+  }
+
+  /* ============ 3c. "arastir" KOMUTU da ayni zinciri kullanmali === */
+
+  // Bir donem search() kendi ayri istegini atiyordu: zincirdeki
+  // duzeltmelerden yararlanmiyor, asil arastirma komutu hala 403
+  // aliyordu.
+  const komut = await startFake((url, res) => {
+    if (url.pathname === "/w/api.php") {
+      return json(res, 200, { query: { search: [{ title: "Fotosentez" }] } });
+    }
+    if (url.pathname.startsWith("/page/summary/")) {
+      return json(res, 200, {
+        title: "Fotosentez",
+        extract: "Fotosentez, bitkilerin isigi kullanmasidir.",
+        content_urls: { desktop: { page: "https://tr.wikipedia.org/wiki/Fotosentez" } },
+      });
+    }
+    return json(res, 404, {});
+  });
+
+  try {
+    search._setEndpointsForTests({
+      wikiSearch: `${komut.base}/w/api.php`,
+      wiki: `${komut.base}/page/summary/`,
+      ddgApi: "http://127.0.0.1:1/",
+      ddgHtml: "http://127.0.0.1:1/",
+    });
+
+    const tek = await search.search("fotosentez nedir");
+    t.has(tek.answer, "bitkilerin isigi", "arastir komutu da zinciri kullaniyor");
+    t.eq(tek.source, "Wikipedia", "kaynak bildiriliyor");
+    t.has(tek.url || "", "wikipedia.org", "kaynak bagi veriliyor");
+  } finally {
+    komut.server.close();
+  }
+
+  /* ============ 3d. Sonuc yok ile ULASILAMADI ayri seyler ======== */
+
+  const bos = await startFake((url, res) => {
+    if (url.pathname === "/w/api.php") return json(res, 200, { query: { search: [] } });
+    if (url.pathname === "/ddg") {
+      return json(res, 200, { AbstractText: "", RelatedTopics: [] });
+    }
+    if (url.pathname === "/html") {
+      res.writeHead(200, { "content-type": "text/html" });
+      return res.end("<html>bos</html>");
+    }
+    return json(res, 404, {});
+  });
+
+  try {
+    search._setEndpointsForTests({
+      wikiSearch: `${bos.base}/w/api.php`,
+      wiki: `${bos.base}/page/summary/`,
+      ddgApi: `${bos.base}/ddg`,
+      ddgHtml: `${bos.base}/html`,
+    });
+
+    let h = null;
+    try {
+      await search.richSearch("olmayan bir sey", { withImages: false });
+    } catch (err) {
+      h = err;
+    }
+    // Kaynaklara ULASILDI ama sonuc yok: "internetini kontrol et" demek yanlis.
+    t.eq(h?.code, "NO_RESULT", "ulasilip sonuc bulunamayinca NO_RESULT");
+    t.has(h?.message || "", "bulamadim", "dogru mesaj veriliyor");
+    t.ok(
+      !/ulasamadim/.test(h?.message || ""),
+      "ag sorunu varmis gibi soylenmiyor",
+    );
+  } finally {
+    bos.server.close();
+  }
+
+  /* ============ 3e. withImages: false gorselleri bastirmali ====== */
+
+  const gorselli = await startFake((url, res) => {
+    if (url.pathname === "/w/api.php") {
+      return json(res, 200, { query: { search: [{ title: "Kedi" }] } });
+    }
+    if (url.pathname.startsWith("/page/summary/")) {
+      return json(res, 200, {
+        title: "Kedi", extract: "Kedi bir hayvandir.",
+        thumbnail: { source: "https://ornek/kedi.jpg" },
+      });
+    }
+    return json(res, 404, {});
+  });
+
+  try {
+    search._setEndpointsForTests({
+      wikiSearch: `${gorselli.base}/w/api.php`,
+      wiki: `${gorselli.base}/page/summary/`,
+      ddgApi: "http://127.0.0.1:1/",
+      ddgHtml: "http://127.0.0.1:1/",
+    });
+
+    const kapali = await search.richSearch("kedi", { withImages: false });
+    t.eq(kapali.images.length, 0, "withImages:false kaynak gorsellerini de bastiriyor");
+
+    const acik = await search.richSearch("kedi", { withImages: true });
+    t.eq(acik.images.length, 1, "withImages:true gorseli veriyor");
+  } finally {
+    gorselli.server.close();
   }
 
   /* ============ 4. Hicbiri yoksa SEBEP soyleniyor ================ */

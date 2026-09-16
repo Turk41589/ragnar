@@ -196,7 +196,25 @@ uyandırıldığında önce **ön plandaki pencereye bakıyor**: ekranın tamam�
 kaplayan bir uygulama varsa görünmez kalıyor ve yalnızca **sesle** cevap
 veriyor. Kenarlıksız tam ekran da tanınıyor (birkaç piksel tolerans var).
 
-## Web araştırması — her zaman açık
+## Web araştırması — her zaman açık, çok kaynaklı
+
+Tek kaynağa bağlı kalmak kırılgan: DuckDuckGo'nun HTML ucu tarayıcı olmayan
+isteklere sık sık **403** veriyor ve araştırma tamamen çalışmaz hale geliyordu.
+Artık kaynaklar sırayla deneniyor, ilk cevap veren kazanıyor:
+
+1. **Wikipedia** — olgusal sorular için; özet, görsel ve bağlantı verir
+2. **DuckDuckGo anlık cevap** — kısa tanımlar, hesaplamalar
+3. **DuckDuckGo sonuç sayfası** — en geniş kapsam (tarayıcı başlıklarıyla)
+
+Hangi kaynağın cevapladığı kartta yazıyor. Hiçbirine ulaşılamazsa **hangisinin
+neden başarısız olduğu** tek tek gösteriliyor — "araştırmıyor" demek yerine
+sebebi görürsünüz.
+
+Wikipedia her sorguyu kapmıyor: güncel bilgi isteyen sorular ("bugün hava
+nasıl", "dolar kaç TL") ansiklopediye gitmez, ayrıca dönen başlığın sorguyla
+gerçekten örtüşmesi aranır.
+
+
 
 Artık açma/kapama yok. DRA bilmediği bir soruyu uydurmak yerine araştırıyor ve
 sonucu **görsellerle ve kaynak bağlantılarıyla** gösteriyor: özet, kaynak
@@ -493,6 +511,21 @@ Tarayıcıların varsayılan ses tanıması sesi **satıcının sunucusuna gönd
   düşmez — bunu söyler ve yazarak kullanmanızı önerir.
 * Üst bardaki rozet o an hangi modda olduğunuzu gösterir:
   `cihazda` · `tarayıcı servisi` · `yazı modu`.
+
+### Mikrofon açık ama DRA duymuyorsa
+
+Bir dönem şu oluyordu: **seviye göstergesi konuşmaya göre oynuyor ama tanıma
+sessiz.** Sebep, göstergenin ve tanımanın **ayrı ayrı** mikrofon açmasıydı;
+Windows ses sürücüsü ikinci akışı çoğu zaman sessiz veriyor. Artık tek bir
+akış açılıp paylaşılıyor.
+
+Ayrıca örnekleme hızı doğrulanıyor: bağlamdan 16 kHz isteniyor ama sürücü
+vermezse ses **kendimiz indirilerek** motora doğru hızda gidiyor — yanlış
+hızda gönderilen ses Vosk tarafından hiç tanınmıyor.
+
+**"DRA ses tanımayı sına"** deyin; artık tahmin değil ölçüm veriyor: motora
+kaç parça gittiği, parçalardaki en yüksek ses seviyesi, örnekleme hızı. Parça
+hiç gitmiyorsa ya da hep sessizse bunu ayrıca söyler.
 
 ### Mikrofon açılmıyorsa
 

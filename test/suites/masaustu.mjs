@@ -507,6 +507,61 @@ export async function run(_page, _base, t) {
       "hicbir mikrofon hatasi sessizce yutulmuyor",
     );
 
+    /* ------------------------------------ mikrofon akis paylasimi ------ *
+     * Kullanicida seviye gostergesi oynuyor ama tanima sessizdi. Sebep:
+     * gosterge ve yakalama AYRI AYRI getUserMedia cagiriyordu ve
+     * Windows ikinci akisi sessiz veriyordu. Tek akis paylasiliyor.   */
+    const akis = await window.evaluate(async () => {
+      const mc = await import("./js/mic-capture.js");
+      const gercek = navigator.mediaDevices.getUserMedia;
+      let cagri = 0;
+
+      // Sahte akis: gercek mikrofon yok, sayimi olcuyoruz.
+      navigator.mediaDevices.getUserMedia = async () => {
+        cagri += 1;
+        const ctx = new AudioContext();
+        const dst = ctx.createMediaStreamDestination();
+        ctx.createOscillator().connect(dst);
+        return dst.stream;
+      };
+
+      const a = await mc.acquireStream();
+      const b = await mc.acquireStream();
+      const ayniMi = a === b;
+
+      // Ilk birakma akisi KAPATMAMALI (hala kullanan var).
+      mc.releaseStream();
+      const ilkBirakmadaCanli = a.getAudioTracks()[0].readyState === "live";
+
+      mc.releaseStream();
+      const sonBirakmadaKapali = a.getAudioTracks()[0].readyState === "ended";
+
+      // Yakalama hic baslamadan durdurmak sayaci EKSIYE dusurmemeli.
+      mc.stopCapture();
+      mc.stopCapture();
+      const c = await mc.acquireStream();
+      mc.releaseStream();
+      const sayacSaglam = c.getAudioTracks()[0].readyState === "ended";
+
+      navigator.mediaDevices.getUserMedia = gercek;
+      return { cagri, ayniMi, ilkBirakmadaCanli, sonBirakmadaKapali, sayacSaglam };
+    });
+
+    t.eq(akis.cagri, 2, "akis paylasiliyor (her istekte yeni mikrofon acilmiyor)");
+    t.eq(akis.ayniMi, true, "gosterge ve yakalama AYNI akisi kullaniyor");
+    t.eq(akis.ilkBirakmadaCanli, true, "kullanan varken akis kapanmiyor");
+    t.eq(akis.sonBirakmadaKapali, true, "son kullanan birakinca kapaniyor");
+    t.eq(akis.sayacSaglam, true, "bos stopCapture sayaci bozmuyor");
+
+    // Yakalama saglik olcumu teshis icin okunabilmeli.
+    const saglik = await window.evaluate(async () => {
+      const sp = await import("./js/speech.js");
+      return sp.micHealth();
+    });
+    t.ok("chunks" in saglik, "motora giden parca sayisi olculuyor");
+    t.ok("peak" in saglik, "parcalardaki ses seviyesi olculuyor");
+    t.ok("contextRate" in saglik, "ornekleme hizi raporlaniyor");
+
     /* ------------------------------------ kapali mikrofonda artik sonuc */
     // Mikrofon kapaliyken kuyrukta kalmis bir sonuc komut sayilmamali.
     await window.fill("#composer-input", "uyu");

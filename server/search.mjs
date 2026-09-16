@@ -150,7 +150,41 @@ const BROWSER_HEADERS = {
  * Wikipedia: olgusal sorularin en guvenilir kaynagi.
  * Anahtar istemiyor, engellemiyor, ozet + gorsel + bag veriyor.
  */
+/**
+ * Wikipedia bu soru icin uygun mu?
+ *
+ * `list=search` neredeyse HER sorguya bir baslik donduruyor. Zincirde
+ * ilk sirada oldugu icin "bugun hava nasil" sorusuna ansiklopedinin
+ * "Hava" maddesi donuyordu. Iki olcut koyuyoruz:
+ *   - Guncel bilgi isteyen sorular ansiklopediye ait degil.
+ *   - Donen baslik sorguyla gercekten ortusmeli.
+ */
+const GUNCEL = /bugun|dun|yarin|su an|simdi|son dakika|hava durumu|hava nasil|kac tl|kac lira|kac dolar|fiyat|kur|mac skoru|skor|puan durumu|ne zaman baslayacak|acik mi|kapali mi/;
+
+function wikiUygunMu(q) {
+  const n = q.toLocaleLowerCase("tr")
+    .replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g")
+    .replace(/ü/g, "u").replace(/ö/g, "o").replace(/ç/g, "c");
+  return !GUNCEL.test(n);
+}
+
+/** Donen baslik sorguyla ortusuyor mu? */
+function basligiOrtusuyorMu(q, title) {
+  const sadelestir = (x) => x.toLocaleLowerCase("tr")
+    .replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g")
+    .replace(/ü/g, "u").replace(/ö/g, "o").replace(/ç/g, "c");
+
+  const sorgu = sadelestir(q).split(/\s+/).filter((w) => w.length >= 3);
+  if (!sorgu.length) return true;
+  const baslik = sadelestir(title);
+  return sorgu.some((w) => baslik.includes(w) || w.includes(baslik));
+}
+
 async function fromWikipedia(q) {
+  if (!wikiUygunMu(q)) {
+    throw Object.assign(new Error("guncel bilgi sorusu"), { code: "NOT_APPLICABLE" });
+  }
+
   // Once baslik ariyoruz; dogrudan ozet ucu tam eslesme istiyor.
   const ara = `${ENDPOINTS.wikiSearch}?` + new URLSearchParams({
     action: "query", list: "search", srsearch: q, srlimit: "3",
@@ -159,12 +193,14 @@ async function fromWikipedia(q) {
 
   const res = await fetch(ara, {
     headers: { "user-agent": UA },
-    signal: AbortSignal.timeout(9000),
+    signal: AbortSignal.timeout(6000),
   });
   if (!res.ok) throw new Error(`Wikipedia ${res.status}`);
 
   const data = await res.json();
-  const bulunan = data?.query?.search || [];
+  const bulunan = (data?.query?.search || [])
+    // Alakasiz baslik donduyse Wikipedia bu soruya cevap veremiyor demektir.
+    .filter((k) => basligiOrtusuyorMu(q, k.title || ""));
   if (!bulunan.length) throw Object.assign(new Error("yok"), { code: "NO_RESULT" });
 
   const ozetler = await Promise.all(
@@ -172,7 +208,7 @@ async function fromWikipedia(q) {
       try {
         const r = await fetch(ENDPOINTS.wiki + encodeURIComponent(k.title), {
           headers: { "user-agent": UA },
-          signal: AbortSignal.timeout(8000),
+          signal: AbortSignal.timeout(5000),
         });
         if (!r.ok) return null;
         const d = await r.json();
@@ -213,7 +249,7 @@ async function fromDdgApi(q) {
     `${ENDPOINTS.ddgApi}?` + new URLSearchParams({
       q, format: "json", no_html: "1", skip_disambig: "1",
     }),
-    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(9000) },
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(6000) },
   );
   if (!res.ok) throw new Error(`DuckDuckGo ${res.status}`);
 
@@ -255,7 +291,7 @@ async function fromDdgHtml(q, limit) {
         referer: "https://duckduckgo.com/",
       },
       body: new URLSearchParams({ q }).toString(),
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(9000),
     });
   } catch (err) {
     throw new Error(`DuckDuckGo'ya ulasilamadi: ${err.message}`);
@@ -288,13 +324,17 @@ export async function richSearch(query, { limit = 4, withImages = true } = {}) {
   ];
 
   const denenenler = [];
+  /** Kaynaga ULASILDI ama sonuc yoktu — "ag yok" demekten farkli. */
+  let ulasildi = false;
+
   for (const [ad, calistir] of zincir) {
     try {
       const sonuc = await calistir();
+      ulasildi = true;
       if (!sonuc.summary && !sonuc.results?.length) continue;
 
-      // Gorsel yoksa sonuc sayfalarindan onizleme cikarmayi deniyoruz.
-      let gorseller = sonuc.images || [];
+      // Gorseller istenmiyorsa kaynagin verdikleri de gosterilmemeli.
+      let gorseller = withImages ? sonuc.images || [] : [];
       if (withImages && !gorseller.length && sonuc.results?.length) {
         const adaylar = sonuc.results.slice(0, 3);
         const bulunan = await Promise.all(adaylar.map((k) => pageImage(k.url)));
@@ -312,11 +352,24 @@ export async function richSearch(query, { limit = 4, withImages = true } = {}) {
         at: Date.now(),
       };
     } catch (err) {
+      // Kaynaga ulasildi ama sonuc yok / uygun degil: ag sorunu degil.
+      if (err?.code === "NO_RESULT" || err?.code === "NOT_APPLICABLE") ulasildi = true;
       denenenler.push(`${ad}: ${err.message}`);
     }
   }
 
-  // Hepsi basarisizsa NEDEN oldugunu tasiyoruz; "bulamadim" yetmez.
+  /*
+   * Iki farkli basarisizlik var ve kullaniciya farkli seyler soylemeli:
+   *   - Kaynaklara ULASILDI ama sonuc yok  → "bulamadim"
+   *   - Hicbirine ulasilamadi              → "internet/guvenlik duvari"
+   */
+  if (ulasildi) {
+    throw Object.assign(
+      new Error(`"${q}" icin bir sey bulamadim.`),
+      { code: "NO_RESULT", tried: denenenler },
+    );
+  }
+
   throw Object.assign(
     new Error(`Hicbir kaynaga ulasamadim. ${denenenler.join(" | ")}`),
     { code: "NO_SOURCE", tried: denenenler },
@@ -324,76 +377,32 @@ export async function richSearch(query, { limit = 4, withImages = true } = {}) {
 }
 
 /**
- * Once "anlik cevap" ucunu dener (tanim, hesaplama, kisa bilgi).
- * Sonuc yoksa HTML sonuc sayfasindan ilk kaydi cikarir.
+ * Tek cumlelik yanit (sesli okumak icin).
+ *
+ * ONEMLI: bu, "arastir ..." komutunun kullandigi yol. Bir donem kendi
+ * ayri DuckDuckGo istegini atiyordu ve zincirdeki duzeltmelerden
+ * yararlanmiyordu — yani asil arastirma komutu hala 403 aliyordu.
+ * Artik ayni zinciri kullaniyor.
  */
 export async function search(query) {
-  const q = (query || "").trim();
-  if (!q) throw new Error("Bos arama.");
+  const r = await richSearch(query, { limit: 3, withImages: false });
 
-  // --- 1. Anlik cevap ------------------------------------------------
-  try {
-    const url =
-      "https://api.duckduckgo.com/?format=json&no_html=1&skip_disambig=1&q=" +
-      encodeURIComponent(q);
-    const res = await fetch(url, {
-      headers: { "user-agent": UA },
-      signal: AbortSignal.timeout(9000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const abstract = (data.AbstractText || "").trim();
-      if (abstract) {
-        return {
-          answer: abstract,
-          source: data.AbstractSource || "DuckDuckGo",
-          url: data.AbstractURL || null,
-          kind: "ozet",
-        };
-      }
-      const topic = (data.RelatedTopics || []).find((t) => t?.Text);
-      if (topic) {
-        return {
-          answer: topic.Text.trim(),
-          source: "DuckDuckGo",
-          url: topic.FirstURL || null,
-          kind: "ilgili",
-        };
-      }
-    }
-  } catch {
-    /* anlik cevap yoksa sonuc sayfasina duseriz */
+  if (r.summary) {
+    return {
+      answer: r.summary.text,
+      source: r.summary.source || r.provider,
+      url: r.summary.url || null,
+      kind: "ozet",
+    };
   }
 
-  // --- 2. Sonuc sayfasi ----------------------------------------------
-  const res = await fetch("https://html.duckduckgo.com/html/", {
-    method: "POST",
-    headers: {
-      "user-agent": UA,
-      "content-type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({ q }).toString(),
-    signal: AbortSignal.timeout(12000),
-  });
-
-  if (!res.ok) throw new Error(`Arama servisi ${res.status} dondu.`);
-  const html = await res.text();
-
-  const title = html.match(/class="result__a"[^>]*>([\s\S]*?)<\/a>/i)?.[1];
-  const snippet = html.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i)?.[1];
-  const href = html.match(/class="result__a"\s+href="([^"]+)"/i)?.[1];
-
-  if (!title && !snippet) {
-    throw Object.assign(new Error("Sonuc bulunamadi."), { code: "NO_RESULT" });
-  }
-
+  const ilk = r.results[0];
   return {
-    answer: stripHtml(snippet || title),
-    source: stripHtml(title || "DuckDuckGo"),
-    url: href ? decodeURIComponent(href.replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, "").split("&")[0]) : null,
+    answer: ilk.snippet || ilk.title,
+    source: ilk.site || r.provider,
+    url: ilk.url,
     kind: "sonuc",
   };
 }
 
-/** Testler icin: saf cozumleme islevleri. */
-export const _internal = { parseResults, cleanUrl, stripHtml };
+export const _internal = { parseResults, cleanUrl, stripHtml, wikiUygunMu, basligiOrtusuyorMu };

@@ -1193,7 +1193,9 @@ const ctx = {
        * kaynaklarin denendigi de ekrana yaziliyor: "arastirmiyor"
        * sikayetini tahminle degil sebeple konusabilmek icin.
        */
-      if (err?.code === "NO_SOURCE" && Array.isArray(err.tried)) {
+      // NO_SOURCE: hicbir kaynaga ULASILAMADI (ag/guvenlik duvari).
+      // NO_RESULT: ulasildi ama sonuc yok — bu ayri bir sey.
+      if (err?.code === "NO_SOURCE") {
         hud.logCard({
           title: "Arastirma yapilamadi",
           subtitle: query,
@@ -1203,10 +1205,14 @@ const ctx = {
                 "guvenlik duvarini kontrol edin.",
               level: "error",
             },
-            { heading: "Denenen kaynaklar", items: err.tried },
+            ...(Array.isArray(err.tried) && err.tried.length
+              ? [{ heading: "Denenen kaynaklar", items: err.tried }]
+              : []),
           ],
         });
-        return "Hicbir arastirma kaynagina ulasamadim; sebepleri ekrana yazdim.";
+        // Ag yoksa kullanici elde kalmasin: ne YAPABILDIGIMIZI da soyle.
+        return "Hicbir arastirma kaynagina ulasamadim; sebepleri ekrana yazdim. " +
+          suggestCommand(query);
       }
 
       const sebep = err?.code === "NO_RESULT"
@@ -1359,7 +1365,11 @@ const ctx = {
      * degil olcumle ayirt etmek icin. Gostergenin oynamasi sesin MOTORA
      * ulastigi anlamina gelmiyor: gosterge ayri bir dugumden besleniyor.
      */
-    const yakalama = speech.micHealth?.();
+    // Bu olcumler yalnizca GOMULU motor yolunda dolduruluyor. Tarayici
+    // motorunda hep sifir kalir; oraya bakip "ses ulasmiyor" demek
+    // yanlis yonlendirir.
+    const gomuluKipte = speech.embeddedAvailable() && store.speechEngine !== "tarayici";
+    const yakalama = gomuluKipte ? speech.micHealth?.() : null;
     if (yakalama) {
       const gecen = yakalama.lastChunkAt
         ? Math.round((Date.now() - yakalama.lastChunkAt) / 1000)
