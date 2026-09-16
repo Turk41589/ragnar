@@ -272,9 +272,17 @@ async function runControl(body) {
     case "mute": return control.mute();
     case "media": return control.media(body.what);
     case "seek": {
-      const ileri = Number(body.seconds ?? 10) >= 0;
-      const kere = Math.max(1, Math.min(12, Math.round(Math.abs(Number(body.seconds ?? 10)) / 10)));
-      return control.sendKeysTo(body.window || "YouTube", (ileri ? "l" : "j").repeat(kere));
+      // YouTube kisayolu 10'ar saniye atliyor; istenen sure 10'un kati
+      // degilse UYGULANAN sureyi donduruyoruz. Aksi halde DRA "25 saniye
+      // sardim" deyip aslinda 30 sariyordu.
+      const istenen = Number(body.seconds ?? 10);
+      const ileri = istenen >= 0;
+      const kere = Math.max(1, Math.min(12, Math.round(Math.abs(istenen) / 10)));
+      const sonuc = await control.sendKeysTo(
+        body.window || "YouTube",
+        (ileri ? "l" : "j").repeat(kere),
+      );
+      return { ...sonuc, applied: kere * 10, forward: ileri };
     }
     case "keys": return control.sendKeysTo(body.window, body.keys);
     case "power": return control.power(body.what);
@@ -557,8 +565,16 @@ function registerIpc() {
     return { result: await runControl(o) };
   });
 
-  handle("dra:control:foreground", async () => ({ foreground: await control.foreground() }));
-  handle("dra:media:find", async ({ query }) => ({ video: await media.findVideo(query) }));
+  handle("dra:control:foreground", async () => {
+    // On plandaki pencerenin basligi da bir erisim; yetki sart.
+    await permissions.require("kontrol");
+    return { foreground: await control.foreground() };
+  });
+
+  handle("dra:media:find", async ({ query }) => {
+    await permissions.require("kontrol");
+    return { video: await media.findVideo(query) };
+  });
 
   handle("dra:search:rich", async ({ query, limit }) => {
     const { richSearch } = await import("../server/search.mjs");

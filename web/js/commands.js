@@ -16,6 +16,26 @@ import { normalize, tokenize, bestScore, mentions } from "./match.js";
 
 const has = (n, ...words) => words.some((w) => n.includes(w));
 
+/**
+ * Metinden komut kelimelerini temizler.
+ *
+ * `\b` ve ASCII kaliplar Turkce harflerde CALISMIYOR: "müzik aç"
+ * icindeki "aç" `\bac\b` ile eslesmiyor, sonucta komutun kendisi
+ * arama sorgusu olarak gonderiliyordu. Burada once Turkce'ye duyarli
+ * kucultme yapiliyor, sonra kelime kelime eleniyor.
+ */
+function stripWords(raw, words) {
+  const kume = new Set(words.map((w) => normalize(w)));
+  return String(raw || "")
+    .split(/\s+/)
+    .filter((kelime) => {
+      const temiz = normalize(kelime);
+      return temiz && !kume.has(temiz);
+    })
+    .join(" ")
+    .trim();
+}
+
 /* --------------------------------------------------------- sayi cozumlemesi */
 
 const UNITS = {
@@ -490,7 +510,10 @@ const RULES = [
         seconds: geri ? -saniye : saniye,
       });
       if (!r) return null;
-      return `${saniye} saniye ${geri ? "geri" : "ileri"} sardim.`;
+      // GERCEKTEN uygulanan sureyi soyluyoruz; 10'ar saniye atlandigi
+      // icin istenen sure her zaman birebir uygulanmiyor.
+      const uygulanan = Number.isFinite(r.applied) ? r.applied : saniye;
+      return `${uygulanan} saniye ${geri ? "geri" : "ileri"} sardim.`;
     },
   },
 
@@ -519,11 +542,11 @@ const RULES = [
     priority: 4,
     run: async (n, raw, ctx) => {
       // "youtubede kara murat ac" → aranacak: "kara murat"
-      const sorgu = raw
-        .replace(/youtube('?da|'?de|\s?da|\s?de)?/gi, " ")
-        .replace(/\b(ac|acar misin|arat|oynat|izle|bul|videosunu|videoyu|video)\b/gi, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+      const sorgu = stripWords(
+        raw.replace(/youtube\S*/gi, " "),
+        ["ac", "aç", "acar", "açar", "misin", "mısın", "arat", "oynat", "izle",
+         "bul", "video", "videoyu", "videosunu", "calistir", "çalıştır"],
+      );
 
       if (!sorgu) return "Neyi acayim? Kanal ya da video adini soyleyin.";
 
@@ -560,11 +583,11 @@ const RULES = [
         kaynaklar.find((k) => n.includes(k)) || "youtube music";
 
       // Kaynak adini ve komut kelimelerini cikarip kalani arama yapiyoruz.
-      const sorgu = raw
-        .replace(/spotify('?den|'?dan)?|youtube music('?ten|'?tan)?|soundcloud('?tan|'?ten)?|youtube('?den|'?dan)?/gi, " ")
-        .replace(/\b(muzik|sarki|ac|acar misin|calistir|calar misin)\b/gi, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+      const sorgu = stripWords(
+        raw.replace(/spotify\S*|youtube\s*music\S*|soundcloud\S*|youtube\S*/gi, " "),
+        ["muzik", "müzik", "sarki", "şarkı", "ac", "aç", "acar", "açar",
+         "misin", "mısın", "calistir", "çalıştır", "calar", "çalar"],
+      );
 
       const r = await ctx.control({ action: "music", source: kaynak, query: sorgu });
       if (!r) return null;
@@ -759,6 +782,13 @@ const RULES = [
       "bugun gun ne", "tarih", "hangi tarihteyiz", "ne zamandayiz",
     ],
     exclude: ["alarm", "zamanlayici", "sayac"],
+    /*
+     * "bugun" cok guclu bir kelime ve icinde gectigi her cumleyi buraya
+     * cekiyordu: "bugun dolar kac lira" sorusuna DRA bugunun TARIHINI
+     * soyluyordu. Disaridan bir olgu istenen cumleler bu kurala ait
+     * degil — arastirmaya gitmeli.
+     */
+    guard: (n, raw) => !soruMu(raw),
     run: () => `Bugun ${formatDate()}.`,
   },
 
@@ -1363,8 +1393,34 @@ export async function runCommand(rawText, ctx) {
  * gidebilirdi. Oysa "alrm kur" gibi bir yazim hatasi aranacak bir soru
  * degil, yanlis yazilmis bir komut. Once buna bakiyoruz.
  */
+/**
+ * Disariya sorulacak bir BILGI SORUSU gibi mi duruyor?
+ *
+ * "nerede" ve "nasil" bilerek DISARIDA: "not defteri nerede" ya da
+ * "alarm nasil kurulur" aslinda bir KOMUTU soruyor, internete
+ * sorulacak bir sey degil. Buradakiler ise disaridan bir olgu isteyen
+ * kaliplar: "kac metre", "nedir", "ne kadar", "kim".
+ */
+function soruMu(text) {
+  const n = normalize(text);
+  return /\b(kac|kacta|nedir|ne kadar|kimdir|neden|hangi yil|kac tane)\b/.test(n);
+}
+
+/**
+ * Girilen metne YAKIN bir komut var mi?
+ *
+ * Esik SUGGEST_THRESHOLD'dan (0.34) yuksek tutuluyor: o esik "en yakin
+ * ornegi goster" icin yeterliydi ama burada karar veriyoruz. Dusuk
+ * esikle "eyfel kulesi kac metre" gibi GERCEK SORULAR bir komuta
+ * benzetilip arastirmaya hic ulasmiyordu.
+ *
+ * Soru gibi duran metinler ise her durumda arastirmaya gider.
+ */
+const KOMUT_ONERI_ESIGI = 0.5;
+
 export function nearestCommand(text) {
-  const near = scoreRules(text).find((s) => s.score >= SUGGEST_THRESHOLD);
+  if (soruMu(text)) return null;
+  const near = scoreRules(text).find((s) => s.score >= KOMUT_ONERI_ESIGI);
   return near?.rule.example ? near.rule.example : null;
 }
 

@@ -13,8 +13,11 @@ export const name = "Bilgisayar kontrolu";
 export const standalone = true;
 
 /** YouTube arama sayfasini taklit eder. */
+const istekler = [];
+
 function startFakeYoutube(html) {
   const server = createServer((req, res) => {
+    istekler.push(req.url);
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     res.end(html);
   });
@@ -35,8 +38,9 @@ export async function run(_page, _base, t) {
     // foreground() JSON bekliyor; digerleri bos cikti kabul ediyor.
     if (script.includes("GetForegroundWindow")) {
       return JSON.stringify({
-        title: "Counter-Strike 2", process: "cs2",
+        title: "Counter-Strike 2", process: "cs2", maximized: false,
         width: 1920, height: 1080, screenWidth: 1920, screenHeight: 1080,
+        workHeight: 1032,
       });
     }
     if (script.includes("WmiMonitorBrightnessMethods")) return "TAMAM";
@@ -136,8 +140,9 @@ export async function run(_page, _base, t) {
     control._setRunnerForTests(async (script) => {
       komutlar.push(script);
       return JSON.stringify({
-        title: "Counter-Strike 2", process: "cs2",
+        title: "Counter-Strike 2", process: "cs2", maximized: false,
         width: 1920, height: 1080, screenWidth: 1920, screenHeight: 1080,
+        workHeight: 1032,
       });
     });
     const oyun = await control.foreground();
@@ -145,21 +150,58 @@ export async function run(_page, _base, t) {
     t.eq(oyun.fullscreen, true, "tam ekran uygulama taniniyor (oyun modu)");
 
     control._setRunnerForTests(async () => JSON.stringify({
-      title: "Not Defteri", process: "notepad",
+      title: "Not Defteri", process: "notepad", maximized: false,
       width: 900, height: 600, screenWidth: 1920, screenHeight: 1080,
+      workHeight: 1032,
     }));
     const pencere = await control.foreground();
     t.eq(pencere.fullscreen, false, "normal pencere tam ekran sayilmiyor");
 
     // Kenarliksiz tam ekran: birkac piksel eksik olabilir.
     control._setRunnerForTests(async () => JSON.stringify({
-      title: "Oyun", process: "game",
+      title: "Oyun", process: "game", maximized: false,
       width: 1919, height: 1079, screenWidth: 1920, screenHeight: 1080,
+      workHeight: 1032,
     }));
     t.eq(
       (await control.foreground()).fullscreen,
       true,
       "kenarliksiz tam ekran da taniniyor",
+    );
+
+    /* -------- BUYUTULMUS pencere OYUN DEGIL -------- *
+     * GetWindowRect buyutulmus pencerelerde gorunmez kenarligi de
+     * sayar; olculer ekrani asar. Yalnizca boyuta bakinca her
+     * buyutulmus tarayici "oyun" sayiliyor ve DRA hic gorunmuyordu. */
+    control._setRunnerForTests(async () => JSON.stringify({
+      title: "Chrome", process: "chrome", maximized: true,
+      width: 1936, height: 1056, screenWidth: 1920, screenHeight: 1080,
+      workHeight: 1032,
+    }));
+    const buyutulmus = await control.foreground();
+    t.eq(buyutulmus.fullscreen, false, "BUYUTULMUS pencere tam ekran sayilmiyor");
+    t.eq(buyutulmus.maximized, true, "buyutulmus oldugu bildiriliyor");
+
+    // Gorev cubugu gorunuyorsa tam ekran degildir.
+    control._setRunnerForTests(async () => JSON.stringify({
+      title: "Uygulama", process: "app", maximized: false,
+      width: 1920, height: 1032, screenWidth: 1920, screenHeight: 1080,
+      workHeight: 1032,
+    }));
+    t.eq(
+      (await control.foreground()).fullscreen,
+      false,
+      "gorev cubugu gorunuyorsa tam ekran degil",
+    );
+
+    // Pencerenin BULUNDUGU ekran olculuyor, birincil ekran degil.
+    t.ok(
+      komutlar.some((k) => k.includes("MonitorFromWindow")),
+      "pencerenin bulundugu ekran olculuyor",
+    );
+    t.ok(
+      komutlar.some((k) => k.includes("GetWindowPlacement")),
+      "buyutulmus olup olmadigi soruluyor",
     );
 
     // Bozuk cikti cokertmemeli.
@@ -247,6 +289,9 @@ export async function run(_page, _base, t) {
 
   try {
     const video = await media.findVideo("kara murat");
+    // "sp" zaten yuzde-kodlu; URLSearchParams'a verilirse yeniden
+    // kodlaniyor ve YouTube suzgeci hic uygulanmiyordu.
+    t.has(istekler.at(-1) || "", "sp=EgIQAQ%3D%3D", "video suzgeci cift kodlanmiyor");
     t.eq(video.id, "dQw4w9WgXcQ", "video kimligi cikariliyor");
     t.eq(video.title, "Kara Murat & Devler", "baslik cozuluyor (JSON kacislari dahil)");
     t.eq(video.channel, "Eski Filmler", "kanal adi okunuyor");
@@ -278,6 +323,33 @@ export async function run(_page, _base, t) {
   } finally {
     media._setBaseForTests(null);
     bosSayfa.server.close();
+  }
+
+  /* ============================== ARAMA ESLESMESI ================== */
+
+  // Ozetler indeksle baglaniyordu; elenen her kayit sonrakilerin
+  // ozetini kaydiriyor, kartta bir sitenin bagi baska bir sitenin
+  // ozetiyle gorunuyordu.
+  const search = await import("../../server/search.mjs");
+  const { _internal } = search;
+  if (_internal?.parseResults) {
+    const html = `
+      <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fbir.com%2Fa">Birinci</a>
+      <a class="result__snippet">birinci ozet</a>
+      <a class="result__a" href="bozuk-adres">Elenecek</a>
+      <a class="result__snippet">elenecek ozet</a>
+      <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fiki.com%2Fb">Ikinci</a>
+      <a class="result__snippet">ikinci ozet</a>
+    `;
+    const kayitlar = _internal.parseResults(html, 5);
+    t.eq(kayitlar.length, 2, "gecersiz adres eleniyor");
+    t.eq(kayitlar[0].snippet, "birinci ozet", "ilk kaydin ozeti dogru");
+    t.eq(
+      kayitlar[1].snippet,
+      "ikinci ozet",
+      "eleme sonrasi ozetler KAYMIYOR (kaynak-ozet eslesmesi bozulmuyor)",
+    );
+    t.eq(kayitlar[1].site, "iki.com", "site adi cikariliyor");
   }
 
   /* ============================== MUZIK KAYNAKLARI ================= */

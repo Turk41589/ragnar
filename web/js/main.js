@@ -243,16 +243,28 @@ async function wakeUp(spokenRest = "", { silent = false } = {}) {
   waking = true;
   setState(S.WAKING);
 
-  // Oyun oynarken pencereyi one getirmek oyunu kucultur ve bozar.
-  // On planda tam ekran bir uygulama varsa DRA gorunmez kalir ve
-  // yalnizca SESLE cevap verir.
-  const onPlan = await system.foregroundWindow();
-  oyundaMiyiz = Boolean(onPlan?.fullscreen);
+  /*
+   * Oyun oynarken pencereyi one getirmek oyunu kucultur ve bozar.
+   * On planda TAM EKRAN bir uygulama varsa DRA gorunmez kalir ve
+   * yalnizca sesle cevap verir.
+   *
+   * Bu denetim yalnizca ARKA PLAN kipinde yapiliyor: yalnizca orada
+   * pencereyi kendimiz one getiriyoruz. Her uyanista bir PowerShell
+   * cagrisi beklemek uyanmayi gereksiz yere yavaslatirdi.
+   */
+  oyundaMiyiz = false;
+  if (arkaPlandaMi()) {
+    const onPlan = await system.foregroundWindow();
+    oyundaMiyiz = Boolean(onPlan?.fullscreen);
 
-  if (oyundaMiyiz) {
-    hud.log("system", `${onPlan.process || "Tam ekran uygulama"} onde — arka planda kaliyorum.`);
-  } else if (arkaPlandaMi()) {
-    system.showWindow();
+    if (oyundaMiyiz) {
+      hud.log(
+        "system",
+        `${onPlan.process || "Tam ekran uygulama"} onde — arka planda kaliyorum.`,
+      );
+    } else {
+      system.showWindow();
+    }
   }
 
   if (store.bootSequence) await hud.playBoot();
@@ -1818,15 +1830,13 @@ function boot() {
   hud.setPrivacyPill("off");
   hud.setGauge("engine", 100, "yerel", "ok");
   bindDesktopEvents();
-  connectServer();
 
-  // Ilk acilista tum yetkiler tek ekranda soruluyor. Bir kez gosterilir;
-  // sonra DRA ihtiyac aninda tek tek sorar.
-  if (!store.firstRunDone) {
-    // Sunucu baglantisi kurulsun diye kisa bir gecikme; izin listesi
-    // oradan geliyor.
-    setTimeout(() => panel.showFirstRun(), 900);
-  }
+  // Ilk acilista tum yetkiler tek ekranda soruluyor. Izin listesi
+  // sunucudan geldigi icin BAGLANTI KURULDUKTAN SONRA gosteriliyor;
+  // sabit bir gecikme yavas makinelerde ekrani hic gostermiyordu.
+  connectServer().finally(() => {
+    if (!store.firstRunDone) panel.showFirstRun();
+  });
 
   dom.btnVoice.setAttribute("aria-pressed", String(store.voiceEnabled));
   dom.btnMic.setAttribute("aria-pressed", "false");

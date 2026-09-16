@@ -173,26 +173,45 @@ export async function foreground() {
 [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
 [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out W.U+RECT r);
 [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+[DllImport("user32.dll")] public static extern bool GetWindowPlacement(IntPtr h, ref W.U+WINDOWPLACEMENT p);
+[DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr h, uint f);
+[DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr m, ref W.U+MONITORINFO i);
 public struct RECT { public int Left, Top, Right, Bottom; }
+public struct POINT { public int X, Y; }
+public struct WINDOWPLACEMENT { public int length, flags, showCmd; public POINT min, max; public RECT normal; }
+public struct MONITORINFO { public int cbSize; public RECT monitor, work; public uint flags; }
 '@
-    Add-Type -AssemblyName System.Windows.Forms
     $h = [W.U]::GetForegroundWindow()
     $n = [W.U]::GetWindowTextLength($h)
     $sb = New-Object System.Text.StringBuilder ($n + 1)
     [void][W.U]::GetWindowText($h, $sb, $sb.Capacity)
+
     $r = New-Object W.U+RECT
     [void][W.U]::GetWindowRect($h, [ref]$r)
+
+    $wp = New-Object W.U+WINDOWPLACEMENT
+    $wp.length = [System.Runtime.InteropServices.Marshal]::SizeOf($wp)
+    [void][W.U]::GetWindowPlacement($h, [ref]$wp)
+
+    # Pencerenin BULUNDUGU ekran; birincil ekran degil.
+    $mon = [W.U]::MonitorFromWindow($h, 2)
+    $mi = New-Object W.U+MONITORINFO
+    $mi.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($mi)
+    [void][W.U]::GetMonitorInfo($mon, [ref]$mi)
+
     $pid2 = 0
     [void][W.U]::GetWindowThreadProcessId($h, [ref]$pid2)
     $p = Get-Process -Id $pid2 -ErrorAction SilentlyContinue
-    $ekran = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+
     [pscustomobject]@{
       title = $sb.ToString()
       process = $(if ($p) { $p.ProcessName } else { '' })
       width = $r.Right - $r.Left
       height = $r.Bottom - $r.Top
-      screenWidth = $ekran.Width
-      screenHeight = $ekran.Height
+      screenWidth = $mi.monitor.Right - $mi.monitor.Left
+      screenHeight = $mi.monitor.Bottom - $mi.monitor.Top
+      workHeight = $mi.work.Bottom - $mi.work.Top
+      maximized = ($wp.showCmd -eq 3)
     } | ConvertTo-Json -Compress
   `;
 
@@ -205,14 +224,27 @@ public struct RECT { public int Left, Top, Right, Bottom; }
   }
   if (!d) return null;
 
-  // Tam ekran: pencere ekranin tamamini (ya da neredeyse tamamini) kapliyor.
-  // Birkac piksel tolerans birakiyoruz; kenarliksiz pencereler birebir olmuyor.
-  const tamEkran =
-    d.width >= d.screenWidth - 2 && d.height >= d.screenHeight - 2;
+  /*
+   * TAM EKRAN ile BUYUTULMUS (maximize) ayni sey degil.
+   *
+   * GetWindowRect buyutulmus pencerelerde gorunmez yeniden boyutlandirma
+   * kenarligini de sayiyor; olculer ekrani asiyor. Yalnizca boyuta
+   * bakinca her buyutulmus pencere "oyun" sayiliyor ve DRA hic
+   * gorunmuyordu. Iki ek olcut:
+   *   - Windows pencereyi BUYUTULMUS olarak isaretlemisse tam ekran degil.
+   *   - Tam ekran uygulama gorev cubugunu da kapatir; yani yuksekligi
+   *     calisma alanindan (work) buyuk olmali.
+   */
+  const gorevCubuguKapali = d.workHeight > 0 && d.height > d.workHeight;
+  const ekraniKapliyor =
+    d.height >= d.screenHeight - 2 && d.width >= d.screenWidth - 2;
+
+  const tamEkran = !d.maximized && ekraniKapliyor && gorevCubuguKapali;
 
   return {
     title: d.title || "",
     process: d.process || "",
+    maximized: Boolean(d.maximized),
     fullscreen: Boolean(tamEkran),
   };
 }

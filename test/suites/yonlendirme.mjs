@@ -60,6 +60,9 @@ const CASES = [
   ["youtubede kara murat aç","youtube-ac"],
   ["spotifyden jazz aç","muzik-ac"],["müzik aç","muzik-ac"],
   ["ekranı kilitle","ekrani-kilitle"],
+  // GERCEK SORULAR komut onerisine dusmemeli; arastirmaya gitmeli.
+  ["eyfel kulesi kaç metre",null],["bugün dolar kaç lira",null],
+  ["fotosentez nedir",null],["türkiye'nin nüfusu ne kadar",null],
   ["ayarları aç","panel-ac"],["ayarlar","panel-ac"],
   ["sesini kapat","sesi-kapat"],["sus","sesi-kapat"],["sessiz ol","sesi-kapat"],
   ["sesini aç","sesi-ac"],

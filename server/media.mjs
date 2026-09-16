@@ -27,11 +27,13 @@ export async function findVideo(query) {
   const q = String(query || "").trim();
   if (!q) throw new Error("Bos arama.");
 
-  const url = `${BASE}/results?${new URLSearchParams({
-    search_query: q,
-    // Yalnizca video sonuclari: kanal ve oynatma listeleri karismasin.
-    sp: "EgIQAQ%3D%3D",
-  })}`;
+  /*
+   * "sp" ZATEN yuzde-kodlu bir deger. URLSearchParams'a verilirse
+   * yeniden kodluyor (%3D → %253D) ve YouTube suzgeci hic uygulamiyor.
+   * Bu yuzden ayri ekleniyor.
+   */
+  const url = `${BASE}/results?${new URLSearchParams({ search_query: q })}` +
+    "&sp=EgIQAQ%3D%3D";
 
   let res;
   try {

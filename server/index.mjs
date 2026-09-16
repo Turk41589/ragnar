@@ -160,9 +160,17 @@ async function runControl(body) {
       // Ileri/geri sarma sanal medya tuslarinda yok; YouTube'un kendi
       // kisayoslari kullaniliyor (l = +10sn, j = -10sn) ve bunun icin
       // tarayici penceresi one getiriliyor.
-      const ileri = Number(body.seconds ?? 10) >= 0;
-      const kere = Math.max(1, Math.min(12, Math.round(Math.abs(Number(body.seconds ?? 10)) / 10)));
-      return control.sendKeysTo(body.window || "YouTube", (ileri ? "l" : "j").repeat(kere));
+      // YouTube kisayolu 10'ar saniye atliyor; istenen sure 10'un kati
+      // degilse UYGULANAN sureyi donduruyoruz. Aksi halde DRA "25 saniye
+      // sardim" deyip aslinda 30 sariyordu.
+      const istenen = Number(body.seconds ?? 10);
+      const ileri = istenen >= 0;
+      const kere = Math.max(1, Math.min(12, Math.round(Math.abs(istenen) / 10)));
+      const sonuc = await control.sendKeysTo(
+        body.window || "YouTube",
+        (ileri ? "l" : "j").repeat(kere),
+      );
+      return { ...sonuc, applied: kere * 10, forward: ileri };
     }
     case "keys":
       return control.sendKeysTo(body.window, body.keys);
@@ -617,13 +625,19 @@ const server = createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/control/foreground" && req.method === "POST") {
-    return handleAction(req, res, async () => ({ foreground: await control.foreground() }));
+    return handleAction(req, res, async () => {
+      // On plandaki pencerenin basligi ve uygulamasi da bir erisim:
+      // yetki olmadan okunmamali.
+      await permissions.require("kontrol");
+      return { foreground: await control.foreground() };
+    });
   }
 
   if (url.pathname === "/api/media/find" && req.method === "POST") {
-    return handleAction(req, res, async (body) => ({
-      video: await media.findVideo(body.query),
-    }));
+    return handleAction(req, res, async (body) => {
+      await permissions.require("kontrol");
+      return { video: await media.findVideo(body.query) };
+    });
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {

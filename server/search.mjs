@@ -46,24 +46,45 @@ function cleanUrl(href) {
  * dogrulamasini mumkun kiliyor — bilginin nereden geldigi gorunur olsun.
  */
 function parseResults(html, limit) {
-  const kayitlar = [];
+  /*
+   * Baslik ve ozeti AYNI SIRADA okuyup ONCE eslestiriyoruz, sonra
+   * eliyoruz. Onceki hali once eliyor, sonra ozetleri indeksle
+   * bagliyordu; elenen her kayit sonrakilerin ozetini kaydiriyor ve
+   * kartta bir sitenin baglantisi baska bir sitenin ozetiyle
+   * gorunuyordu.
+   */
+  const basliklar = [];
   const re = /class="result__a"\s+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
   let m;
-  while ((m = re.exec(html)) && kayitlar.length < limit) {
-    const url = cleanUrl(m[1]);
-    const baslik = stripHtml(m[2]);
-    if (!url || !baslik) continue;
-    // Ayni siteden ust uste kayitlar yerine cesitlilik.
-    if (kayitlar.some((k) => new URL(k.url).hostname === new URL(url).hostname)) continue;
-    kayitlar.push({ title: baslik, url, site: new URL(url).hostname.replace(/^www\./, "") });
+  while ((m = re.exec(html))) {
+    basliklar.push({ href: m[1], title: stripHtml(m[2]) });
   }
 
-  // Ozetleri ayri tariyoruz; sirasi basliklarla ayni.
   const ozetler = [];
   const re2 = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
   let m2;
   while ((m2 = re2.exec(html))) ozetler.push(stripHtml(m2[1]));
-  for (const [i, k] of kayitlar.entries()) k.snippet = ozetler[i] || "";
+
+  const kayitlar = [];
+  const siteler = new Set();
+
+  for (const [i, ham] of basliklar.entries()) {
+    if (kayitlar.length >= limit) break;
+    const url = cleanUrl(ham.href);
+    if (!url || !ham.title) continue;
+
+    let site;
+    try {
+      site = new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+      continue;
+    }
+    // Ayni siteden ust uste kayitlar yerine cesitlilik.
+    if (siteler.has(site)) continue;
+    siteler.add(site);
+
+    kayitlar.push({ title: ham.title, url, site, snippet: ozetler[i] || "" });
+  }
 
   return kayitlar;
 }
@@ -230,3 +251,6 @@ export async function search(query) {
     kind: "sonuc",
   };
 }
+
+/** Testler icin: saf cozumleme islevleri. */
+export const _internal = { parseResults, cleanUrl, stripHtml };
