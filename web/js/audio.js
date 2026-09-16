@@ -4,6 +4,8 @@
  * bu veriyle canlanir. Ses tanima ayri bir kanaldan (speech.js) yurur.
  */
 
+import { acquireStream, releaseStream } from "./mic-capture.js";
+
 let ctx = null;
 let analyser = null;
 let stream = null;
@@ -15,13 +17,10 @@ export async function startMeter() {
   if (!navigator.mediaDevices?.getUserMedia) return false;
 
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
+    // PAYLASILAN akisi kullaniyoruz. Ayri bir getUserMedia acmak
+    // Windows'ta ikinci akisin sessiz gelmesine yol aciyordu: gosterge
+    // oynuyor ama motora sifirlar gidiyordu.
+    stream = await acquireStream();
   } catch (err) {
     // Seviye gostergesi sustuysa is durmaz; asil yakalama ayri aciliyor
     // ve orada hata SEBEBIYLE birlikte bildiriliyor. Yine de sessiz
@@ -46,7 +45,9 @@ export async function startMeter() {
 }
 
 export function stopMeter() {
-  stream?.getTracks().forEach((track) => track.stop());
+  // Akis PAYLASILIYOR: parcalarini dogrudan durdurursak tanima da
+  // susar. Birakmayi sayaca birakiyoruz; son kullanan kapatir.
+  if (stream) releaseStream();
   ctx?.close().catch(() => {});
   ctx = null;
   analyser = null;

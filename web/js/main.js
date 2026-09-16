@@ -540,7 +540,7 @@ function arastirmaSun(r) {
 
   hud.logCard({
     title: `Arastirma: ${r.query}`,
-    subtitle: `${r.results?.length || 0} kaynak`,
+    subtitle: `${r.provider || "?"} — ${r.results?.length || 0} kaynak`,
     sections: bolumler,
   });
 
@@ -1188,8 +1188,27 @@ const ctx = {
       const sonuc = await system.richSearch(query, 4);
       return arastirmaSun(sonuc);
     } catch (err) {
-      // Arastirma yapilamadiysa (ag yok, sonuc yok) kullaniciyi elde
-      // birakmiyoruz: ne yapabildigimizi soyluyoruz.
+      /*
+       * Arastirma yapilamadiysa kullaniciyi elde birakmiyoruz. Hangi
+       * kaynaklarin denendigi de ekrana yaziliyor: "arastirmiyor"
+       * sikayetini tahminle degil sebeple konusabilmek icin.
+       */
+      if (err?.code === "NO_SOURCE" && Array.isArray(err.tried)) {
+        hud.logCard({
+          title: "Arastirma yapilamadi",
+          subtitle: query,
+          sections: [
+            {
+              note: "Hicbir kaynaga ulasamadim. Internet baglantinizi ve " +
+                "guvenlik duvarini kontrol edin.",
+              level: "error",
+            },
+            { heading: "Denenen kaynaklar", items: err.tried },
+          ],
+        });
+        return "Hicbir arastirma kaynagina ulasamadim; sebepleri ekrana yazdim.";
+      }
+
       const sebep = err?.code === "NO_RESULT"
         ? `"${query}" icin bir sey bulamadim.`
         : `Arastiramadim (${err.message}).`;
@@ -1335,6 +1354,25 @@ const ctx = {
         (stats.lastError ? `, son hata: ${stats.lastError}` : ""),
     ];
 
+    /*
+     * YAKALAMA OLCUMU — "ses gidiyor ama cevap yok" sikayetini tahminle
+     * degil olcumle ayirt etmek icin. Gostergenin oynamasi sesin MOTORA
+     * ulastigi anlamina gelmiyor: gosterge ayri bir dugumden besleniyor.
+     */
+    const yakalama = speech.micHealth?.();
+    if (yakalama) {
+      const gecen = yakalama.lastChunkAt
+        ? Math.round((Date.now() - yakalama.lastChunkAt) / 1000)
+        : null;
+      lines.push(
+        `Motora giden ses: ${yakalama.chunks} parca` +
+          (gecen === null ? " (hic gelmedi)" : `, sonuncusu ${gecen} sn once`),
+        `Parcalardaki en yuksek seviye: ${(yakalama.peak * 100).toFixed(1)}%`,
+        `Ornekleme: ${yakalama.contextRate || "—"} Hz` +
+          (yakalama.resampled ? " → 16000 Hz'e indiriliyor" : ""),
+      );
+    }
+
     hud.log("system", lines.join("\n"));
 
     // Yorum: en olasi sorunu isaret et.
@@ -1349,6 +1387,22 @@ const ctx = {
 
     if (!speech.speechSupported) {
       hud.log("system", "Bu tarayicida ses tanima yok. Chrome ya da Edge deneyin; yazarak kullanmaya devam edebilirsiniz.");
+    } else if (yakalama && speech.isListening() && yakalama.chunks === 0) {
+      // En sinsi durum: gosterge oynuyor ama motora TEK PARCA bile
+      // gitmiyor. Bunu ayrica soylemek gerekiyor.
+      hud.log(
+        "system",
+        "Mikrofon acik gorunuyor ama ses motora HIC ulasmiyor. Bu genelde " +
+          "ses cihazinin ikinci bir akis vermemesinden olur: Windows ses " +
+          "ayarlarindan giris cihazini degistirip tekrar deneyin.",
+      );
+    } else if (yakalama && speech.isListening() && yakalama.peak < 0.01) {
+      hud.log(
+        "system",
+        "Ses parcalari motora ulasiyor ama icleri neredeyse SESSIZ " +
+          `(en yuksek %${(yakalama.peak * 100).toFixed(1)}). Windows'ta yanlis ` +
+          "giris cihazi secili olabilir ya da mikrofon kisik olabilir.",
+      );
     } else if (speech.isListening() && sinceResult > 20) {
       hud.log(
         "system",

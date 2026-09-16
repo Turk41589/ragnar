@@ -9,7 +9,7 @@
 
 import { emit, state } from "./state.js";
 import { store } from "./store.js";
-import { startCapture, stopCapture, capturing } from "./mic-capture.js";
+import { startCapture, stopCapture, capturing, captureHealth } from "./mic-capture.js";
 import * as system from "./system.js";
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -113,6 +113,11 @@ if (embedded) {
     if (!embeddedRunning) return;
     handleRecognitionResult(data);
   });
+}
+
+/** Mikrofon yakalamasinin olculmus durumu (teshis icin). */
+export function micHealth() {
+  return captureHealth();
 }
 
 /** Gomulu motorla dinlemeyi baslatir. */

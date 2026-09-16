@@ -116,68 +116,211 @@ async function pageImage(url) {
  * Zengin arama: birkac kaynak, ozetleri ve onizleme gorselleriyle.
  * `search()` tek cumlelik yanit icin; bu ise ekrana kart basmak icin.
  */
+/* ------------------------------------------------------------ kaynaklar */
+
+/**
+ * Adresler degisken: testler yerel taklitlere yonlendirebilsin.
+ */
+let ENDPOINTS = {
+  wiki: "https://tr.wikipedia.org/api/rest_v1/page/summary/",
+  wikiSearch: "https://tr.wikipedia.org/w/api.php",
+  ddgApi: "https://api.duckduckgo.com/",
+  ddgHtml: "https://html.duckduckgo.com/html/",
+  ddgLite: "https://lite.duckduckgo.com/lite/",
+};
+
+export function _setEndpointsForTests(next) {
+  ENDPOINTS = next ? { ...ENDPOINTS, ...next } : {
+    wiki: "https://tr.wikipedia.org/api/rest_v1/page/summary/",
+    wikiSearch: "https://tr.wikipedia.org/w/api.php",
+    ddgApi: "https://api.duckduckgo.com/",
+    ddgHtml: "https://html.duckduckgo.com/html/",
+    ddgLite: "https://lite.duckduckgo.com/lite/",
+  };
+}
+
+/** Tarayiciya benzeyen basliklar — ciplak istekler cogu zaman 403 aliyor. */
+const BROWSER_HEADERS = {
+  "user-agent": UA,
+  accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "accept-language": "tr-TR,tr;q=0.9,en;q=0.8",
+};
+
+/**
+ * Wikipedia: olgusal sorularin en guvenilir kaynagi.
+ * Anahtar istemiyor, engellemiyor, ozet + gorsel + bag veriyor.
+ */
+async function fromWikipedia(q) {
+  // Once baslik ariyoruz; dogrudan ozet ucu tam eslesme istiyor.
+  const ara = `${ENDPOINTS.wikiSearch}?` + new URLSearchParams({
+    action: "query", list: "search", srsearch: q, srlimit: "3",
+    format: "json", origin: "*",
+  });
+
+  const res = await fetch(ara, {
+    headers: { "user-agent": UA },
+    signal: AbortSignal.timeout(9000),
+  });
+  if (!res.ok) throw new Error(`Wikipedia ${res.status}`);
+
+  const data = await res.json();
+  const bulunan = data?.query?.search || [];
+  if (!bulunan.length) throw Object.assign(new Error("yok"), { code: "NO_RESULT" });
+
+  const ozetler = await Promise.all(
+    bulunan.slice(0, 3).map(async (k) => {
+      try {
+        const r = await fetch(ENDPOINTS.wiki + encodeURIComponent(k.title), {
+          headers: { "user-agent": UA },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok) return null;
+        const d = await r.json();
+        return {
+          title: d.title,
+          extract: d.extract,
+          url: d.content_urls?.desktop?.page ||
+            `https://tr.wikipedia.org/wiki/${encodeURIComponent(k.title)}`,
+          image: d.thumbnail?.source || d.originalimage?.source || null,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  const gecerli = ozetler.filter((x) => x?.extract);
+  if (!gecerli.length) throw Object.assign(new Error("yok"), { code: "NO_RESULT" });
+
+  return {
+    provider: "Wikipedia",
+    summary: { text: gecerli[0].extract, source: "Wikipedia", url: gecerli[0].url },
+    results: gecerli.map((x) => ({
+      title: x.title,
+      url: x.url,
+      site: "tr.wikipedia.org",
+      snippet: x.extract.slice(0, 220),
+    })),
+    images: gecerli
+      .filter((x) => x.image)
+      .map((x) => ({ src: x.image, site: x.title, url: x.url })),
+  };
+}
+
+/** DuckDuckGo anlik cevap ucu — kisa tanimlar ve hesaplamalar. */
+async function fromDdgApi(q) {
+  const res = await fetch(
+    `${ENDPOINTS.ddgApi}?` + new URLSearchParams({
+      q, format: "json", no_html: "1", skip_disambig: "1",
+    }),
+    { headers: { "user-agent": UA }, signal: AbortSignal.timeout(9000) },
+  );
+  if (!res.ok) throw new Error(`DuckDuckGo ${res.status}`);
+
+  const data = await res.json();
+  const ozet = (data.AbstractText || "").trim();
+  const ilgili = (data.RelatedTopics || []).filter((x) => x?.Text && x?.FirstURL);
+
+  if (!ozet && !ilgili.length) throw Object.assign(new Error("yok"), { code: "NO_RESULT" });
+
+  const gorsel = data.Image
+    ? (data.Image.startsWith("http") ? data.Image : `https://duckduckgo.com${data.Image}`)
+    : null;
+
+  return {
+    provider: "DuckDuckGo",
+    summary: ozet
+      ? { text: ozet, source: data.AbstractSource || "DuckDuckGo", url: data.AbstractURL || null }
+      : null,
+    results: ilgili.slice(0, 4).map((x) => {
+      let site = "duckduckgo.com";
+      try {
+        site = new URL(x.FirstURL).hostname.replace(/^www\./, "");
+      } catch { /* adres bozuksa varsayilan kalsin */ }
+      return { title: x.Text.split(" - ")[0], url: x.FirstURL, site, snippet: x.Text };
+    }),
+    images: gorsel ? [{ src: gorsel, site: data.AbstractSource || "DuckDuckGo" }] : [],
+  };
+}
+
+/** DuckDuckGo sonuc sayfasi — en genis kapsam ama engellenmeye acik. */
+async function fromDdgHtml(q, limit) {
+  let res;
+  try {
+    res = await fetch(ENDPOINTS.ddgHtml, {
+      method: "POST",
+      headers: {
+        ...BROWSER_HEADERS,
+        "content-type": "application/x-www-form-urlencoded",
+        referer: "https://duckduckgo.com/",
+      },
+      body: new URLSearchParams({ q }).toString(),
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch (err) {
+    throw new Error(`DuckDuckGo'ya ulasilamadi: ${err.message}`);
+  }
+
+  if (!res.ok) throw new Error(`Arama servisi ${res.status} dondu.`);
+
+  const sonuclar = parseResults(await res.text(), limit);
+  if (!sonuclar.length) throw Object.assign(new Error("yok"), { code: "NO_RESULT" });
+
+  return { provider: "DuckDuckGo", summary: null, results: sonuclar, images: [] };
+}
+
 export async function richSearch(query, { limit = 4, withImages = true } = {}) {
   const q = (query || "").trim();
   if (!q) throw new Error("Bos arama.");
 
-  let ozet = null;
-  let ozetGorsel = null;
+  /*
+   * TEK KAYNAGA BAGLI KALMIYORUZ.
+   *
+   * DuckDuckGo'nun HTML ucu tarayici olmayan isteklere sik sik 403
+   * veriyor; tek kaynak oldugunda arastirma tamamen calismiyordu.
+   * Kaynaklar sirayla deneniyor, ilk cevap veren kazaniyor. Hangisinin
+   * cevapladigi da doniyor: bilginin nereden geldigi gorunur olmali.
+   */
+  const zincir = [
+    ["Wikipedia", () => fromWikipedia(q)],
+    ["DuckDuckGo anlik cevap", () => fromDdgApi(q)],
+    ["DuckDuckGo sonuclari", () => fromDdgHtml(q, limit)],
+  ];
 
-  // Anlik cevap varsa en uste koyuyoruz.
-  try {
-    const res = await fetch(
-      "https://api.duckduckgo.com/?format=json&no_html=1&skip_disambig=1&q=" +
-        encodeURIComponent(q),
-      { headers: { "user-agent": UA }, signal: AbortSignal.timeout(9000) },
-    );
-    if (res.ok) {
-      const data = await res.json();
-      if ((data.AbstractText || "").trim()) {
-        ozet = {
-          text: data.AbstractText.trim(),
-          source: data.AbstractSource || "DuckDuckGo",
-          url: data.AbstractURL || null,
-        };
+  const denenenler = [];
+  for (const [ad, calistir] of zincir) {
+    try {
+      const sonuc = await calistir();
+      if (!sonuc.summary && !sonuc.results?.length) continue;
+
+      // Gorsel yoksa sonuc sayfalarindan onizleme cikarmayi deniyoruz.
+      let gorseller = sonuc.images || [];
+      if (withImages && !gorseller.length && sonuc.results?.length) {
+        const adaylar = sonuc.results.slice(0, 3);
+        const bulunan = await Promise.all(adaylar.map((k) => pageImage(k.url)));
+        gorseller = bulunan
+          .map((src, i) => (src ? { src, site: adaylar[i].site, url: adaylar[i].url } : null))
+          .filter(Boolean);
       }
-      if (data.Image) {
-        ozetGorsel = data.Image.startsWith("http")
-          ? data.Image
-          : `https://duckduckgo.com${data.Image}`;
-      }
+
+      return {
+        query: q,
+        provider: sonuc.provider,
+        summary: sonuc.summary,
+        results: (sonuc.results || []).slice(0, limit),
+        images: gorseller.slice(0, 4),
+        at: Date.now(),
+      };
+    } catch (err) {
+      denenenler.push(`${ad}: ${err.message}`);
     }
-  } catch {
-    /* anlik cevap yoksa sonuclarla devam */
   }
 
-  const res = await fetch("https://html.duckduckgo.com/html/", {
-    method: "POST",
-    headers: {
-      "user-agent": UA,
-      "content-type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({ q }).toString(),
-    signal: AbortSignal.timeout(12000),
-  });
-  if (!res.ok) throw new Error(`Arama servisi ${res.status} dondu.`);
-
-  const sonuclar = parseResults(await res.text(), limit);
-  if (!sonuclar.length && !ozet) {
-    throw Object.assign(new Error("Sonuc bulunamadi."), { code: "NO_RESULT" });
-  }
-
-  // Gorseller: ilk uc sonuc icin, hepsi ayni anda ve basarisizlik
-  // aramanin tamamini dusurmeden.
-  let gorseller = [];
-  if (withImages) {
-    const adaylar = sonuclar.slice(0, 3);
-    const bulunan = await Promise.all(adaylar.map((k) => pageImage(k.url)));
-    gorseller = bulunan
-      .map((src, i) => (src ? { src, site: adaylar[i].site, url: adaylar[i].url } : null))
-      .filter(Boolean);
-    if (ozetGorsel) gorseller.unshift({ src: ozetGorsel, site: ozet?.source || "DuckDuckGo" });
-  }
-
-  return { query: q, summary: ozet, results: sonuclar, images: gorseller, at: Date.now() };
+  // Hepsi basarisizsa NEDEN oldugunu tasiyoruz; "bulamadim" yetmez.
+  throw Object.assign(
+    new Error(`Hicbir kaynaga ulasamadim. ${denenenler.join(" | ")}`),
+    { code: "NO_SOURCE", tried: denenenler },
+  );
 }
 
 /**
