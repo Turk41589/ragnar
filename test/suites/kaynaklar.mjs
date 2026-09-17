@@ -16,6 +16,13 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+/**
+ * WhatsApp saniyesi. SABIT tarih YAZMIYORUZ: ozet penceresi son 7 gune
+ * bakiyor, sabit bir tarih birkac gun sonra pencerenin disina dusuyor ve
+ * test kendiliginden bozuluyordu. Simdi her kosuda "biraz once".
+ */
+const SANIYE = Math.floor(Date.now() / 1000) - 3600;
+
 export const name = "Musteri kaynaklari";
 export const standalone = true;
 
@@ -281,7 +288,7 @@ export async function run(_page, _base, t) {
           value: {
             contacts: [{ wa_id: "905550000001", profile: { name: "Zeynep" } }],
             messages: [
-              { id: "wamid.a", from: "905550000001", timestamp: "1789000000",
+              { id: "wamid.a", from: "905550000001", timestamp: String(SANIYE),
                 text: { body: "Siparisim ne zaman gelir?" } },
               // Metin olmayan mesaj atlanmali.
               { id: "wamid.b", from: "905550000002", type: "image", image: { id: "x" } },
@@ -293,7 +300,7 @@ export async function run(_page, _base, t) {
     t.eq(cikan.length, 1, "webhook govdesinden metin mesaji cikariliyor");
     t.eq(cikan[0].from, "Zeynep", "gonderen adi rehberden esleniyor");
     t.eq(cikan[0].handle, "+905550000001", "numara isaretleniyor");
-    t.eq(cikan[0].at, 1789000000000, "WhatsApp saniyesi milisaniyeye cevriliyor");
+    t.eq(cikan[0].at, SANIYE * 1000, "WhatsApp saniyesi milisaniyeye cevriliyor");
 
     // Webhook'tan gelen mesaj "cekildiginde" teslim edilmeli.
     const teslim = await wa.fetchMessages();
@@ -324,7 +331,7 @@ export async function run(_page, _base, t) {
     wa.handleWebhook({
       entry: [{ changes: [{ value: {
         contacts: [{ wa_id: "905550000003", profile: { name: "Ali" } }],
-        messages: [{ id: "wamid.c", from: "905550000003", timestamp: "1789000100",
+        messages: [{ id: "wamid.c", from: "905550000003", timestamp: String(SANIYE + 100),
           text: { body: "Fiyat listeniz var mi?" } }],
       } }] }],
     });

@@ -121,8 +121,30 @@ export function micHealth() {
 }
 
 /** Gomulu motorla dinlemeyi baslatir. */
+/**
+ * Bir sozu sure sinirina baglar.
+ *
+ * Neden: ana surecteki `stt.start()` bir kere hicbir zaman
+ * sonuclanmadi (tanimsiz degisken, async yurutucu icinde kaybolan
+ * hata). Arayuz o awaitte sonsuza kadar bekledi; ekranda "Mikrofon
+ * izni bekleniyor…" yazili kaldi, hicbir hata gorunmedi. Motorun
+ * kendi ic sure siniri fork'tan SONRA basliyor, yani oncesindeki bir
+ * asilmayi yakalamiyor. Bu, o bosluğu kapatan dis agi.
+ */
+function sureSinirli(soz, ms, mesaj) {
+  return Promise.race([
+    soz,
+    new Promise((_, red) => setTimeout(() => red(new Error(mesaj)), ms)),
+  ]);
+}
+
 async function startEmbedded() {
-  await window.dra.stt.start();
+  await sureSinirli(
+    window.dra.stt.start(),
+    30000,
+    "Ses motoru yanit vermedi. Uygulamayi kapatip yeniden acin; sorun surerse " +
+      "Ayar sekmesinden \"Ses tanimasini sina\" deyin.",
+  );
 
   // startCapture artik sebebi tasiyan bir hata atiyor; yutmuyoruz.
   await startCapture((pcm) => {

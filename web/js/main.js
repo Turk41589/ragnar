@@ -1660,6 +1660,19 @@ async function enableMic() {
   micBusy = true;
   try {
     await enableMicInner();
+  } catch (err) {
+    // enableMic cagrilarinin cogu "await"siz; buradan disari cikan bir
+    // hata hicbir yerde gorunmuyordu. Kullanicinin gordugu sey
+    // "mikrofon acilmiyor ama bir sey de yazmiyor" oluyordu.
+    const mesaj = err?.message || "Mikrofon acilamadi.";
+    hud.log("error", mesaj);
+    hud.sleepStatus("Mikrofon acilamadi", "error");
+    hud.toast(mesaj, 9000);
+    state.micEnabled = false;
+    dom.btnEnable.disabled = false;
+    dom.btnEnable.textContent = "Mikrofonu baslat";
+    hud.setPrivacyPill("off");
+    audio.stopMeter();
   } finally {
     micBusy = false;
   }
@@ -1877,7 +1890,43 @@ function pollLevel() {
 
 /* ============================================================ acilis */
 
+/**
+ * Kuresel hata agi.
+ *
+ * Arayuzdeki islerin cogu bir dugmeye basildiginda baslayan, sonucu
+ * beklenmeyen async cagrilar. Boyle bir cagri hata verdiginde tarayici
+ * onu yalnizca gelistirici konsoluna yaziyor — kullanici hicbir sey
+ * gormuyor, DRA da hicbir sey soylemiyor. "Calismiyor ama bir sey de
+ * yazmiyor" sikayetinin kaynagi buydu.
+ *
+ * Buradan sonra her yakalanmamis hata hem sohbete dusuyor hem de kisa
+ * bir uyari olarak gosteriliyor.
+ */
+function installErrorNet() {
+  const bildir = (nereden, hata) => {
+    const mesaj = hata?.message || String(hata || "bilinmeyen hata");
+    console.error(`[dra] ${nereden}:`, hata);
+    try {
+      hud.log("error", `Beklenmedik hata: ${mesaj}`);
+      hud.toast(`Hata: ${mesaj}`, 7000);
+    } catch {
+      /* HUD henuz hazir degilse en azindan konsolda duruyor */
+    }
+  };
+
+  window.addEventListener("unhandledrejection", (olay) => {
+    bildir("beklenmeyen soz reddi", olay.reason);
+  });
+
+  window.addEventListener("error", (olay) => {
+    // Kaynak yukleme hatalari (resim, ses) ayri bir sey; onlari gecelim.
+    if (olay.target && olay.target !== window) return;
+    bildir("betik hatasi", olay.error || olay.message);
+  });
+}
+
 function boot() {
+  installErrorNet();
   loadStore();
   applyTheme(store.theme);
   rebuildWakeWords();

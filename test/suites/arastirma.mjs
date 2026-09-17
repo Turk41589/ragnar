@@ -69,6 +69,7 @@ export async function run(_page, _base, t) {
       // denenmemeleri gerekiyor.
       ddgApi: "http://127.0.0.1:1/",
       ddgHtml: "http://127.0.0.1:1/",
+      ddgLite: "http://127.0.0.1:1/",
     });
 
     const r = await search.richSearch("istanbul", { limit: 3, withImages: true });
@@ -113,6 +114,7 @@ export async function run(_page, _base, t) {
       wiki: `${ddg.base}/page/summary/`,
       ddgApi: `${ddg.base}/ddg`,
       ddgHtml: "http://127.0.0.1:1/",
+      ddgLite: "http://127.0.0.1:1/",
     });
 
     const r = await search.richSearch("bir sey", { limit: 4, withImages: true });
@@ -147,6 +149,7 @@ export async function run(_page, _base, t) {
       wiki: `${html.base}/page/summary/`,
       ddgApi: `${html.base}/ddg`,
       ddgHtml: `${html.base}/html`,
+      ddgLite: `${html.base}/html`,
     });
 
     const r = await search.richSearch("baska sey", { limit: 4, withImages: false });
@@ -160,6 +163,70 @@ export async function run(_page, _base, t) {
     t.has(istek.govde, "baska+sey", "sorgu govdede gidiyor");
   } finally {
     html.server.close();
+  }
+
+  /* ============ 3a. HTML ucu de 403 verirse LITE sayfasi ========= *
+   * Kullanicida arastirma hic calismiyordu: html.duckduckgo.com
+   * tarayici olmayan isteklere 403 veriyor. Lite ucu ayni motorun sade
+   * sayfasi ve genelde bu engeli uygulamiyor. Adres tanimliydi ama
+   * hicbir yerde kullanilmiyordu.                                     */
+
+  const lite = await startFake((url, res) => {
+    if (url.pathname === "/w/api.php") return json(res, 500, {});
+    if (url.pathname === "/ddg") return json(res, 403, {});
+    if (url.pathname === "/html") return json(res, 403, {});
+    if (url.pathname === "/lite") {
+      res.writeHead(200, { "content-type": "text/html" });
+      // Lite sayfasinin gercek duzeni: tablo + result-link / result-snippet.
+      return res.end(`
+        <table>
+        <tr><td>1.&nbsp;</td><td>
+          <a rel="nofollow" href="https://bir.com/a" class='result-link'>Birinci baslik</a>
+        </td></tr>
+        <tr><td></td><td class='result-snippet'>birinci lite ozet</td></tr>
+        <tr><td>2.&nbsp;</td><td>
+          <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fiki.com%2Fb" class="result-link">Ikinci baslik</a>
+        </td></tr>
+        <tr><td></td><td class="result-snippet">ikinci lite ozet</td></tr>
+        <tr><td>3.&nbsp;</td><td>
+          <a rel="nofollow" href="https://bir.com/c" class='result-link'>Ayni siteden</a>
+        </td></tr>
+        <tr><td></td><td class='result-snippet'>ucuncu lite ozet</td></tr>
+        </table>
+      `);
+    }
+    return json(res, 404, {});
+  });
+
+  try {
+    search._setEndpointsForTests({
+      wikiSearch: `${lite.base}/w/api.php`,
+      wiki: `${lite.base}/page/summary/`,
+      ddgApi: `${lite.base}/ddg`,
+      ddgHtml: `${lite.base}/html`,
+      ddgLite: `${lite.base}/lite`,
+    });
+
+    const r = await search.richSearch("lite sorgusu", { limit: 4, withImages: false });
+    t.eq(r.results.length, 2, "HTML ucu 403 verince lite sayfasi devreye giriyor");
+    t.eq(r.results[0].url, "https://bir.com/a", "dogrudan adres oldugu gibi aliniyor");
+    t.eq(r.results[0].snippet, "birinci lite ozet", "ozet-kaynak eslesmesi dogru");
+    t.eq(r.results[1].url, "https://iki.com/b", "yonlendirme adresi cozuluyor");
+    t.ok(
+      !r.results.some((k, i) => r.results.findIndex((x) => x.site === k.site) !== i),
+      "ayni siteden tekrar eden kayit elenmis",
+    );
+
+    // Lite'a gercekten tarayici gibi gidilmeli; ciplak istek engelleniyor.
+    const istek = lite.kayit.find((k) => k.path === "/lite");
+    t.has(istek.headers["user-agent"] || "", "Mozilla", "lite'a tarayici kimligi gonderiliyor");
+    t.has(istek.govde, "lite+sorgusu", "sorgu govdede gidiyor");
+
+    // Siralama: lite ancak HTML ucu denendikten SONRA gelmeli.
+    const sira = lite.kayit.map((k) => k.path);
+    t.ok(sira.indexOf("/html") < sira.indexOf("/lite"), "lite son sirada deneniyor");
+  } finally {
+    lite.server.close();
   }
 
   /* ============ 3b. Wikipedia HER SORGUYU kapmamali ============== */
@@ -190,6 +257,7 @@ export async function run(_page, _base, t) {
       wiki: `${guncel.base}/page/summary/`,
       ddgApi: `${guncel.base}/ddg`,
       ddgHtml: "http://127.0.0.1:1/",
+      ddgLite: "http://127.0.0.1:1/",
     });
 
     const r = await search.richSearch("bugun hava nasil", { withImages: false });
@@ -241,6 +309,7 @@ export async function run(_page, _base, t) {
       wiki: `${komut.base}/page/summary/`,
       ddgApi: "http://127.0.0.1:1/",
       ddgHtml: "http://127.0.0.1:1/",
+      ddgLite: "http://127.0.0.1:1/",
     });
 
     const tek = await search.search("fotosentez nedir");
@@ -271,6 +340,7 @@ export async function run(_page, _base, t) {
       wiki: `${bos.base}/page/summary/`,
       ddgApi: `${bos.base}/ddg`,
       ddgHtml: `${bos.base}/html`,
+      ddgLite: `${bos.base}/html`,
     });
 
     let h = null;
@@ -311,6 +381,7 @@ export async function run(_page, _base, t) {
       wiki: `${gorselli.base}/page/summary/`,
       ddgApi: "http://127.0.0.1:1/",
       ddgHtml: "http://127.0.0.1:1/",
+      ddgLite: "http://127.0.0.1:1/",
     });
 
     const kapali = await search.richSearch("kedi", { withImages: false });
@@ -329,6 +400,7 @@ export async function run(_page, _base, t) {
     wiki: "http://127.0.0.1:1/",
     ddgApi: "http://127.0.0.1:1/",
     ddgHtml: "http://127.0.0.1:1/",
+    ddgLite: "http://127.0.0.1:1/",
   });
 
   let hata = null;
@@ -338,7 +410,7 @@ export async function run(_page, _base, t) {
     hata = err;
   }
   t.eq(hata?.code, "NO_SOURCE", "hepsi basarisizsa ayri bir hata kodu");
-  t.ok(Array.isArray(hata?.tried) && hata.tried.length === 3, "denenen kaynaklar sayiliyor");
+  t.ok(Array.isArray(hata?.tried) && hata.tried.length === 4, "denenen kaynaklar sayiliyor");
   t.has(hata?.message || "", "Wikipedia", "hangi kaynaklarin denendigi yaziyor");
 
   // Bos sorgu hicbir kaynaga gitmemeli.

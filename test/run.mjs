@@ -17,6 +17,8 @@ const onlyArg = process.argv.indexOf("--sadece");
 const ONLY = onlyArg !== -1 ? (process.argv[onlyArg + 1] || "").toLowerCase() : null;
 
 const SUITES = [
+  await import("./suites/kod.mjs"),
+  await import("./suites/kalici.mjs"),
   await import("./suites/komutlar.mjs"),
   await import("./suites/yonlendirme.mjs"),
   await import("./suites/arayuz.mjs"),

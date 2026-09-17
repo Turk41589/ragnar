@@ -9,8 +9,8 @@
  * (externalId) veriyor; tekrar cekimlerde o kimlik varsa atlanir.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
+import { oku, yaz } from "./kalici.mjs";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { classify } from "./sentiment.mjs";
@@ -32,18 +32,13 @@ let kayitlar = null;
 
 async function load() {
   if (kayitlar) return kayitlar;
-  try {
-    const data = JSON.parse(await readFile(FILE, "utf8"));
-    kayitlar = Array.isArray(data?.messages) ? data.messages : [];
-  } catch {
-    kayitlar = [];
-  }
+  const data = await oku(FILE, null);
+  kayitlar = Array.isArray(data?.messages) ? data.messages : [];
   return kayitlar;
 }
 
 async function save() {
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(FILE, JSON.stringify({ messages: kayitlar }, null, 2));
+  await yaz(FILE, { messages: kayitlar });
 }
 
 /**

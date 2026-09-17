@@ -9,7 +9,8 @@
  * Kayit data/videos.json icinde durur (depoya girmez).
  */
 
-import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
+import { oku, yaz } from "./kalici.mjs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -30,18 +31,13 @@ let kayitlar = null;
 
 async function load() {
   if (kayitlar) return kayitlar;
-  try {
-    const data = JSON.parse(await readFile(FILE, "utf8"));
-    kayitlar = Array.isArray(data?.videos) ? data.videos : [];
-  } catch {
-    kayitlar = [];
-  }
+  const data = await oku(FILE, null);
+  kayitlar = Array.isArray(data?.videos) ? data.videos : [];
   return kayitlar;
 }
 
 async function save() {
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(FILE, JSON.stringify({ videos: kayitlar }, null, 2));
+  await yaz(FILE, { videos: kayitlar });
 }
 
 /** "yarin 20:00" gibi degil; arayuz zaten tarih-saat veriyor. */

@@ -14,10 +14,20 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, open, readdir, rm, stat } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { Readable } from "node:stream";
+import { fileURLToPath } from "node:url";
+
+/**
+ * Bu dosyanin bulundugu klasor. Isci sureci buradan baslatiliyor.
+ * Eksikti: `start()` icinde kullanildigi halde hicbir yerde
+ * tanimlanmamisti; ses motoru her denemede ReferenceError ile
+ * duruyordu ve hata bir async yurutucu icinde kayboldugu icin
+ * "mikrofon acilmiyor ama bir sey de yazmiyor" seklinde goruluyordu.
+ */
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 const execFileAsync = promisify(execFile);
 
@@ -30,6 +40,8 @@ let workerReady = false;
 let modelDir = null;
 let busy = false;
 let lastError = null;
+/** Suren baslatma sozu — es zamanli cagrilar ayni sonucu paylasir. */
+let starting = null;
 
 /** Isci coktugunde ya da hata verdiginde haber verilecek yer. */
 let onEvent = () => {};
@@ -256,32 +268,51 @@ export async function useModelFrom(path) {
  */
 export function start(onResult) {
   if (workerReady) return status();
+  // Es zamanli iki cagri iki isci acmasin.
+  if (starting) return starting;
+  starting = doStart(onResult).finally(() => { starting = null; });
+  return starting;
+}
 
-  return new Promise(async (resolve, reject) => {
+async function doStart(onResult) {
+  try {
+    modelDir = modelDir || (await findModel(modelRoot()));
+  } catch {
+    modelDir = null;
+  }
+  if (!modelDir) {
+    throw Object.assign(new Error("Ses modeli kurulu degil."), { code: "NO_MODEL" });
+  }
+
+  lastError = null;
+  const workerPath = join(HERE, "stt-worker.mjs");
+
+  // Yurutucu BILEREK senkron: icine async koyulursa buradaki bir hata
+  // sozu hic sonuclandirmadan kaybolur ve cagiran sonsuza kadar bekler.
+  return new Promise((resolve, reject) => {
+    let bitti = false;
+    const sonlandir = (fn, arg) => { if (!bitti) { bitti = true; fn(arg); } };
+
+    let w;
     try {
-      modelDir = modelDir || (await findModel(modelRoot()));
-    } catch {
-      modelDir = null;
+      w = utilityProcess.fork(workerPath, [], { serviceName: "dra-ses-motoru" });
+    } catch (err) {
+      lastError = err?.message || "Ses motoru baslatilamadi.";
+      return reject(new Error(lastError));
     }
-    if (!modelDir) {
-      return reject(Object.assign(new Error("Ses modeli kurulu degil."), { code: "NO_MODEL" }));
-    }
-
-    lastError = null;
-    const workerPath = join(HERE, "stt-worker.mjs");
-    worker = utilityProcess.fork(workerPath, [], { serviceName: "dra-ses-motoru" });
+    worker = w;
 
     // Motor makul surede hazir olmazsa asili kalmayalim.
     const zamanAsimi = setTimeout(() => {
       stop();
-      reject(new Error("Ses motoru zamaninda baslamadi."));
+      sonlandir(reject, new Error("Ses motoru zamaninda baslamadi."));
     }, 12000);
 
-    worker.on("message", (message) => {
+    w.on("message", (message) => {
       if (message?.type === "ready") {
         clearTimeout(zamanAsimi);
         workerReady = true;
-        resolve(status());
+        sonlandir(resolve, null);
         return;
       }
       if (message?.type === "result") {
@@ -290,28 +321,38 @@ export function start(onResult) {
       }
       if (message?.type === "error") {
         lastError = message.message;
-        clearTimeout(zamanAsimi);
-        if (!workerReady) reject(new Error(message.message));
-        else onEvent({ type: "error", message: message.message });
+        if (!workerReady) {
+          clearTimeout(zamanAsimi);
+          // Baslarken hata veren isci arkada asili kalmasin.
+          stop();
+          sonlandir(reject, new Error(message.message));
+        } else {
+          onEvent({ type: "error", message: message.message });
+        }
       }
     });
 
-    worker.on("exit", (code) => {
+    w.on("exit", (code) => {
       clearTimeout(zamanAsimi);
-      const bekleniyordu = worker === null;
-      worker = null;
-      workerReady = false;
-      if (bekleniyordu || code === 0) return;
+      // Bu cikis BU iscinin mi? stop() sonrasi yeni bir isci baslatilmis
+      // olabilir; eski iscinin gec gelen cikisi yenisini oldurmemeli.
+      const bizimki = worker === w;
+      const beklenen = worker === null || !bizimki;
+      if (bizimki) {
+        worker = null;
+        workerReady = false;
+      }
+      if (beklenen || code === 0) return;
 
       // Yerel cokme: uygulama ayakta, kullaniciya durumu bildiriyoruz.
       lastError = lastError || `Ses motoru beklenmedik sekilde kapandi (kod ${code}).`;
       console.error(`[dra] ${lastError}`);
       onEvent({ type: "crashed", message: lastError });
-      reject(new Error(lastError));
+      sonlandir(reject, new Error(lastError));
     });
 
-    worker.postMessage({ type: "init", modelPath: modelDir });
-  });
+    w.postMessage({ type: "init", modelPath: modelDir });
+  }).then(() => status());
 }
 
 /** Motoru durdurur ve kaynaklari birakir. */

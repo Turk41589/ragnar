@@ -220,6 +220,34 @@ export async function run(_page, _base, t) {
         t.has(sonuc.hata, "final.mdl", `${ad}: hata neye bakildigini soyluyor`);
       }
     }
+    /* ------------------------------- motor GERCEKTEN baslatilabiliyor mu?
+     * Yukaridaki "model yokken hata ver" testi motorun ilk satirlarinda
+     * donuyordu; forkun yapildigi kod yoluna hic girmiyordu. Orada
+     * tanimsiz bir degisken vardi (HERE) ve hata bir async yurutucunun
+     * icinde kayboldugu icin start() hicbir zaman sonuclanmiyordu —
+     * kullanicida "mikrofon acilmiyor, hicbir sey de yazmiyor" demekti.
+     *
+     * Burada model YERINDE (yukaridaki sahte klasor) start() cagriliyor.
+     * Sahte model gercek Vosk'u tatmin etmeyecegi icin basarili olmasini
+     * beklemiyoruz; BEKLEDIGIMIZ, makul surede SONUCLANMASI ve hatanin
+     * bir programlama hatasi olmamasi.                                   */
+    const baslatma = await window.evaluate(() =>
+      Promise.race([
+        window.dra.stt.start().then(
+          () => ({ durum: "tamam", hata: "" }),
+          (err) => ({ durum: "hata", hata: String(err?.message || err) }),
+        ),
+        new Promise((r) => setTimeout(() => r({ durum: "asildi", hata: "" }), 25000)),
+      ]),
+    );
+    t.ok(baslatma.durum !== "asildi", "model varken start() asili kalmiyor");
+    for (const iz of ["is not defined", "is not a function", "Cannot read", "undefined is not"]) {
+      t.ok(
+        !baslatma.hata.includes(iz),
+        `start() programlama hatasi vermiyor (${iz})`,
+      );
+    }
+
     t.eq(arayuz.varsayilanMotor, "gomulu", "uygulamada varsayilan motor gomulu");
 
     /* ---------------------------------------------------------- IPC -- */

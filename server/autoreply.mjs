@@ -18,7 +18,7 @@
  * gidecegi kullanicinin yazdigi kuralla belli.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { oku, yaz } from "./kalici.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -38,21 +38,16 @@ let durum = null;
 
 async function load() {
   if (durum) return durum;
-  try {
-    const d = JSON.parse(await readFile(FILE, "utf8"));
-    durum = {
-      enabled: Boolean(d?.enabled),
-      rules: Array.isArray(d?.rules) ? d.rules : [],
-    };
-  } catch {
-    durum = { enabled: false, rules: [] };
-  }
+  const d = await oku(FILE, null);
+  durum = {
+    enabled: Boolean(d?.enabled),
+    rules: Array.isArray(d?.rules) ? d.rules : [],
+  };
   return durum;
 }
 
 async function save() {
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(FILE, JSON.stringify(durum, null, 2));
+  await yaz(FILE, durum);
 }
 
 function normalize(text) {

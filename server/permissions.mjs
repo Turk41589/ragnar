@@ -15,8 +15,8 @@
  * yeniden sorulmasin; ama her biri tek tikla geri alinabilir.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
+import { oku, yaz } from "./kalici.mjs";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -103,25 +103,21 @@ function load() {
 }
 
 async function doLoad() {
-  try {
-    const data = JSON.parse(await readFile(FILE, "utf8"));
-    if (data && typeof data.grants === "object") {
-      // Diskten geleni oldugu gibi kabul etmiyoruz: tanimadigimiz bir
-      // yetki adi dosyaya elle yazilmis olabilir.
-      for (const [scope, info] of Object.entries(data.grants)) {
-        if (SCOPES[scope] && info && Number.isFinite(info.grantedAt)) {
-          grants[scope] = { grantedAt: info.grantedAt };
-        }
+  // Dosya yoksa ya da bozuksa: izin verilmemis kabul ediyoruz.
+  const data = await oku(FILE, null);
+  if (data && typeof data.grants === "object") {
+    // Diskten geleni oldugu gibi kabul etmiyoruz: tanimadigimiz bir
+    // yetki adi dosyaya elle yazilmis olabilir.
+    for (const [scope, info] of Object.entries(data.grants)) {
+      if (SCOPES[scope] && info && Number.isFinite(info.grantedAt)) {
+        grants[scope] = { grantedAt: info.grantedAt };
       }
     }
-  } catch {
-    /* dosya yok ya da bozuk — izin verilmemis kabul ediyoruz */
   }
 }
 
 async function save() {
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(FILE, JSON.stringify({ grants }, null, 2));
+  await yaz(FILE, { grants });
 }
 
 /** Tum yetkiler ve durumlari — ayar ekranindaki liste icin. */

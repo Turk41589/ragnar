@@ -1,12 +1,14 @@
 /**
- * Web aramasi (varsayilan olarak KAPALI).
+ * Web aramasi.
  *
- * DRA'nin geri kalani hicbir dis servise baglanmaz. Bu modul o kuralin
- * tek istisnasi ve ancak kullanici ayarlardan acarsa devreye girer.
- * Istek tarayicidan degil sunucudan gider; boylece tarayici gecmisinize
- * ya da cerezlerinize dokunmaz.
+ * Kullanici istedigi icin artik HEP ACIK. Istek tarayicidan degil
+ * sunucudan gider; boylece tarayici gecmisinize ya da cerezlerinize
+ * dokunmaz.
  *
- * DuckDuckGo kullaniliyor: anahtar istemiyor ve arama gecmisi tutmuyor.
+ * Birden fazla kaynak sirayla deneniyor (Wikipedia, DuckDuckGo anlik
+ * cevap, DuckDuckGo sonuc sayfasi, DuckDuckGo lite). Tek kaynaga bagli
+ * kalmak kirilgandi: html.duckduckgo.com tarayici olmayan isteklere sik
+ * sik 403 veriyor ve arastirma tamamen calismiyordu.
  */
 
 const UA =
@@ -305,6 +307,84 @@ async function fromDdgHtml(q, limit) {
   return { provider: "DuckDuckGo", summary: null, results: sonuclar, images: [] };
 }
 
+/**
+ * DuckDuckGo "lite" sayfasi.
+ *
+ * Neden ayri bir kaynak: html.duckduckgo.com tarayici olmayan isteklere
+ * sik sik 403 veriyor — kullanicida arastirma tam olarak bu yuzden
+ * calismiyordu. Lite ucu cok daha sade bir sayfa dondurur ve ayni
+ * engellemeyi genelde uygulamaz. Adres zaten tanimliydi ama hicbir yerde
+ * kullanilmiyordu.
+ *
+ * Sayfa duzeni tablo tabanli:
+ *   <a ... class="result-link" href="...">Baslik</a>
+ *   <td class="result-snippet">Ozet</td>
+ * Oznitelik sirasi degisebildigi icin href ayri okunuyor.
+ */
+function parseLite(html, limit) {
+  const basliklar = [];
+  const re = /<a\b([^>]*\bclass=["'][^"']*result-link[^"']*["'][^>]*)>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html))) {
+    const href = /\bhref=["']([^"']+)["']/i.exec(m[1])?.[1];
+    const title = stripHtml(m[2]);
+    if (href && title) basliklar.push({ href, title });
+  }
+
+  const ozetler = [];
+  const re2 = /<td[^>]*\bclass=["'][^"']*result-snippet[^"']*["'][^>]*>([\s\S]*?)<\/td>/gi;
+  let m2;
+  while ((m2 = re2.exec(html))) ozetler.push(stripHtml(m2[1]));
+
+  const kayitlar = [];
+  const siteler = new Set();
+
+  for (const [i, ham] of basliklar.entries()) {
+    if (kayitlar.length >= limit) break;
+    // Lite bazen dogrudan adres, bazen yonlendirme veriyor; ikisi de olur.
+    const url = /^https?:\/\//i.test(ham.href) ? ham.href : cleanUrl(ham.href);
+    if (!url) continue;
+
+    let site;
+    try {
+      site = new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+      continue;
+    }
+    if (siteler.has(site)) continue;
+    siteler.add(site);
+
+    kayitlar.push({ title: ham.title, url, site, snippet: ozetler[i] || "" });
+  }
+
+  return kayitlar;
+}
+
+async function fromDdgLite(q, limit) {
+  let res;
+  try {
+    res = await fetch(ENDPOINTS.ddgLite, {
+      method: "POST",
+      headers: {
+        ...BROWSER_HEADERS,
+        "content-type": "application/x-www-form-urlencoded",
+        referer: "https://lite.duckduckgo.com/",
+      },
+      body: new URLSearchParams({ q }).toString(),
+      signal: AbortSignal.timeout(9000),
+    });
+  } catch (err) {
+    throw new Error(`DuckDuckGo lite'a ulasilamadi: ${err.message}`);
+  }
+
+  if (!res.ok) throw new Error(`Arama servisi (lite) ${res.status} dondu.`);
+
+  const sonuclar = parseLite(await res.text(), limit);
+  if (!sonuclar.length) throw Object.assign(new Error("yok"), { code: "NO_RESULT" });
+
+  return { provider: "DuckDuckGo", summary: null, results: sonuclar, images: [] };
+}
+
 export async function richSearch(query, { limit = 4, withImages = true } = {}) {
   const q = (query || "").trim();
   if (!q) throw new Error("Bos arama.");
@@ -321,6 +401,8 @@ export async function richSearch(query, { limit = 4, withImages = true } = {}) {
     ["Wikipedia", () => fromWikipedia(q)],
     ["DuckDuckGo anlik cevap", () => fromDdgApi(q)],
     ["DuckDuckGo sonuclari", () => fromDdgHtml(q, limit)],
+    // HTML ucu 403 verdiginde son sans: ayni motorun sade sayfasi.
+    ["DuckDuckGo lite", () => fromDdgLite(q, limit)],
   ];
 
   const denenenler = [];
@@ -405,4 +487,6 @@ export async function search(query) {
   };
 }
 
-export const _internal = { parseResults, cleanUrl, stripHtml, wikiUygunMu, basligiOrtusuyorMu };
+export const _internal = {
+  parseResults, parseLite, cleanUrl, stripHtml, wikiUygunMu, basligiOrtusuyorMu,
+};
