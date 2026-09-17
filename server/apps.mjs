@@ -8,7 +8,8 @@
  */
 
 import { exec, execFile } from "node:child_process";
-import { readFile, readdir, writeFile, mkdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { oku, yaz } from "./kalici.mjs";
 import { existsSync } from "node:fs";
 import { join, basename, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +19,9 @@ const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(HERE, "..", "data");
+// Testler gercek veri klasorunu kirletmesin diye disaridan verilebilir —
+// diger butun modullerde oyle, burasi atlanmisti.
+const DATA_DIR = process.env.DRA_DATA_DIR || join(HERE, "..", "data");
 const CACHE_FILE = join(DATA_DIR, "apps.json");
 
 /** Listeye girmemesi gereken kurulum/kaldirma kisayollari. */
@@ -228,8 +231,7 @@ export async function scanApps() {
   cache = dedupe(apps).map((app, i) => ({ id: `app-${i}`, ...app }));
 
   try {
-    await mkdir(DATA_DIR, { recursive: true });
-    await writeFile(CACHE_FILE, JSON.stringify({ scannedAt: Date.now(), apps: cache }, null, 2));
+    await yaz(CACHE_FILE, { scannedAt: Date.now(), apps: cache });
   } catch (err) {
     console.warn("[dra] uygulama listesi kaydedilemedi:", err.message);
   }
@@ -239,23 +241,15 @@ export async function scanApps() {
 /** Onbellekteki listeyi dondurur; yoksa diskten okur. */
 export async function listApps() {
   if (cache) return cache;
-  try {
-    const saved = JSON.parse(await readFile(CACHE_FILE, "utf8"));
-    if (Array.isArray(saved.apps)) cache = saved.apps;
-  } catch {
-    cache = null;
-  }
+  const saved = await oku(CACHE_FILE, null);
+  cache = Array.isArray(saved?.apps) ? saved.apps : null;
   return cache || [];
 }
 
 /** Listenin ne zaman tarandigi. */
 export async function scanInfo() {
-  try {
-    const saved = JSON.parse(await readFile(CACHE_FILE, "utf8"));
-    return { scannedAt: saved.scannedAt || null, count: saved.apps?.length || 0 };
-  } catch {
-    return { scannedAt: null, count: 0 };
-  }
+  const saved = await oku(CACHE_FILE, null);
+  return { scannedAt: saved?.scannedAt || null, count: saved?.apps?.length || 0 };
 }
 
 /* ---------------------------------------------------------- baslatma */

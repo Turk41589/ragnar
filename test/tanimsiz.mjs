@@ -307,3 +307,88 @@ export function scanFile(path) {
   for (const st of ast.body) walk(st, moduleScope);
   return bulunanlar;
 }
+
+/* ===================================================================
+ * Ek denetimler.
+ *
+ * Asagidakilerin hepsi bu projede GERCEKTEN yasanmis hata siniflari.
+ * Tekrar etmemeleri icin her kosuda araniyorlar.
+ * =================================================================== */
+
+/** Kaynak agacinda gezer. */
+function gez(node, gor) {
+  if (!node || typeof node.type !== "string") return;
+  gor(node);
+  for (const k of Object.keys(node)) {
+    if (k === "type" || k === "start" || k === "end" || k === "loc") continue;
+    const v = node[k];
+    if (Array.isArray(v)) { for (const c of v) if (c && typeof c.type === "string") gez(c, gor); }
+    else if (v && typeof v.type === "string") gez(v, gor);
+  }
+}
+
+function ayristir(path) {
+  try {
+    return parse(readFileSync(path, "utf8"), {
+      ecmaVersion: "latest", sourceType: "module", locations: true, allowHashBang: true,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ayni nesne icinde tekrarlanan anahtar.
+ *
+ * Yasandi: komut baglaminda `systemReport` iki kez tanimliydi; ikincisi
+ * birincisini eziyor ve "rapor ver" yanlis seyi dondurüyordu. Sessiz
+ * bir hata — ne uyari cikar ne de cokme olur.
+ */
+export function ayniAnahtarlar(path) {
+  const ast = ayristir(path);
+  if (!ast) return [];
+  const bulgular = [];
+  gez(ast, (node) => {
+    if (node.type !== "ObjectExpression") return;
+    const gorulen = new Map();
+    for (const pr of node.properties) {
+      if (pr.type !== "Property" || pr.computed) continue;
+      if (pr.kind === "get" || pr.kind === "set") continue;
+      const ad = pr.key.type === "Identifier" ? pr.key.name
+        : pr.key.type === "Literal" ? String(pr.key.value) : null;
+      if (ad === null) continue;
+      if (gorulen.has(ad)) {
+        bulgular.push({
+          path, line: pr.loc.start.line, name: ad,
+          message: `ayni nesnede tekrar ediyor (ilk: satir ${gorulen.get(ad)})`,
+        });
+      }
+      gorulen.set(ad, pr.loc.start.line);
+    }
+  });
+  return bulgular;
+}
+
+/**
+ * `new Promise(async …)`.
+ *
+ * Yasandi: ses motoru boyle yaziliydi. Yurutucunun icindeki bir hata
+ * sozu HIC sonuclandirmadan kayboluyor; cagiran sonsuza kadar bekliyor.
+ * Mikrofonun acilmamasinin ve hicbir hata gorunmemesinin sebebi buydu.
+ */
+export function asyncYurutucu(path) {
+  const ast = ayristir(path);
+  if (!ast) return [];
+  const bulgular = [];
+  gez(ast, (node) => {
+    if (node.type !== "NewExpression") return;
+    if (node.callee?.name !== "Promise") return;
+    const ilk = node.arguments?.[0];
+    if (!ilk || !ilk.async) return;
+    bulgular.push({
+      path, line: node.loc.start.line, name: "new Promise(async …)",
+      message: "async yurutucudaki hata sozu hic sonuclandirmaz",
+    });
+  });
+  return bulgular;
+}

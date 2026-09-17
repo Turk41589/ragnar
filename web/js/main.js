@@ -1923,6 +1923,14 @@ function installErrorNet() {
     if (olay.target && olay.target !== window) return;
     bildir("betik hatasi", olay.error || olay.message);
   });
+
+  // Notlar/ayarlar kaydedilemiyorsa kullanici bunu ancak uygulamayi
+  // kapatip acinca anlardi. store.js bir kez haber veriyor.
+  window.addEventListener("dra:store-error", (olay) => {
+    const mesaj = olay.detail?.message || "Ayarlar kaydedilemiyor.";
+    hud.log("error", mesaj);
+    hud.toast(mesaj, 9000);
+  });
 }
 
 function boot() {

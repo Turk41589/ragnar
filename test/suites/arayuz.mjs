@@ -478,9 +478,13 @@ export async function run(page, base, t, { external }) {
           ...kotu.map((url, i) => ({ title: `kotu ${i}`, url })),
           { title: "iyi", url: "https://ornek.com/a" },
         ],
+        // BILEREK yalnizca tehlikeli gorseller: gecerli bir dis adres
+        // koyarsak tarayici onu gercekten indirmeye calisir ve bu paketin
+        // "localhost disina istek atilmadi" olcumunu bozar. Gecerli
+        // adresin gectigi zaten guvenliAdres uzerinden dogrulaniyor.
         images: [
           { src: "javascript:alert(1)", url: "javascript:alert(1)", site: "kotu" },
-          { src: "https://ornek.com/r.png", url: "https://ornek.com/a", site: "iyi" },
+          { src: "vbscript:msgbox(1)", url: "data:text/html,x", site: "kotu2" },
         ],
       }],
     });
@@ -499,6 +503,7 @@ export async function run(page, base, t, { external }) {
       // Yardimci dogrudan da sinansin.
       dogrudan: kotu.map((u) => hud.guvenliAdres(u)),
       iyiGecti: hud.guvenliAdres("https://ornek.com/a"),
+      gorselGecer: hud.guvenliAdres("https://ornek.com/r.png"),
       goreli: hud.guvenliAdres("/js/hud.js"),
     };
   });
@@ -506,11 +511,61 @@ export async function run(page, base, t, { external }) {
   t.eq(suzgec.baglar, ["https://ornek.com/a"], "yalnizca http(s) bagi tiklanabilir oluyor");
   t.eq(suzgec.baglar.length, 1, "tehlikeli adresler bag olarak kurulmuyor");
   t.eq(suzgec.yazilar.length, 6, "elenen sonuclar sessizce yok olmuyor, basliklari duruyor");
-  t.eq(suzgec.gorseller, ["https://ornek.com/r.png"], "tehlikeli gorsel adresi yuklenmiyor");
-  t.eq(suzgec.gorselBaglar, ["https://ornek.com/a"], "tehlikeli gorsel bagi kurulmuyor");
+  t.eq(suzgec.gorseller, [], "tehlikeli gorsel adresi yuklenmiyor");
+  t.eq(suzgec.gorselBaglar, [], "tehlikeli gorsel bagi kurulmuyor");
+  t.eq(
+    suzgec.gorselGecer,
+    "https://ornek.com/r.png",
+    "gecerli gorsel adresi gecmeye devam ediyor",
+  );
   t.eq(suzgec.dogrudan, [null, null, null, null, null], "guvenliAdres hepsini eliyor");
   t.eq(suzgec.iyiGecti, "https://ornek.com/a", "normal adres gecmeye devam ediyor");
   t.eq(suzgec.goreli, null, "goreli adres kabul edilmiyor (mutlak http(s) sart)");
+
+  /* ------------------------------------------- kaydedilemeyen ayarlar
+   * Notlar, alarmlar ve ayarlar tarayici deposunda duruyor. Depo dolu
+   * ya da kapaliysa saveStore ESKIDEN sessizce geciyordu: kullanici not
+   * aliyor, alarm kuruyor, hicbiri kaydedilmiyor ve bunu ancak
+   * uygulamayi kapatip acinca anliyordu.                              */
+
+  const depoHatasi = await page.evaluate(async () => {
+    const st = await import("/js/store.js");
+    const gercek = localStorage.setItem.bind(localStorage);
+
+    const duyulan = [];
+    const dinleyici = (e) => duyulan.push(e.detail?.message || "");
+    window.addEventListener("dra:store-error", dinleyici);
+
+    // store.js bilerek console.error yaziyor (dogru davranis). Paketin
+    // "konsolda hata yok" olcumu bunu gercek bir hata sanmasin diye
+    // sinama suresince susturuyoruz.
+    const gercekHata = console.error;
+    console.error = () => {};
+
+    // Depo dolu gibi davran.
+    localStorage.setItem = () => {
+      const err = new Error("dolu");
+      err.name = "QuotaExceededError";
+      throw err;
+    };
+
+    st.saveStore();
+    st.saveStore();            // ikinci kez: tekrar bagirmamali
+    const hastaykenDurum = st.storeHealth().saveError;
+
+    localStorage.setItem = gercek;
+    st.saveStore();            // duzelince temizlenmeli
+    const duzeldiktenSonra = st.storeHealth().saveError;
+
+    console.error = gercekHata;
+    window.removeEventListener("dra:store-error", dinleyici);
+    return { duyulan, hastaykenDurum, duzeldiktenSonra };
+  });
+
+  t.eq(depoHatasi.duyulan.length, 1, "kaydedilemedigi BIR kez bildiriliyor (her seferinde degil)");
+  t.has(depoHatasi.duyulan[0] || "", "dolu", "sebep yaziyor (depo dolu)");
+  t.ok(depoHatasi.hastaykenDurum, "durum sorgulanabiliyor");
+  t.eq(depoHatasi.duzeldiktenSonra, null, "sorun gecince durum temizleniyor");
 
   /* ------------------------------------------------------- ag yalitimi */
   t.eq(external, [], "localhost disina hicbir istek atilmadi");

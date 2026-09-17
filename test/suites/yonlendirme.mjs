@@ -75,6 +75,49 @@ const CASES = [
   ["blorp zonk gribble",null],["roma neden düştü",null],["asdfgh",null],
 ];
 
+/**
+ * KOSULLU kurallar.
+ *
+ * Dokuz kural bir `guard` ardinda duruyor: moderasyon komutlari Kick
+ * acik degilse, uygulama komutlari o uygulama kurulu degilse, arastirma
+ * arama kapaliysa hic degerlendirilmiyor. Yukaridaki liste `explain`i
+ * baglamsiz cagirdigi icin bu kurallarin HICBIRI sinanmiyordu — yani
+ * uygulamanin en cakismaya acik bolgesi test disindaydi.
+ *
+ * Ozellikle "sustur": hem bilgisayarin sesini kismak hem de bir
+ * kullaniciya susturma vermek ayni kelime. Hangisinin kazandigi
+ * `priority` ile belirleniyor ve bu, bir kural siralamasi
+ * degistiginde sessizce bozulabilecek bir seydir.
+ */
+const KOSULLU = [
+  // Ses susturma BILGISAYARIN sesi; moderasyon degil.
+  ["bilgisayari sustur", "ses-sustur"],
+  ["sesi sustur", "ses-sustur"],
+  ["sessize al", "ses-sustur"],
+  ["mute yap", "ses-sustur"],
+
+  // Moderasyon: kime yapildigi belli olan komutlar.
+  ["ahmeti banla", "mod-banla"],
+  ["banla", "mod-banla"],
+  ["ahmeti 10 dakika sustur", "mod-sustur"],
+  ["ahmetin yasagini kaldir", "mod-ban-kaldir"],
+  ["sohbete yaz merhaba", "mod-yaz"],
+
+  // Parlaklik
+  ["ekrani karart", "parlaklik"],
+  ["parlakligi yuzde 50 yap", "parlaklik"],
+  ["ekran parlakligi", "parlaklik"],
+
+  // Kurulu uygulama: site acmaktan ONCE gelmeli.
+  ["spotify ac", "uygulama-ac"],
+  ["spotify kapat", "uygulama-kapat"],
+
+  // Arastirma
+  ["arastir istanbul nufusu", "web-arama"],
+  ["fotosentez nedir", "web-arama"],
+  ["einstein kimdir", "web-arama"],
+];
+
 export async function run(page, base, t) {
   await openApp(page, base);
 
@@ -90,4 +133,38 @@ export async function run(page, base, t) {
     const got = top && top.score >= THRESHOLD ? top.name : null;
     t.eq(got, expected, `"${text}"`);
   }
+
+  /* ------------------------------------------------ kosullu kurallar */
+
+  const kosullu = await page.evaluate(async (cases) => {
+    const { explain } = await import("/js/commands.js");
+    // Yayinci kipi acik, Spotify kurulu, arastirma acik.
+    const ctx = {
+      kickReady: () => true,
+      searchEnabled: () => true,
+      findApp: (s) => (/spotify/i.test(s) ? { id: "spotify", name: "Spotify" } : null),
+    };
+    return cases.map(([text]) => explain(text, 1, ctx)[0] ?? null);
+  }, KOSULLU);
+
+  for (let i = 0; i < KOSULLU.length; i += 1) {
+    const [text, expected] = KOSULLU[i];
+    const top = kosullu[i];
+    const got = top && top.score >= THRESHOLD ? top.name : null;
+    t.eq(got, expected, `(kosullu) "${text}"`);
+  }
+
+  // Kosul saglanmiyorsa bu kurallar HIC devreye girmemeli: Kick kapaliyken
+  // "ahmeti banla" demek bir moderasyon komutu calistirmamali.
+  const kapaliyken = await page.evaluate(async () => {
+    const { explain } = await import("/js/commands.js");
+    const ctx = { kickReady: () => false, searchEnabled: () => false, findApp: () => null };
+    return ["ahmeti banla", "sohbete yaz merhaba", "spotify ac", "arastir istanbul"]
+      .map((s) => (explain(s, 1, ctx)[0]?.name ?? null));
+  });
+
+  t.ok(!kapaliyken.includes("mod-banla"), "Kick kapaliyken moderasyon komutu calismiyor");
+  t.ok(!kapaliyken.includes("mod-yaz"), "Kick kapaliyken sohbete yazilmiyor");
+  t.ok(!kapaliyken.includes("uygulama-ac"), "kurulu olmayan uygulama acilmiyor");
+  t.ok(!kapaliyken.includes("web-arama"), "arama kapaliyken arastirmaya gidilmiyor");
 }

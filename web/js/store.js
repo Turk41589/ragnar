@@ -187,11 +187,37 @@ export function loadStore() {
   }
 }
 
+/**
+ * Kaydetme basarisiz oldu mu? Notlar, alarmlar ve ayarlar burada
+ * duruyor; sessizce kaydedilmemesi kullanicinin emegini kaybetmesi
+ * demek. Bir kez soyluyoruz — her tuş vurusunda degil.
+ */
+let kaydetmeHatasi = null;
+export const storeHealth = () => ({ saveError: kaydetmeHatasi });
+
 export function saveStore() {
   try {
     localStorage.setItem(KEY, JSON.stringify(store));
-  } catch {
-    /* depolama kapali olabilir */
+    kaydetmeHatasi = null;
+  } catch (err) {
+    /*
+     * Depolama dolu ya da kapali olabilir. ESKIDEN SESSIZCE GECILIYORDU:
+     * kullanici not aliyor, alarm kuruyor, ayar degistiriyor ve
+     * hicbiri kaydedilmiyordu — bunu ancak uygulamayi kapatip acinca
+     * anliyordu. Artik bir kez haber veriyoruz.
+     */
+    const ilkKez = !kaydetmeHatasi;
+    kaydetmeHatasi = err?.name === "QuotaExceededError"
+      ? "Tarayici deposu dolu: notlar ve ayarlar kaydedilemiyor. Eski notlari silin."
+      : "Ayarlar kaydedilemiyor (tarayici depolamasi kapali olabilir). " +
+        "Gizli sekmede acmadiginizdan emin olun.";
+
+    if (ilkKez && typeof window !== "undefined") {
+      console.error("[dra] kaydedilemedi:", err);
+      window.dispatchEvent(new CustomEvent("dra:store-error", {
+        detail: { message: kaydetmeHatasi },
+      }));
+    }
   }
 }
 

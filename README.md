@@ -118,20 +118,35 @@ görünmemeli.
 ```bash
 npm install                    # Electron + Playwright
 npx playwright install chromium
-npm test                       # hızlı testler, ~40 sn
-npm run test:tam               # alarmın gerçekten çalmasını da bekler, ~2 dk
+npm test                       # hızlı testler, ~9 dk
+npm run test:tam               # alarmın gerçekten çalmasını da bekler, +2.5 dk
 ```
 
-`npm test` sunucuyu kendi başlatır, tarayıcıyı açar ve şunları doğrular:
+`npm test` sunucuyu kendi başlatır, tarayıcıyı açar ve **949 doğrulama**
+çalıştırır:
 
+* **Kod taraması** — kodu çalıştırmadan okur. Hiçbir yerde tanımlanmamış
+  değişken, aynı nesnede tekrar eden anahtar, `new Promise(async …)` kalıbı
+  ve IPC yüzeyinin iki yakası (ana süreç ↔ köprü) arasında kayma var mı?
+  Bu paket, mikrofonun uzun süre açılmamasına sebep olan hatayı (tanımsız
+  bir `HERE` değişkeni) yakaladığı için var
+* **Kalıcı depo** — diske yazma yarıda kesilirse veri kaybı olur mu? Yazma
+  sürerken sürekli okunuyor; her okuma ya "dosya yok" ya da tam ve geçerli
+  JSON görmeli
 * **Komut motoru** — Türkçe saat çözümleyici (11 vaka), matematik, komut
   eşleşmesi, komut önerisi, zamanlayıcı/alarm ayrımı ve yan etkili
   komutlardan sonra komut hattının açık kaldığı
-* **Komut yönlendirme** — 84 farklı yazılışın doğru kurala gittiği
-  (yazım hatası, boşluk, Türkçe ek ve eş anlamlı ifadeler dahil)
+* **Komut yönlendirme** — 152 farklı yazılışın doğru kurala gittiği
+  (yazım hatası, boşluk, Türkçe ek ve eş anlamlı ifadeler dahil). Koşullu
+  kurallar da ayrıca sınanıyor: yayıncı kipi açıkken "sesi sustur"
+  bilgisayarın sesini kısmalı, "ahmeti 10 dakika sustur" moderasyon
+  komutuna gitmeli; kapalıyken ikisi de devreye girmemeli
 * **Arayüz** — uyandırma kelimesi (yanlış tetiklenme dahil), sohbet paneli,
   dört sekme, not/alarm ekleme-silme, ayarlar, kalıcılık, sıfırlama, dar
-  ekran yerleşimi ve **localhost dışına hiçbir istek atılmadığı**
+  ekran yerleşimi ve **localhost dışına hiçbir istek atılmadığı**. Ayrıca
+  karttaki bağların adres süzgeci (`javascript:` ile başlayan bir arama
+  sonucu tıklanabilir olmamalı) ve ayarlar kaydedilemediğinde sessiz
+  kalınmadığı
 * **Sunucu yetenekleri** — güvenlik koruması (jetonsuz, yabancı kökenli,
   çapraz site ve form istekleri reddediliyor mu), listede olmayan uygulamanın
   başlatılamadığı, kapalı özelliklerin gerçekten kapalı olduğu ve yeni
@@ -144,7 +159,9 @@ npm run test:tam               # alarmın gerçekten çalmasını da bekler, ~2 
   açılıyor mu, IPC çalışıyor mu, Node arayüze sızmıyor mu, köprü yalnızca
   beklenen yüzeyi mi açıyor, beyaz liste geçerli mi, gömülü motor model
   olmadan düzgün hata veriyor mu, **motordan gelen metin komuta dönüşüyor mu**,
-  mikrofon kapalıyken gelen artık sonuçlar yok sayılıyor mu
+  mikrofon kapalıyken gelen artık sonuçlar yok sayılıyor mu, model
+  yerindeyken `stt.start()` gerçekten sonuçlanıyor mu (asılı kalmıyor ve
+  programlama hatası vermiyor), ve **pencere kendi adresinden ayrılamıyor mu**
 * **Alarm (yavaş)** — bir sonraki dakikaya alarm kurup gerçekten çalmasını,
   DRA'yı uykudan uyandırmasını ve kendini kapatmasını bekler
 
@@ -205,6 +222,8 @@ Artık kaynaklar sırayla deneniyor, ilk cevap veren kazanıyor:
 1. **Wikipedia** — olgusal sorular için; özet, görsel ve bağlantı verir
 2. **DuckDuckGo anlık cevap** — kısa tanımlar, hesaplamalar
 3. **DuckDuckGo sonuç sayfası** — en geniş kapsam (tarayıcı başlıklarıyla)
+4. **DuckDuckGo lite** — aynı motorun sade sayfası; HTML ucu 403 verdiğinde
+   genelde bu geçer
 
 Hangi kaynağın cevapladığı kartta yazıyor. Hiçbirine ulaşılamazsa **hangisinin
 neden başarısız olduğu** tek tek gösteriliyor — "araştırmıyor" demek yerine
