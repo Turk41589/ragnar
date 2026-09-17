@@ -5,6 +5,34 @@
 
 import { S, STATE_LABEL, state, on } from "./state.js";
 
+
+/**
+ * Yalnizca http/https adreslerini gecirir.
+ *
+ * Karttaki baglar ve gorseller DISARIDAN geliyor: arama sonuclari,
+ * e-posta icerikleri, sayfa onizlemeleri. Bunlarin arasina "javascript:"
+ * ile baslayan bir adres karisirsa, tiklandiginda uygulamanin KENDI
+ * sayfasinda calisir — ve bu sayfada `window.dra` var, yani bilgisayara
+ * erisim var. target="_blank" bunu engellemiyor: tarayicilar
+ * "javascript:" baglarini yeni pencerede degil, bulundugu sayfada
+ * calistiriyor.
+ *
+ * Kaynak modulleri de kendi taraflarinda suzuyor; burasi son kapi.
+ */
+export function guvenliAdres(url) {
+  if (!url) return null;
+  try {
+    // TABAN ADRES BILEREK VERILMIYOR: bu adresler disaridan geliyor ve
+    // goreli olmalari icin bir sebep yok. Taban verilirse "/bir/sey"
+    // kendi sayfamiza cozuluyor ve gecerli sayiliyor. Mutlak http(s)
+    // istiyoruz, baskasi degil.
+    const u = new URL(String(url));
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
 const $ = (id) => document.getElementById(id);
 
 const el = {
@@ -446,15 +474,20 @@ export function logCard(data) {
       const serit = document.createElement("div");
       serit.className = "card__shots";
       for (const g of section.images) {
-        const kutu = document.createElement(g.url ? "a" : "div");
+        const gorselAdres = guvenliAdres(g.src);
+        // Adresi guvenli degilse gorseli hic koymuyoruz.
+        if (!gorselAdres) continue;
+
+        const bag = guvenliAdres(g.url);
+        const kutu = document.createElement(bag ? "a" : "div");
         kutu.className = "card__shot";
-        if (g.url) {
-          kutu.href = g.url;
+        if (bag) {
+          kutu.href = bag;
           kutu.target = "_blank";
           kutu.rel = "noopener noreferrer";
         }
         const img = document.createElement("img");
-        img.src = g.src;
+        img.src = gorselAdres;
         img.alt = g.site || "";
         img.loading = "lazy";
         // Gorsel yuklenemezse bos bir kutu kalmasin.
@@ -476,11 +509,17 @@ export function logCard(data) {
       ul.className = "card__links";
       for (const l of section.links) {
         const li = document.createElement("li");
-        const a = document.createElement("a");
-        a.href = l.url;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        a.textContent = l.title || l.url;
+        const adres = guvenliAdres(l.url);
+
+        // Adres guvenli degilse tiklanabilir YAPMIYORUZ; basligi yine de
+        // gosteriyoruz ki sonuc sessizce yok olmasin.
+        const a = document.createElement(adres ? "a" : "span");
+        if (adres) {
+          a.href = adres;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+        }
+        a.textContent = l.title || l.url || "";
         li.append(a);
         if (l.site) {
           const site = document.createElement("span");

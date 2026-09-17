@@ -270,13 +270,28 @@ async function fromDdgApi(q) {
     summary: ozet
       ? { text: ozet, source: data.AbstractSource || "DuckDuckGo", url: data.AbstractURL || null }
       : null,
-    results: ilgili.slice(0, 4).map((x) => {
-      let site = "duckduckgo.com";
-      try {
-        site = new URL(x.FirstURL).hostname.replace(/^www\./, "");
-      } catch { /* adres bozuksa varsayilan kalsin */ }
-      return { title: x.Text.split(" - ")[0], url: x.FirstURL, site, snippet: x.Text };
-    }),
+    results: ilgili
+      .map((x) => {
+        // Sema DOGRULANIYOR. Diger iki kaynak bunu yapiyordu, burasi
+        // yapmiyordu: "javascript:" ile baslayan bir adres karta kadar
+        // gidebiliyordu. `new URL` boyle bir adresi sorunsuz ayristirir,
+        // yani yalnizca try/catch yetmiyor.
+        let u;
+        try {
+          u = new URL(x.FirstURL);
+        } catch {
+          return null;
+        }
+        if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+        return {
+          title: x.Text.split(" - ")[0],
+          url: u.href,
+          site: u.hostname.replace(/^www\./, ""),
+          snippet: x.Text,
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 4),
     images: gorsel ? [{ src: gorsel, site: data.AbstractSource || "DuckDuckGo" }] : [],
   };
 }

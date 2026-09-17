@@ -191,6 +191,39 @@ function createWindow() {
     return { action: "deny" };
   });
 
+  /*
+   * PENCERE KENDI ADRESINDEN AYRILAMAZ.
+   *
+   * Bu pencereye preload bagli: icindeki sayfa `window.dra` uzerinden
+   * bilgisayara erisebiliyor — dosya okuma, e-posta, program calistirma,
+   * hepsi. O yetkiyi yalnizca KENDI arayuzumuz hak ediyor.
+   *
+   * setWindowOpenHandler yalnizca YENI pencere acma denemelerini
+   * yakaliyor. Ayni pencerenin baska bir adrese gitmesi (target'siz bir
+   * bag, `location.href = …`, form gonderimi, meta refresh) oradan
+   * gecmiyor. Boyle bir gezinme, uzak bir sayfayi tam yetkili kopruyle
+   * ayni yere koyardi. Arastirma sonuclari ve e-posta iceriklerinde
+   * disaridan gelen adresler tasindigi icin bu teorik bir risk degil.
+   *
+   * Kural: uygulamanin kendi dosyasi disinda hicbir yere gidilmez;
+   * http(s) ise varsayilan tarayicida acilir.
+   */
+  const ARAYUZ = new URL(`file://${join(ROOT, "web", "index.html")}`).href;
+
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    // Sayfanin kendini yenilemesi ya da cipa (#bolum) serbest.
+    if (url === ARAYUZ || url.startsWith(`${ARAYUZ}#`) || url.startsWith(`${ARAYUZ}?`)) return;
+
+    event.preventDefault();
+    console.warn(`[dra] pencere disariya gitmeye calisti, engellendi: ${url}`);
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+  });
+
+  // Gomulu webview de ayni kapidan gecmeli; hic kullanmiyoruz.
+  mainWindow.webContents.on("will-attach-webview", (event) => {
+    event.preventDefault();
+  });
+
   // Kapatma dugmesi uygulamayi sonlandirmaz, tepsiye indirir.
   mainWindow.on("close", (event) => {
     if (quitting) return;

@@ -719,6 +719,38 @@ async function gizliAcilis(electron, t) {
     });
     await waitFor(async () => (await gorunur()) === true, 8000);
     t.eq(await gorunur(), true, "arka plandan tekrar uyandirilabiliyor");
+
+    /* ------------------------------------ PENCERE ADRESINDEN AYRILAMAZ
+     * (Paketin EN SONUNDA: engellenen gezinme denemesi Playwright'in
+     *  gozunde sayfayi bir sure "gezinme suruyor" halinde birakiyor ve
+     *  sonraki adimlari kilitliyor.)
+     * Bu pencereye preload bagli: icindeki sayfa `window.dra` uzerinden
+     * bilgisayara erisebiliyor. O yetkiyi yalnizca kendi arayuzumuz hak
+     * ediyor. setWindowOpenHandler yalnizca YENI pencere denemelerini
+     * yakaliyor; ayni pencerenin baska bir adrese gitmesi (target'siz
+     * bag, location.href, form gonderimi) oradan gecmiyordu.         */
+
+    const oncekiUrl = window.url();
+
+    for (const hedef of [
+      "https://ornek.com/",
+      "http://127.0.0.1:9/",
+      "file:///etc/passwd",
+    ]) {
+      await window.evaluate((u) => {
+        // Gezinme engellenecegi icin hata atabilir; onemli olan sonuc.
+        try { window.location.href = u; } catch { /* beklenen */ }
+      }, hedef);
+      await window.waitForTimeout(400);
+      t.eq(window.url(), oncekiUrl, `pencere ${hedef} adresine gitmiyor`);
+    }
+
+    // Kopru hala yerinde: engelleme arayuzu bozmadi.
+    t.ok(
+      await window.evaluate(() => window.dra?.desktop === true),
+      "engellemeden sonra arayuz ve kopru saglam",
+    );
+
   } finally {
     await app.close();
   }

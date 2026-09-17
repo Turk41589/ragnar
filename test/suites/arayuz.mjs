@@ -451,6 +451,67 @@ export async function run(page, base, t, { external }) {
   );
   await page.setViewportSize({ width: 1600, height: 950 });
 
+  /* -------------------------------------------- karttaki adres suzgeci
+   * Kart iceriginin bir kismi DISARIDAN geliyor: arama sonuclari,
+   * e-posta basliklari, sayfa onizlemeleri. Aralarina "javascript:" ile
+   * baslayan bir adres karisirsa, tiklandiginda uygulamanin KENDI
+   * sayfasinda calisir — ve o sayfada `window.dra` var, yani bilgisayara
+   * erisim var. target="_blank" bunu engellemiyor: tarayicilar
+   * "javascript:" baglarini yeni pencerede DEGIL, bulundugu sayfada
+   * calistirir.                                                        */
+
+  const suzgec = await page.evaluate(async () => {
+    const hud = await import("/js/hud.js");
+
+    const kotu = [
+      "javascript:alert(1)",
+      "JaVaScRiPt:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "file:///C:/Windows/System32/config",
+      "vbscript:msgbox(1)",
+    ];
+
+    hud.logCard({
+      title: "Sinama",
+      sections: [{
+        links: [
+          ...kotu.map((url, i) => ({ title: `kotu ${i}`, url })),
+          { title: "iyi", url: "https://ornek.com/a" },
+        ],
+        images: [
+          { src: "javascript:alert(1)", url: "javascript:alert(1)", site: "kotu" },
+          { src: "https://ornek.com/r.png", url: "https://ornek.com/a", site: "iyi" },
+        ],
+      }],
+    });
+
+    const kart = [...document.querySelectorAll(".card")].at(-1);
+    const baglar = [...kart.querySelectorAll(".card__links a")].map((a) => a.getAttribute("href"));
+    const yazilar = [...kart.querySelectorAll(".card__links li")].map((li) => li.textContent);
+    const gorseller = [...kart.querySelectorAll(".card__shot img")].map((i) => i.getAttribute("src"));
+    const gorselBaglar = [...kart.querySelectorAll("a.card__shot")].map((a) => a.getAttribute("href"));
+
+    return {
+      baglar,
+      yazilar,
+      gorseller,
+      gorselBaglar,
+      // Yardimci dogrudan da sinansin.
+      dogrudan: kotu.map((u) => hud.guvenliAdres(u)),
+      iyiGecti: hud.guvenliAdres("https://ornek.com/a"),
+      goreli: hud.guvenliAdres("/js/hud.js"),
+    };
+  });
+
+  t.eq(suzgec.baglar, ["https://ornek.com/a"], "yalnizca http(s) bagi tiklanabilir oluyor");
+  t.eq(suzgec.baglar.length, 1, "tehlikeli adresler bag olarak kurulmuyor");
+  t.eq(suzgec.yazilar.length, 6, "elenen sonuclar sessizce yok olmuyor, basliklari duruyor");
+  t.eq(suzgec.gorseller, ["https://ornek.com/r.png"], "tehlikeli gorsel adresi yuklenmiyor");
+  t.eq(suzgec.gorselBaglar, ["https://ornek.com/a"], "tehlikeli gorsel bagi kurulmuyor");
+  t.eq(suzgec.dogrudan, [null, null, null, null, null], "guvenliAdres hepsini eliyor");
+  t.eq(suzgec.iyiGecti, "https://ornek.com/a", "normal adres gecmeye devam ediyor");
+  t.eq(suzgec.goreli, null, "goreli adres kabul edilmiyor (mutlak http(s) sart)");
+
   /* ------------------------------------------------------- ag yalitimi */
   t.eq(external, [], "localhost disina hicbir istek atilmadi");
 }
