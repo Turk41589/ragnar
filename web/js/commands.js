@@ -368,7 +368,13 @@ const RULES = [
     // once gelmeli: kullanici "rapor" derken bilgisayari kastediyor.
     priority: 2,
     run: async (n, raw, ctx) => {
-      const ozet = await ctx.computerReport();
+      /*
+       * "Rapor ver" tek bir sey degil, bir ZINCIR: once bilgisayarin
+       * durumu, sonra bagliysa Gmail gelen kutusu, sonra bagliysa
+       * WhatsApp ve diger musteri kaynaklari. Bagli olmayan bolum
+       * sessizce atlaniyor.
+       */
+      const ozet = await ctx.fullReport();
       // null: kullanici izin vermedi — uyari zaten ekranda, sessiz gec.
       if (!ozet) return { text: "" };
       return ozet;
@@ -928,7 +934,15 @@ const RULES = [
         .replace(/\s+/g, " ")
         .trim();
       if (!query) return "Neyi arastirmami istiyorsunuz?";
-      return searchAnswer(ctx, query);
+      /*
+       * ZENGIN yolu kullaniyoruz, tek cumlelik olani degil.
+       *
+       * "arastir …" komutu bir donem yalnizca duz bir cumle donduruyordu:
+       * ne kart, ne gorsel, ne kaynak bagi. Oysa komutla sorulan bir soru
+       * ile dogrudan sorulan bir soru arasinda kullanici acisindan fark
+       * yok — ikisi de ayni seyi hak ediyor.
+       */
+      return ctx.research(query);
     },
   },
 
@@ -1254,21 +1268,6 @@ const RULES = [
     run: (n, raw, ctx) => ctx.systemReport(),
   },
 ];
-
-/**
- * Arama sonucunu sesli okunabilir tek bir cumleye cevirir.
- * Kaynak adi eklenir ki bilginin nereden geldigi belli olsun.
- */
-export async function searchAnswer(ctx, query) {
-  try {
-    const result = await ctx.webSearch(query);
-    if (!result?.answer) return `"${query}" icin bir sonuc bulamadim.`;
-    const source = result.source ? ` Kaynak: ${result.source}.` : "";
-    return `${result.answer}${source}`;
-  } catch (err) {
-    return `Arama basarisiz: ${err.message}`;
-  }
-}
 
 /* --------------------------------------------------------- yardimcilar */
 

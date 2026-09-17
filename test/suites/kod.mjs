@@ -12,10 +12,12 @@
  */
 
 import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, sep as SEP } from "node:path";
 import { ROOT } from "../helpers.mjs";
 import { readFile } from "node:fs/promises";
-import { parserHazir, scanFile, ayniAnahtarlar, asyncYurutucu } from "../tanimsiz.mjs";
+import {
+  parserHazir, scanFile, ayniAnahtarlar, asyncYurutucu, sabitTarih,
+} from "../tanimsiz.mjs";
 
 export const name = "Kod taramasi";
 export const standalone = true;
@@ -78,6 +80,19 @@ export async function run(_page, _base, t) {
     const bulgular = topla(fn);
     t.eq(bulgular, [], bulgular.length ? `${baslik} — bulunanlar: ${bulgular.join(" | ")}` : baslik);
   }
+
+  // Sabit tarih yalnizca TEST dosyalarinda aranıyor: urun kodunda mutlak
+  // bir tarih (bir bicim ornegi, bir sinir degeri) mesru olabilir.
+  const testDosyalari = liste.filter((d) => d.includes(`${SEP}test${SEP}`));
+  const tarihler = [];
+  for (const dosya of testDosyalari) {
+    for (const b of sabitTarih(dosya)) {
+      tarihler.push(`${b.path.replace(ROOT + SEP, "")}:${b.line} → ${b.name}`);
+    }
+  }
+  t.eq(tarihler, [], tarihler.length
+    ? `testlerde sabit tarih yok — bulunanlar: ${tarihler.join(" | ")}`
+    : "testlerde sabit tarih yok (zamanlar goreli)");
 
   await kopruYuzeyi(t);
 }

@@ -24,6 +24,9 @@ const DEFAULT_PORT = 993;
 /** Tek seferde en fazla bu kadar mesaj baslik bilgisi cekilir. */
 const MAX_MESSAGES = 120;
 
+/** Gelen kutusu gorunumunde gosterilecek en fazla okunmamis mesaj. */
+const INBOX_LIMIT = 40;
+
 let config = { user: null, pass: null, host: DEFAULT_HOST, port: DEFAULT_PORT };
 
 /** Testler gercek bir TLS baglantisi kuramaz; tasiyici disaridan verilebilir. */
@@ -439,7 +442,77 @@ export async function summary({ days = 2 } = {}) {
       });
     }
 
-    return { days, total: mesajlar.length, counts, groups, at: Date.now() };
+    /*
+     * GELEN KUTUSU GORUNUMU.
+     *
+     * Yukaridaki siniflama "ne ise yarar" sorusunu cevapliyor. Ama
+     * kullanicinin ekranda gormek istedigi sey daha basit: kim yazmis,
+     * ne yazmis, okumus muyum. Onun icin ayri bir UNSEEN aramasi
+     * yapiyoruz.
+     *
+     * Neden ayri arama: yukaridaki liste SINCE ile son birkac gunle
+     * sinirli. Okunmamis bir mesaj daha eski olabilir ve o pencereye
+     * hic girmez — "okunmamis diger mailleriniz" tam olarak bunlar.
+     */
+    let okunmamis = [];
+    try {
+      const ara = await imap.send("UID SEARCH UNSEEN");
+      const sat = ara.lines.map((l) => l.line).find((l) => /^\* SEARCH/i.test(l)) || "";
+      okunmamis = sat.replace(/^\* SEARCH/i, "").trim().split(/\s+/).filter(Boolean);
+    } catch {
+      /* Sunucu UNSEEN aramasini reddederse rapor yine de gelsin. */
+    }
+
+    // Okunmamislarin en yenilerinden bir kismi yeter; kutuda binlerce
+    // okunmamis olan hesaplar var ve hepsinin basligini cekmek anlamsiz.
+    const okunmamisSecilen = okunmamis.slice(-INBOX_LIMIT);
+    const okunmamisSet = new Set(okunmamisSecilen);
+
+    let kutu = [];
+    if (okunmamisSecilen.length) {
+      try {
+        const getir2 = await imap.send(
+          `UID FETCH ${okunmamisSecilen.join(",")} (BODY.PEEK[HEADER.FIELDS (${alanlar})])`,
+        );
+        for (const { literal } of getir2.lines) {
+          if (!literal) continue;
+          const h = parseHeaders(literal);
+          if (!h.from && !h.subject) continue;
+          const kisi = parseFrom(h.from);
+          const ne = { from: kisi.name, email: kisi.email, subject: (h.subject || "(konu yok)").trim() };
+          kutu.push({
+            ...ne,
+            date: h.date ? Date.parse(h.date) || null : null,
+            kind: classify({ from: kisi, subject: ne.subject, headers: h }),
+          });
+        }
+      } catch {
+        /* basliklar cekilemezse sayilar yine dogru kalir */
+      }
+    }
+
+    // En yeniler basta.
+    kutu.sort((a, b) => (b.date || 0) - (a.date || 0));
+
+    // "Yeni gelen" = son 24 saat. Digerleri "okunmamis diger".
+    const yeniSinir = Date.now() - 86400000;
+    const yeni = kutu.filter((m) => m.date && m.date >= yeniSinir);
+    const diger = kutu.filter((m) => !m.date || m.date < yeniSinir);
+
+    return {
+      days,
+      total: mesajlar.length,
+      counts,
+      groups,
+      inbox: {
+        account: config.user,
+        // Kutudaki TOPLAM okunmamis sayisi — basligini cektiklerimiz degil.
+        unreadTotal: okunmamis.length,
+        new: yeni,
+        other: diger,
+      },
+      at: Date.now(),
+    };
   });
 }
 

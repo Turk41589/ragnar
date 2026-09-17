@@ -13,10 +13,21 @@ import net from "node:net";
 export const name = "E-posta raporu";
 export const standalone = true;
 
+/**
+ * Tarihler GORELI uretiliyor.
+ *
+ * Sabit bir tarih yazmak, testin bir sure sonra kendiliginden bozulmasi
+ * demek: "yeni gelen okunmamis" penceresi son 24 saate bakiyor ve sabit
+ * tarih o pencerenin disina dusuyor.
+ */
+const SAAT = 3600000;
+const TAZE = new Date(Date.now() - 2 * SAAT).toUTCString();
+const ESKI = new Date(Date.now() - 10 * 86400000).toUTCString();
+
 /** Baslik blogu uretir (gercek Gmail basliklarina benzer). */
 function header({ from, subject, unsub = false, precedence = null, date }) {
   const satirlar = [
-    `Date: ${date || "Fri, 11 Sep 2026 10:00:00 +0300"}`,
+    `Date: ${date || new Date(Date.now() - 2 * 86400000).toUTCString()}`,
     `From: ${from}`,
     `Subject: ${subject}`,
   ];
@@ -34,9 +45,9 @@ const MESAJLAR = [
   // 1 — sponsor teklifi (onemli)
   header({ from: "Marka Ekibi <isbirligi@marka.com>", subject: b64Subject("Sponsorluk işbirliği teklifi") }),
   // 2 — is gorusmesi (onemli)
-  header({ from: '"Ayşe Demir" <ik@sirket.com.tr>', subject: b64Subject("Mülakat daveti — yazılım pozisyonu") }),
+  header({ from: '"Ayşe Demir" <ik@sirket.com.tr>', subject: b64Subject("Mülakat daveti — yazılım pozisyonu"), date: TAZE }),
   // 3 — reklam (toplu + indirim)
-  header({ from: "Magaza <kampanya@magaza.com>", subject: b64Subject("%50 indirim fırsatı bugün son!"), unsub: true }),
+  header({ from: "Magaza <kampanya@magaza.com>", subject: b64Subject("%50 indirim fırsatı bugün son!"), unsub: true, date: ESKI }),
   // 4 — bulten (toplu, reklam degil)
   header({ from: "Teknoloji Bulteni <bulten@haber.com>", subject: b64Subject("Haftalık özet: bu hafta olanlar"), unsub: true }),
   // 5 — kisisel (toplu degil, insan adresi)
@@ -53,6 +64,9 @@ const MESAJLAR = [
     subject: "Görüşme için müsait misiniz — ölçüm çizelgesi ğüşıöç",
   }),
 ];
+
+/** Okunmamis sayilan UID'ler: 2 (taze) ve 3 (eski). */
+const OKUNMAMIS = [2, 3];
 
 /**
  * Sahte IMAP sunucusu. Gercek protokolu konusuyor: karsilama, LOGIN,
@@ -87,7 +101,12 @@ function startFakeImap({ sifre = "dogrusifre" } = {}) {
           socket.write(`* ${MESAJLAR.length} EXISTS\r\n* 0 RECENT\r\n`);
           socket.write(`${tag} OK [READ-WRITE] SELECT tamam\r\n`);
         } else if (buyuk === "UID" && arg[0]?.toUpperCase() === "SEARCH") {
-          const uids = MESAJLAR.map((_m, i) => i + 1).join(" ");
+          // UNSEEN ayri bir arama: gelen kutusu gorunumu okunmamislari
+          // tarih penceresinden BAGIMSIZ olarak cekiyor.
+          const unseen = arg.slice(1).join(" ").toUpperCase().includes("UNSEEN");
+          const uids = unseen
+            ? OKUNMAMIS.join(" ")
+            : MESAJLAR.map((_m, i) => i + 1).join(" ");
           socket.write(`* SEARCH ${uids}\r\n${tag} OK SEARCH tamam\r\n`);
         } else if (buyuk === "UID" && arg[0]?.toUpperCase() === "FETCH") {
           const istenen = (arg[1] || "").split(",").map(Number).filter(Boolean);
@@ -229,6 +248,35 @@ export async function run(_page, _base, t) {
     t.has(ozet.groups.is[0].subject, "Mülakat", "is mesajinin Turkce konusu dogru");
     t.eq(ozet.groups.kisisel[0].from, "Mehmet Kaya", "kisisel mesajda gonderen adi var");
     t.ok(Number.isFinite(ozet.groups.is[0].date), "mesaj tarihi okunuyor");
+
+    /* --- GELEN KUTUSU GORUNUMU ------------------------------------
+     * Siniflama "ne ise yarar" sorusunu cevapliyor. Kutu gorunumu ise
+     * kullanicinin ekranda gormek istedigi sey: kim yazmis, ne yazmis,
+     * okumus muyum. Okunmamislar AYRI bir UNSEEN aramasiyla geliyor —
+     * cunku okunmamis bir mesaj tarih penceresinden daha eski olabilir
+     * ve "okunmamis diger mailleriniz" tam olarak onlar.              */
+
+    t.ok(
+      sahte.kayit.some((k) => /UID SEARCH UNSEEN/.test(k)),
+      "okunmamislar icin ayri bir UNSEEN aramasi yapiliyor",
+    );
+
+    const kutu = ozet.inbox;
+    t.ok(kutu, "gelen kutusu gorunumu donuyor");
+    t.eq(kutu.account, "ben@gmail.com", "kutuda hesap adi var");
+    t.eq(kutu.unreadTotal, 2, "toplam okunmamis sayisi dogru");
+
+    // Taze olan "yeni gelen", 10 gunluk olan "diger".
+    t.eq(kutu.new.length, 1, "son 24 saatteki okunmamis 'yeni gelen' sayiliyor");
+    t.eq(kutu.other.length, 1, "daha eski okunmamis 'diger' sayiliyor");
+    t.has(kutu.new[0].subject, "Mülakat", "yeni gelenin konusu dogru");
+    t.eq(kutu.new[0].from, "Ayşe Demir", "yeni gelenin gondereni dogru");
+    t.has(kutu.other[0].subject, "indirim", "digerinin konusu dogru");
+    t.ok(kutu.new[0].date > kutu.other[0].date, "yeni olan gercekten daha yeni");
+
+    // Okunmus mesajlar kutuda GORUNMEMELI: is bitmis demektir.
+    const hepsi = [...kutu.new, ...kutu.other].map((m) => m.subject).join(" ");
+    t.ok(!/Sponsorluk/.test(hepsi), "okunmus mesaj kutuda gorunmuyor");
 
     /* --- sinif kurallarinin kendisi --- */
     const kur = (from, subject, extra = {}) =>

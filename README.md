@@ -122,7 +122,7 @@ npm test                       # hızlı testler, ~9 dk
 npm run test:tam               # alarmın gerçekten çalmasını da bekler, +2.5 dk
 ```
 
-`npm test` sunucuyu kendi başlatır, tarayıcıyı açar ve **949 doğrulama**
+`npm test` sunucuyu kendi başlatır, tarayıcıyı açar ve **992 doğrulama**
 çalıştırır:
 
 * **Kod taraması** — kodu çalıştırmadan okur. Hiçbir yerde tanımlanmamış
@@ -242,6 +242,23 @@ geldiği görünür olmalı — kendi doğrulamanızı yapabilesiniz.
 
 Kendiliğinden dolaşmaz: yalnızca siz bir şey sorduğunuzda arar.
 
+### Anlatırken ortadaki ekran
+
+Bir soru sorduğunuzda DRA cevabı **söylerken** ortadaki bölüm sahneye
+dönüşüyor: konuyla ilgili görseller, kısa özet ve kaynak adları orada
+beliriyor. Konuşma bitince sahne kapanıyor ve reaktör geri geliyor.
+
+**Sohbet ve ayar panelleri hiç kaybolmuyor** — değişen yalnızca ortadaki
+alan. Sağdaki sohbete düşen kart ise kalıcı: kaynak bağlantılarına
+sonradan da tıklayabilirsiniz.
+
+Görseller kaynak sayfaların kendi önizleme görselleri (`og:image`) ve
+Wikipedia küçük resimleri. Adresler karttakiyle aynı süzgeçten geçiyor:
+yalnızca mutlak `http`/`https` sahneye giriyor.
+
+> Ses kapalıysa sahne, metnin okunacağı kadar süre ekranda kalıp
+> kapanıyor — açılır açılmaz kaybolmasın diye.
+
 ## Erişim izinleri
 
 DRA'nın bilgisayara ve hesaplara erişimi genişledikçe "her şeye erişebilir"
@@ -282,10 +299,36 @@ yeniden sorulmaması için diske yazılır.
 | Video montajı | Gösterdiğiniz klasördeki videoları okur, projenizden üslup çıkarır, yeni video üretir |
 | İşletme verileri | Seçtiğiniz kaynaklardan müşteri mesajlarını okur ve bu bilgisayarda tutar |
 
+### "Rapor ver" — tek komut, üç rapor
+
+**"DRA rapor ver"** dediğinizde sırayla şunlar gelir:
+
+1. **Bilgisayarın durumu** — her zaman
+2. **Gmail gelen kutusu** — e-posta modu açık ve hesap tanımlıysa
+3. **WhatsApp / müşteri mesajları** — işletme modu açıksa
+
+Bağlı olmayan bölüm **sessizce atlanır.** Gmail kurulu değilken her
+"rapor ver"de "Gmail kurulu değil" duymak istenmez; kurulumu zaten
+Modlar sekmesinde görüyorsunuz. Bir kaynak hata verirse yalnızca o
+bölüm düşer, rapor geri kalanıyla devam eder.
+
+Sözlü özet üçünü tek cümlede toplar.
+
+#### Gelen kutusu görünümü
+
+Gmail ve WhatsApp bölümleri basit bir **posta kutusu görseli** olarak
+geliyor: üstte hesap adı ve toplam okunmamış sayısı, altında iki grup —
+**yeni gelen okunmamışlar** (son 24 saat) ve **okunmamış diğerleri**.
+Her satırda gönderen kalın, konusu ince, sağda saat.
+
+Okunmamışlar ayrı bir `UID SEARCH UNSEEN` sorgusuyla geliyor: okunmamış
+bir mesaj tarih penceresinden daha eski olabilir ve "okunmamış
+diğerleri" tam olarak onlar. Okunmuş mesajlar kutuda görünmez — iş
+bitmiş demektir.
+
 ### Bilgisayar raporu
 
-**"DRA rapor ver"** deyin. İzin verdikten sonra sohbete görsel bir rapor kartı
-düşer: işletim sistemi, bellek ve disk doluluk çubukları, ne kadar süre açık
+İzin verdikten sonra sohbete görsel bir rapor kartı düşer: işletim sistemi, bellek ve disk doluluk çubukları, ne kadar süre açık
 kaldığı, **son yüklenen Windows güncellemesi** ve **bekleyen güncelleme sayısı**
 (varsa ilk sekizinin adı). DRA ayrıca sözlü bir özet verir.
 

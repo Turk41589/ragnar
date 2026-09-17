@@ -589,14 +589,26 @@
         </section>
       </aside>
 
-      <!-- Merkez: reaktor -->
+      <!-- Merkez: reaktor + sahne.
+           Sahne, DRA bir seyi ANLATIRKEN aciliyor: konuyla ilgili
+           gorseller ve kaynak adlari ortada beliriyor, konusma bitince
+           yerini yine reaktore birakiyor. Sohbet ve ayarlar yerinde
+           kaliyor; degisen yalnizca orta bolum. -->
       <section class="core">
-        <div class="core__ring">
+        <div class="core__ring" id="core-ring">
           <canvas id="reactor" class="core__canvas"></canvas>
           <div class="core__state">
             <span id="core-state-label">HAZIR</span>
           </div>
         </div>
+
+        <div class="stage" id="stage" hidden aria-live="polite">
+          <p class="stage__title" id="stage-title"></p>
+          <div class="stage__shots" id="stage-shots"></div>
+          <p class="stage__note" id="stage-note"></p>
+          <ul class="stage__sources" id="stage-sources"></ul>
+        </div>
+
         <p class="core__caption" id="core-caption">Sizi dinliyorum.</p>
       </section>
 

@@ -392,3 +392,43 @@ export function asyncYurutucu(path) {
   });
   return bulgular;
 }
+
+/**
+ * Testlerde SABIT tarih.
+ *
+ * Iki kez yasandi ve ikisinde de aylar sonra, bambaska bir is
+ * yapilirken patladi: bir test fixture'i "2026-09-10" ya da   sabit-tarih-tamam
+ * "1789000000" gibi mutlak bir zaman yaziyordu (sabit-tarih-tamam). Urun kodu ise son 7
+ * gune / son 24 saate bakiyor. Tarih gectikce fixture o pencerenin
+ * disina dusuyor ve test, kodda hicbir sey degismeden kendiliginden
+ * bozuluyor.
+ *
+ * Kural: test zamanlari `Date.now()` uzerinden GORELI uretilir.
+ * Gercekten sabit bir tarih gerekiyorsa (bicim ayristirma sinamasi
+ * gibi) satira `sabit-tarih-tamam` yaziliyor.
+ */
+export function sabitTarih(path) {
+  const satirlar = readFileSync(path, "utf8").split("\n");
+  const bulgular = [];
+
+  // ISO tarih ("2026-09-10"), epoch saniye (10 hane) ve epoch ms (13 hane).   sabit-tarih-tamam
+  const kaliplar = [
+    [/["'`]\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2})?/, "sabit ISO tarih"],   // sabit-tarih-tamam
+    [/["'`]1[6-9]\d{8}["'`]/, "sabit epoch saniye"],   // sabit-tarih-tamam
+    [/\b1[6-9]\d{11}\b/, "sabit epoch milisaniye"],   // sabit-tarih-tamam
+  ];
+
+  satirlar.forEach((satir, i) => {
+    if (satir.includes("sabit-tarih-tamam")) return;
+    for (const [kalip, ad] of kaliplar) {
+      if (!kalip.test(satir)) continue;
+      bulgular.push({
+        path, line: i + 1, name: ad,
+        message: "zamani Date.now() uzerinden goreli uretin (yoksa test bir sure sonra bozulur)",
+      });
+      break;
+    }
+  });
+
+  return bulgular;
+}

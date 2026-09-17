@@ -408,6 +408,83 @@ function cardRow(label, value, percent) {
 }
 
 /**
+ * Gelen kutusu gorunumu.
+ *
+ * Kullanicinin istedigi sey bir "posta kutusu ekran goruntusu" gibi
+ * duran basit bir gorsel: ustte hesap adi, altinda gruplar, her satirda
+ * GONDEREN kalin, konusu ince. Ayni bilesen Gmail icin de WhatsApp icin
+ * de kullaniliyor — ikisi de "kim yazmis, ne yazmis" demek.
+ *
+ * @param {{account?: string, label?: string, unreadTotal?: number,
+ *          groups: Array<{title: string, entries: Array}>}} veri
+ */
+function gelenKutusu(veri) {
+  const kutu = document.createElement("div");
+  kutu.className = "inbox";
+
+  const bas = document.createElement("div");
+  bas.className = "inbox__bar";
+  const hesap = document.createElement("span");
+  hesap.className = "inbox__account";
+  hesap.textContent = veri.account || veri.label || "";
+  bas.append(hesap);
+  if (Number.isFinite(veri.unreadTotal)) {
+    const rozet = document.createElement("b");
+    rozet.className = "inbox__badge";
+    rozet.textContent = `${veri.unreadTotal} okunmamis`;
+    bas.append(rozet);
+  }
+  kutu.append(bas);
+
+  for (const grup of veri.groups || []) {
+    // Bos grubu basmiyoruz: "okunmamis digerleri (0)" diye bir sey
+    // gostermek ekrani doldurmaktan baska ise yaramaz.
+    if (!grup.entries?.length) continue;
+
+    const baslik = document.createElement("p");
+    baslik.className = "inbox__group";
+    baslik.textContent = grup.title;
+    kutu.append(baslik);
+
+    const liste = document.createElement("ul");
+    liste.className = "inbox__list";
+    for (const k of grup.entries) {
+      const satir = document.createElement("li");
+      satir.className = "inbox__item";
+
+      const kim = document.createElement("b");
+      kim.className = "inbox__from";
+      kim.textContent = k.from || k.email || "bilinmiyor";
+      satir.append(kim);
+
+      if (k.at) {
+        const saat = document.createElement("span");
+        saat.className = "inbox__time";
+        saat.textContent = k.at;
+        satir.append(saat);
+      }
+
+      const ne = document.createElement("span");
+      ne.className = "inbox__text";
+      ne.textContent = k.text || "";
+      satir.append(ne);
+
+      liste.append(satir);
+    }
+    kutu.append(liste);
+  }
+
+  if (!kutu.querySelector(".inbox__item")) {
+    const bos = document.createElement("p");
+    bos.className = "inbox__empty";
+    bos.textContent = "Okunmamis mesaj yok.";
+    kutu.append(bos);
+  }
+
+  return kutu;
+}
+
+/**
  * Sohbete gorsel bir rapor karti basar.
  *
  * Kullanici "gif gibi gorsel sunum" istedi. Hareketli goruntu yerine
@@ -547,6 +624,8 @@ export function logCard(data) {
       }
       card.append(ul);
     }
+
+    if (section.inbox) card.append(gelenKutusu(section.inbox));
   }
 
   li.append(card);
@@ -555,3 +634,97 @@ export function logCard(data) {
   el.log.scrollTop = el.log.scrollHeight;
   return card;
 }
+
+/* ===================================================== merkez sahne ==
+ *
+ * Kullanicinin istedigi sey: bir soru sorulunca DRA arastirsin, cevabi
+ * SOYLERKEN orta bolumde konuyla ilgili gorseller cikip dursun, konusma
+ * bitince orta bolum eski haline donsun. Sohbet ve ayar panelleri
+ * yerinde kaliyor — degisen yalnizca ortadaki alan.
+ *
+ * Sahne reaktorun YERINI aliyor, ustune binmiyor: iki canli animasyonu
+ * ust uste calistirmak hem goz yoruyor hem de zayif makinelerde
+ * gereksiz yere isi artiriyor.
+ */
+
+let sahneKapatma = null;
+
+/**
+ * Sahneyi acar.
+ * @param {{title?: string, note?: string, images?: Array, sources?: Array}} veri
+ */
+export function showStage(veri = {}) {
+  const sahne = $("stage");
+  const halka = $("core-ring");
+  if (!sahne) return false;
+
+  // Kapanma animasyonu suruyorsa iptal et; yeni sahne hemen acilsin.
+  if (sahneKapatma) {
+    clearTimeout(sahneKapatma);
+    sahneKapatma = null;
+  }
+  sahne.removeAttribute("data-leaving");
+
+  $("stage-title").textContent = veri.title || "";
+  $("stage-note").textContent = veri.note || "";
+
+  const serit = $("stage-shots");
+  serit.replaceChildren();
+  let gorselSayisi = 0;
+  for (const g of (veri.images || []).slice(0, 4)) {
+    // Adresler disaridan geliyor; karttakiyle ayni suzgecten geciyorlar.
+    const src = guvenliAdres(g?.src);
+    if (!src) continue;
+    const kutu = document.createElement("div");
+    kutu.className = "stage__shot";
+    const img = document.createElement("img");
+    img.src = src;
+    img.alt = g.site || "";
+    img.loading = "eager";
+    // Yuklenemeyen gorsel bos bir kutu birakmasin.
+    img.addEventListener("error", () => kutu.remove());
+    kutu.append(img);
+    serit.append(kutu);
+    gorselSayisi += 1;
+  }
+  serit.hidden = gorselSayisi === 0;
+
+  const kaynaklar = $("stage-sources");
+  kaynaklar.replaceChildren();
+  for (const k of (veri.sources || []).slice(0, 5)) {
+    const ad = typeof k === "string" ? k : k?.site || k?.title;
+    if (!ad) continue;
+    const li = document.createElement("li");
+    li.textContent = ad;
+    kaynaklar.append(li);
+  }
+
+  // Gosterilecek hicbir sey yoksa sahneyi acmiyoruz: bos bir kutu
+  // reaktoru gizlemekten kotu.
+  if (!gorselSayisi && !veri.note && !kaynaklar.childElementCount) {
+    sahne.hidden = true;
+    return false;
+  }
+
+  sahne.hidden = false;
+  if (halka) halka.hidden = true;
+  return true;
+}
+
+/** Sahneyi kapatir ve reaktoru geri getirir. */
+export function hideStage() {
+  const sahne = $("stage");
+  const halka = $("core-ring");
+  if (!sahne || sahne.hidden) return;
+
+  sahne.dataset.leaving = "1";
+  sahneKapatma = setTimeout(() => {
+    sahne.hidden = true;
+    sahne.removeAttribute("data-leaving");
+    if (halka) halka.hidden = false;
+    sahneKapatma = null;
+  }, 200);
+}
+
+/** Sahne su an acik mi? (Testler ve durum sorgulari icin.) */
+export const stageOpen = () => Boolean($("stage") && !$("stage").hidden);

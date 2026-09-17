@@ -567,6 +567,195 @@ export async function run(page, base, t, { external }) {
   t.ok(depoHatasi.hastaykenDurum, "durum sorgulanabiliyor");
   t.eq(depoHatasi.duzeldiktenSonra, null, "sorun gecince durum temizleniyor");
 
+  /* ------------------------------------------------- merkez sahne ----
+   * Istenen davranis: DRA bir seyi ANLATIRKEN orta bolum konuyla ilgili
+   * gorselleri gostersin, konusma bitince eski haline donsun. Sohbet ve
+   * ayar panelleri yerinde kalsin.                                     */
+
+  const sahne = await page.evaluate(async () => {
+    const hud = await import("/js/hud.js");
+    const durum = () => ({
+      sahne: !document.getElementById("stage").hidden,
+      halka: !document.getElementById("core-ring").hidden,
+      sohbet: Boolean(document.querySelector(".panel--right")?.offsetParent),
+      ayar: Boolean(document.querySelector(".panel--left")?.offsetParent),
+    });
+
+    const once = durum();
+
+    const acildi = hud.showStage({
+      title: "eyfel kulesi kac metre",
+      note: "Eyfel Kulesi 330 metre yuksekligindedir.",
+      // Adres AYNI KOKENDEN: bu paket "localhost disina hicbir istek
+      // atilmadi" diye olcuyor, gercek bir dis adres o olcumu bozar.
+      // Gorselin yuklenip yuklenmedigi onemli degil; sinanan sey
+      // adresin sahneye alinip alinmadigi.
+      images: [
+        { src: `${location.origin}/js/hud.js`, site: "vikipedi" },
+        { src: "javascript:alert(1)", site: "kotu" },
+      ],
+      sources: ["tr.wikipedia.org", "britannica.com"],
+    });
+    const acikken = durum();
+    const kart = {
+      baslik: document.getElementById("stage-title").textContent,
+      not: document.getElementById("stage-note").textContent,
+      gorsel: document.querySelectorAll("#stage-shots img").length,
+      gorselAdres: [...document.querySelectorAll("#stage-shots img")]
+        .map((i) => i.getAttribute("src")),
+      kaynak: [...document.querySelectorAll("#stage-sources li")].map((l) => l.textContent),
+    };
+
+    hud.hideStage();
+    await new Promise((r) => setTimeout(r, 350));
+    const sonra = durum();
+
+    // Gosterilecek hicbir sey yoksa sahne HIC acilmamali: bos bir kutu
+    // reaktoru gizlemekten kotu.
+    const bosAcildi = hud.showStage({ title: "", note: "", images: [], sources: [] });
+
+    // Gercek bir dis adresin KABUL edildigini ag'a cikmadan dogruluyoruz.
+    const guvenli = hud.guvenliAdres("https://ornek.com/1.png");
+    return { once, acildi, acikken, kart, sonra, bosAcildi, guvenli, acikMi: hud.stageOpen() };
+  });
+
+  t.eq(sahne.once.sahne, false, "sahne bastan kapali");
+  t.eq(sahne.acildi, true, "icerik varsa sahne aciliyor");
+  t.eq(sahne.acikken.sahne, true, "anlatirken sahne gorunuyor");
+  t.eq(sahne.acikken.halka, false, "sahne acikken reaktor yerini birakiyor");
+  t.eq(sahne.acikken.sohbet, true, "sahne acikken SOHBET yerinde kaliyor");
+  t.eq(sahne.acikken.ayar, true, "sahne acikken AYAR paneli yerinde kaliyor");
+  t.has(sahne.kart.baslik, "eyfel", "sahnede soru yaziyor");
+  t.has(sahne.kart.not, "330 metre", "sahnede ozet yaziyor");
+  t.eq(sahne.kart.gorsel, 1, "yalnizca guvenli gorsel sahneye giriyor");
+  t.eq(sahne.kart.gorselAdres.length, 1, "tehlikeli adres elendi");
+  t.ok(!sahne.kart.gorselAdres[0].startsWith("javascript"), "sahneye giren adres guvenli");
+  t.eq(sahne.guvenli, "https://ornek.com/1.png", "normal dis adres sahneye kabul ediliyor");
+  t.eq(sahne.kart.kaynak, ["tr.wikipedia.org", "britannica.com"], "kaynak adlari yaziyor");
+  t.eq(sahne.sonra.sahne, false, "konusma bitince sahne kapaniyor");
+  t.eq(sahne.sonra.halka, true, "kapaninca reaktor geri geliyor");
+  t.eq(sahne.bosAcildi, false, "gosterilecek sey yoksa sahne acilmiyor");
+
+  /* ------------------------------------------- gelen kutusu gorunumu -
+   * Kullanicinin cizdigi sey: ustte hesap adi, altinda "yeni gelen
+   * okunmamis" ve "okunmamis diger" gruplari, her satirda gonderen
+   * kalin / konusu ince.                                              */
+
+  const kutu = await page.evaluate(async () => {
+    const hud = await import("/js/hud.js");
+    hud.logCard({
+      title: "E-posta raporu",
+      sections: [{
+        inbox: {
+          account: "ornek@gmail.com",
+          unreadTotal: 12,
+          groups: [
+            {
+              title: "Yeni gelen okunmamis mailleriniz",
+              entries: [
+                { from: "Ayse Yilmaz", text: "Gorusme icin uygun musunuz?", at: "09:14" },
+                { from: "Marka Isbirligi", text: "Sponsorluk teklifi", at: "08:02" },
+              ],
+            },
+            {
+              title: "Okunmamis diger mailleriniz",
+              entries: [{ from: "Banka", text: "Ekstre hazir", at: "12.09" }],
+            },
+            // Bos grup basilmamali.
+            { title: "Bos grup", entries: [] },
+          ],
+        },
+      }],
+    });
+
+    const el = [...document.querySelectorAll(".card")].at(-1).querySelector(".inbox");
+    return {
+      hesap: el.querySelector(".inbox__account").textContent,
+      rozet: el.querySelector(".inbox__badge").textContent,
+      gruplar: [...el.querySelectorAll(".inbox__group")].map((g) => g.textContent),
+      gonderenler: [...el.querySelectorAll(".inbox__from")].map((f) => f.textContent),
+      yazilar: [...el.querySelectorAll(".inbox__text")].map((f) => f.textContent),
+      saatler: [...el.querySelectorAll(".inbox__time")].map((f) => f.textContent),
+    };
+  });
+
+  t.eq(kutu.hesap, "ornek@gmail.com", "kutunun ustunde hesap adi yaziyor");
+  t.has(kutu.rozet, "12", "toplam okunmamis sayisi gorunuyor");
+  t.eq(kutu.gruplar.length, 2, "bos grup basilmiyor");
+  t.has(kutu.gruplar[0], "Yeni gelen", "once yeni gelenler");
+  t.has(kutu.gruplar[1], "diger", "sonra digerleri");
+  t.eq(kutu.gonderenler, ["Ayse Yilmaz", "Marka Isbirligi", "Banka"], "gonderenler sirayla");
+  t.eq(kutu.yazilar[0], "Gorusme icin uygun musunuz?", "konu ozeti yaziyor");
+  t.eq(kutu.saatler[0], "09:14", "saat gosteriliyor");
+
+  // Hic okunmamis yoksa bos kutu degil, acik bir cumle.
+  const bosKutu = await page.evaluate(async () => {
+    const hud = await import("/js/hud.js");
+    hud.logCard({
+      title: "E-posta raporu",
+      sections: [{ inbox: { account: "x@y.com", groups: [{ title: "Yeni", entries: [] }] } }],
+    });
+    const el = [...document.querySelectorAll(".card")].at(-1).querySelector(".inbox");
+    return el.querySelector(".inbox__empty")?.textContent || "";
+  });
+  t.has(bosKutu, "Okunmamis mesaj yok", "bos kutuda anlasilir bir cumle var");
+
+  /* ---------------------------------------------- "rapor ver" zinciri
+   * Istenen sira: once bilgisayarin durumu, sonra bagliysa Gmail gelen
+   * kutusu, sonra bagliysa WhatsApp / musteri mesajlari. Bagli olmayan
+   * bolum SESSIZCE atlanmali — her "rapor ver"de "Gmail kurulu degil"
+   * duymak istenmez.                                                   */
+
+  const zincir = await page.evaluate(async () => {
+    const { runCommand } = await import("/js/commands.js");
+
+    const cagrilan = [];
+    const ctx = {
+      fullReport: async () => {
+        cagrilan.push("tam");
+        return "Bilgisayar iyi. Gmail'de 2 okunmamis. WhatsApp'ta 1 yanit bekliyor.";
+      },
+      // Eski yol: artik kullanilmamali.
+      computerReport: async () => {
+        cagrilan.push("yalnizca-bilgisayar");
+        return "Yalnizca bilgisayar.";
+      },
+    };
+
+    const sonuc = await runCommand("rapor ver", ctx);
+    return { cagrilan, metin: sonuc?.text || "" };
+  });
+
+  t.eq(zincir.cagrilan, ["tam"], '"rapor ver" ZINCIRI calistiriyor, tek raporu degil');
+  t.has(zincir.metin, "Gmail", "sozlu ozet Gmail bolumunu de iceriyor");
+  t.has(zincir.metin, "WhatsApp", "sozlu ozet WhatsApp bolumunu de iceriyor");
+
+  /* ---------------------------------- arastirma kartla VE sahneyle gelir
+   * "arastir …" komutu bir donem yalnizca duz bir cumle donduruyordu:
+   * ne kart, ne gorsel, ne kaynak bagi. Komutla sorulan soru ile dogrudan
+   * sorulan soru arasinda kullanici acisindan fark yok.               */
+
+  const arastirma = await page.evaluate(async () => {
+    const { runCommand } = await import("/js/commands.js");
+    const ctx = {
+      searchEnabled: () => true,
+      research: async (q) => ({
+        text: `${q} icin cevap.`,
+        stage: { title: q, note: "ozet", images: [{ src: "https://a.co/1.png" }], sources: ["a.co"] },
+      }),
+    };
+    const sonuc = await runCommand("arastir eyfel kulesi", ctx);
+    return {
+      metin: sonuc?.text || "",
+      sahneVar: Boolean(sonuc?.stage),
+      sahneBaslik: sonuc?.stage?.title || "",
+    };
+  });
+
+  t.has(arastirma.metin, "cevap", "arastirma komutu cevap donduruyor");
+  t.ok(arastirma.sahneVar, "arastirma komutu sahne verisi de tasiyor");
+  t.has(arastirma.sahneBaslik, "eyfel", "sahnede sorulan soru yaziyor");
+
   /* ------------------------------------------------------- ag yalitimi */
   t.eq(external, [], "localhost disina hicbir istek atilmadi");
 }

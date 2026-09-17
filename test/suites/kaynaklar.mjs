@@ -17,11 +17,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 /**
- * WhatsApp saniyesi. SABIT tarih YAZMIYORUZ: ozet penceresi son 7 gune
- * bakiyor, sabit bir tarih birkac gun sonra pencerenin disina dusuyor ve
- * test kendiliginden bozuluyordu. Simdi her kosuda "biraz once".
+ * Zamanlar GORELI uretiliyor.
+ *
+ * SABIT tarih YAZMIYORUZ: ozet penceresi son 7 gune bakiyor, sabit bir
+ * tarih birkac gun sonra pencerenin disina dusuyor ve test kendiliginden
+ * bozuluyor. Bu tam olarak iki kez yasandi — once WhatsApp tarafinda,
+ * sonra Instagram tarafinda. Her ikisi de artik "biraz once".
  */
 const SANIYE = Math.floor(Date.now() / 1000) - 3600;
+
+/** Instagram ISO zamani: n dakika once. */
+const iso = (dakikaOnce) =>
+  new Date(Date.now() - dakikaOnce * 60000).toISOString().replace(/\.\d+Z$/, "+0000");
 
 export const name = "Musteri kaynaklari";
 export const standalone = true;
@@ -70,18 +77,18 @@ function startFakeMeta() {
           messages: {
             data: [
               {
-                id: "m1", created_time: "2026-09-10T10:00:00+0000",
+                id: "m1", created_time: iso(180),
                 from: { id: "musteri-1", username: "ayse" },
                 message: "Merhaba, bugun acik misiniz?",
               },
               {
                 // Kendi hesabimizdan cikan mesaj: musteri mesaji DEGIL.
-                id: "m2", created_time: "2026-09-10T10:05:00+0000",
+                id: "m2", created_time: iso(175),
                 from: { id: "IG_HESAP", username: "kahveci" },
                 message: "Evet acigiz!",
               },
               {
-                id: "m3", created_time: "2026-09-10T11:00:00+0000",
+                id: "m3", created_time: iso(120),
                 from: { id: "musteri-2", username: "mehmet" },
                 message: "Rezervasyon yapabilir miyim?",
               },

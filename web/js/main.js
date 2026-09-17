@@ -133,18 +133,50 @@ function touch() {
 }
 
 /** Metni ekrana yazar ve (ses aciksa) okur. */
-async function respond(text, { logged = false, kind = null } = {}) {
+async function respond(text, { logged = false, kind = null, stage = null } = {}) {
   if (!text) return;
   if (!logged) hud.log("dra", text);
   hud.setCaption(text, kind);
   remember("assistant", text);
 
-  if (store.voiceEnabled && speech.voiceSupported) {
-    setState(S.SPEAKING);
-    await speech.say(text);
+  /*
+   * SAHNE — DRA anlatirken orta bolum.
+   *
+   * Kullanicinin istedigi: bir soru sorulunca cevabi SOYLERKEN konuyla
+   * ilgili gorseller ortada dursun, konusma bitince orta bolum eski
+   * haline donsun. Sohbet ve ayarlar yerinde kaliyor.
+   *
+   * Sahne konusmadan ONCE aciliyor ki ilk kelimeyle birlikte gorunsun,
+   * ve `finally` ile kapaniyor: konusma hata verse de, kullanici Esc'e
+   * basip sustursa da sahne ekranda asili kalmasin.
+   */
+  let sahneAcildi = false;
+  if (stage) sahneAcildi = hud.showStage(stage);
+
+  try {
+    if (store.voiceEnabled && speech.voiceSupported) {
+      setState(S.SPEAKING);
+      await speech.say(text);
+    } else if (sahneAcildi) {
+      // Ses kapaliyken okuma suresi yok; sahne bir sure okunacak kadar
+      // dursun, yoksa acilir acilmaz kapanir.
+      await new Promise((r) => setTimeout(r, sahneSuresi(text)));
+    }
+  } finally {
+    if (sahneAcildi) hud.hideStage();
   }
+
   if (state.current !== S.SLEEPING) setState(S.IDLE);
   touch();
+}
+
+/**
+ * Ses kapaliyken sahnenin ekranda kalacagi sure.
+ * Kabaca okuma hizina gore: kelime basina ~320 ms, 2.5-12 sn arasi.
+ */
+function sahneSuresi(text) {
+  const kelime = String(text).trim().split(/\s+/).length;
+  return Math.min(12000, Math.max(2500, kelime * 320));
 }
 
 /** Komut isleme hattinin tamami. */
@@ -180,7 +212,7 @@ async function handleUtterance(rawText) {
 
     const local = await runCommand(text, ctx);
     if (local) {
-      await respond(local.text);
+      await respond(local.text, { stage: local.stage || null });
       // Yan etki yanittan SONRA: once "uyuyorum" desin, sonra uyusun.
       if (local.after) await local.after();
       return;
@@ -197,7 +229,10 @@ async function handleUtterance(rawText) {
     }
 
     hud.log("system", "Bunu komutlarimda bulamadim, arastiriyorum…");
-    await respond(await ctx.research(text));
+    // research bir metin ya da {text, stage} donebiliyor; ikisini de kabul et.
+    const bulunan = await ctx.research(text);
+    if (typeof bulunan === "string") await respond(bulunan);
+    else await respond(bulunan?.text, { stage: bulunan?.stage || null });
   } catch (err) {
     console.error("[dra]", err);
     hud.log("error", err.message || "Bilinmeyen hata");
@@ -544,9 +579,27 @@ function arastirmaSun(r) {
     sections: bolumler,
   });
 
-  if (r.summary) return r.summary.text;
-  const ilk = r.results?.[0];
-  return ilk ? `${ilk.snippet || ilk.title} (${ilk.site})` : "Bir sey bulamadim.";
+  const metin = r.summary
+    ? r.summary.text
+    : (() => {
+        const ilk = r.results?.[0];
+        return ilk ? `${ilk.snippet || ilk.title} (${ilk.site})` : "Bir sey bulamadim.";
+      })();
+
+  /*
+   * Kart sohbette KALICI olarak duruyor (kaynaklar tiklanabilir olsun
+   * diye). Sahne ise gecici: DRA anlatirken orta bolumde aciliyor,
+   * susunca kapaniyor. Ikisi ayni veriden besleniyor.
+   */
+  return {
+    text: metin,
+    stage: {
+      title: r.query,
+      note: r.summary?.text || "",
+      images: r.images || [],
+      sources: (r.results || []).map((k) => k.site).filter(Boolean),
+    },
+  };
 }
 
 /* ====================================================== musteri mesajlari */
@@ -624,6 +677,13 @@ function mesajlariSun(veri) {
         return `${m.from} (${KAYNAK_ADI[m.source] || m.source}) — ${kisa}`;
       }),
     });
+  }
+
+  // Her kaynak icin ayri bir kutu gorunumu: WhatsApp'tan gelenle
+  // Instagram'dan gelen ayni listede karismasin.
+  for (const [id, ad] of Object.entries(KAYNAK_ADI)) {
+    const kutu = mesajKutusu(id, ad, veri.messages);
+    if (kutu) bolumler.push({ inbox: kutu });
   }
 
   hud.logCard({
@@ -951,6 +1011,15 @@ function epostaSun(o) {
     });
   }
 
+  /*
+   * GELEN KUTUSU GORUNUMU.
+   *
+   * Yukaridaki bolumler "ne ise yarar" sorusunu cevapliyor. Bu ise
+   * kullanicinin gormek istedigi sey: kim yazmis, ne yazmis, okumus
+   * muyum. Kutuya benzeyen basit bir gorsel.
+   */
+  if (o.inbox) bolumler.push({ inbox: kutuyaCevir(o.inbox) });
+
   hud.logCard({
     title: "E-posta raporu",
     subtitle: new Date(o.at).toLocaleString("tr"),
@@ -969,6 +1038,67 @@ function epostaSun(o) {
   }
   return `${bas} Dikkatinizi cekecekler: ${onemliParca.join(", ")}. ` +
     `${gurultu} tanesini ayikladim.`;
+}
+
+/** Saat:dakika — kutuda tarih degil saat gosteriyoruz, yer dar. */
+function kisaSaat(ms) {
+  if (!Number.isFinite(ms)) return "";
+  const t = new Date(ms);
+  const bugun = new Date();
+  const ayniGun = t.toDateString() === bugun.toDateString();
+  return ayniGun
+    ? t.toLocaleTimeString("tr", { hour: "2-digit", minute: "2-digit" })
+    : t.toLocaleDateString("tr", { day: "2-digit", month: "2-digit" });
+}
+
+/** Sunucudan gelen gelen-kutusu verisini ekran bilesenine cevirir. */
+function kutuyaCevir(kutu) {
+  const cevir = (liste) =>
+    (liste || []).slice(0, 8).map((m) => ({
+      from: m.from || m.email || "bilinmiyor",
+      text: m.subject || m.text || "",
+      at: kisaSaat(m.date ?? m.at),
+    }));
+
+  return {
+    account: kutu.account,
+    unreadTotal: kutu.unreadTotal,
+    groups: [
+      { title: "Yeni gelen okunmamis mailleriniz", entries: cevir(kutu.new) },
+      { title: "Okunmamis diger mailleriniz", entries: cevir(kutu.other) },
+    ],
+  };
+}
+
+/**
+ * WhatsApp / Instagram kutusu.
+ *
+ * Musteri mesajlari depoda duruyor; burada ayni kutu gorunumuyle
+ * gosteriyoruz. "Yeni" = henuz okunmamis, "diger" = okunmus ama
+ * yanitlanmamis. Yanitlanmislar kutuda yok: is bitmis demektir.
+ */
+function mesajKutusu(kaynak, etiket, mesajlar) {
+  const ait = (mesajlar || []).filter((m) => m.source === kaynak);
+  if (!ait.length) return null;
+
+  const satir = (m) => ({
+    from: m.from || m.handle || "bilinmiyor",
+    text: m.text || "",
+    at: kisaSaat(m.at),
+  });
+
+  const yeni = ait.filter((m) => m.status === "yeni").slice(0, 8).map(satir);
+  const okunan = ait.filter((m) => m.status === "okundu").slice(0, 8).map(satir);
+  if (!yeni.length && !okunan.length) return null;
+
+  return {
+    account: etiket,
+    unreadTotal: ait.filter((m) => m.status !== "yanitlandi").length,
+    groups: [
+      { title: "Yeni gelen okunmamis mesajlar", entries: yeni },
+      { title: "Okunmus ama yanitlanmamis", entries: okunan },
+    ],
+  };
 }
 
 /* ================================================================= izinler */
@@ -1095,6 +1225,50 @@ const ctx = {
     const rapor = await izinliCalis(() => system.systemReport());
     if (!rapor) return null;
     return raporuSun(rapor);
+  },
+
+  /**
+   * TAM RAPOR — "rapor ver" dendiginde calisan zincir.
+   *
+   * Kullanicinin istedigi sirayla: once bilgisayarin durumu, sonra
+   * (bagliysa) Gmail gelen kutusu, sonra (bagliysa) WhatsApp ve diger
+   * musteri kaynaklari. Her biri ayri bir kart basiyor; sozlu ozet
+   * hepsini tek cumlede toparliyor.
+   *
+   * Bagli olmayan bolum sessizce ATLANIYOR: Gmail kurulu degilken her
+   * "rapor ver"de "Gmail kurulu degil" duymak istenmez. Kurulumdan
+   * kullanici zaten Modlar sekmesinde haberdar.
+   */
+  fullReport: async () => {
+    const parcalar = [];
+
+    const rapor = await izinliCalis(() => system.systemReport());
+    // null: izin verilmedi. Uyari zaten ekranda; zinciri burada kesiyoruz
+    // cunku izin vermeyen kisi digerlerini de istemiyordur.
+    if (!rapor) return null;
+    parcalar.push(raporuSun(rapor));
+
+    if (store.mailMode && store.mailUser && store.mailPass) {
+      try {
+        await system.configureMail(store.mailUser, store.mailPass);
+        const ozet = await system.mailSummary(2);
+        parcalar.push(epostaSun(ozet));
+      } catch (err) {
+        // Tek bir kaynagin patlamasi butun raporu dusurmesin.
+        hud.log("error", `E-posta okunamadi: ${err.message}`);
+      }
+    }
+
+    if (store.businessMode) {
+      try {
+        const veri = await system.messageList({ limit: 60 });
+        if (veri?.summary?.total) parcalar.push(mesajlariSun(veri));
+      } catch (err) {
+        hud.log("error", `Musteri mesajlari okunamadi: ${err.message}`);
+      }
+    }
+
+    return parcalar.join(" ");
   },
 
   /**
