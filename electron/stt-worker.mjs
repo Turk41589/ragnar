@@ -31,12 +31,53 @@ async function init(modelPath) {
   if (!vosk) {
     const mod = await import("vosk-koffi");
     vosk = mod.default || mod;
-    // Vosk'un kendi gunlukleri isci ciktisini bogmasin.
-    vosk.setLogLevel?.(-1);
   }
 
+  /*
+   * GUNLUKLERI SUSTURMUYORUZ — en azindan model yuklenene kadar.
+   *
+   * Eskiden burada setLogLevel(-1) vardi. Vosk basarisiz bir yuklemenin
+   * SEBEBINI stderr'e yaziyor ("Folder '...' does not contain model
+   * files" gibi) ve biz tam o mesaji susturuyorduk. Geriye yalnizca bir
+   * cokme kodu kaliyordu.
+   */
+  vosk.setLogLevel?.(0);
+
   model = new vosk.Model(modelPath);
+
+  /*
+   * EN ONEMLI KONTROL.
+   *
+   * `vosk_model_new` basarisiz oldugunda HATA FIRLATMIYOR — NULL
+   * donduruyor ve yoluna devam ediyor. Sonraki satirdaki Recognizer o
+   * NULL'u yerel kodda cozmeye calisiyor ve surec aninda cokuyor:
+   * Windows'ta 0xC0000005 erisim ihlali (kod 3221225477), Linux'ta
+   * SIGSEGV. Kullanicinin gordugu sey anlamsiz bir sayi oluyordu.
+   *
+   * Bu yuzden Recognizer'a gecmeden ONCE bakiyoruz. Model neden
+   * yuklenmemis olursa olsun (yol bulunamadi, dosyalar okunamadi,
+   * yolda Vosk'un cozemedigi karakterler var) artik anlasilir bir
+   * hata donuyor.
+   */
+  if (!model.handle) {
+    model = null;
+    throw new Error(
+      `Ses modeli yuklenemedi.\nDenenen yol: ${modelPath}\n` +
+        "Klasor okunabiliyor mu ve icinde model dosyalari var mi?",
+    );
+  }
+
   recognizer = new vosk.Recognizer({ model, sampleRate: SAMPLE_RATE });
+
+  // Ayni tuzak burada da var: Recognizer da NULL donebiliyor.
+  if (!recognizer.handle) {
+    recognizer = null;
+    throw new Error("Ses tanimlayici kurulamadi (model yuklendi ama tanimlayici acilmadi).");
+  }
+
+  // Model yuklendi; bundan sonraki gunlukler yalnizca gurultu.
+  vosk.setLogLevel?.(-1);
+
   // Kelime zamanlamalari gerekmiyor; kapatmak isi hafifletiyor.
   try {
     recognizer.setWords(false);

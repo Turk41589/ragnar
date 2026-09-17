@@ -169,6 +169,7 @@ contextBridge.exposeInMainWorld("dra", {
   stt: {
     status: () => call("dra:stt:status"),
     install: () => call("dra:stt:install"),
+    remove: () => call("dra:stt:remove"),
     useFolder: (path) => call("dra:stt:use-folder", { path }),
     pickFolder: () => call("dra:stt:pick-folder"),
     inspect: () => call("dra:stt:inspect"),

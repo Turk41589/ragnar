@@ -49,6 +49,18 @@ export async function installEmbeddedModel(onProgress) {
 }
 
 /** Kullaniciya model klasoru sectirir (indirme engellenirse). */
+/**
+ * Kurulu modeli siler.
+ *
+ * Bozuk bir kurulumdan donmenin tek yolu bu: eskiden "yeniden kur"
+ * demek eski bozuk dosyalarin uzerine acmak demekti ve ayni cokme
+ * devam ediyordu.
+ */
+export async function removeEmbeddedModel() {
+  if (!embedded) throw new Error("Bu surumde gomulu motor yok.");
+  return window.dra.stt.remove();
+}
+
 export async function pickEmbeddedModel() {
   if (!embedded) throw new Error("Gomulu motor yalnizca uygulama surumunde var.");
   return window.dra.stt.pickFolder();

@@ -70,6 +70,31 @@ async function createFakeModels() {
   ];
 }
 
+/** Dogrulama testleri icin ayri klasorler. */
+async function createValidationModels() {
+  const { mkdtemp, mkdir, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const base = await mkdtemp(join(tmpdir(), "dra-dogrulama-"));
+
+  const buyuk = join(base, "buyuk");
+  await mkdir(join(buyuk, "ivector"), { recursive: true });
+  await writeFile(join(buyuk, "final.mdl"), Buffer.alloc(6 * 1024 * 1024, 1));
+  await writeFile(join(buyuk, "mfcc.conf"), "x");
+  await writeFile(join(buyuk, "ivector", "final.dubm"), "x");
+
+  const kucuk = join(base, "kucuk");
+  await mkdir(kucuk, { recursive: true });
+  await writeFile(join(kucuk, "final.mdl"), "x");
+  await writeFile(join(kucuk, "mfcc.conf"), "x");
+
+  const bosDosyali = join(base, "bosdosya");
+  await mkdir(bosDosyali, { recursive: true });
+  await writeFile(join(bosDosyali, "final.mdl"), Buffer.alloc(6 * 1024 * 1024, 1));
+  await writeFile(join(bosDosyali, "mfcc.conf"), "");
+
+  return { buyuk, kucuk, bosDosyali };
+}
+
 /** Ana pencereyi (index.html) bekler; acilis ekranini atlar. */
 async function mainWindowOf(app, timeout = 30000) {
   const bitis = Date.now() + timeout;
@@ -220,6 +245,34 @@ export async function run(_page, _base, t) {
         t.has(sonuc.hata, "final.mdl", `${ad}: hata neye bakildigini soyluyor`);
       }
     }
+    /* ----------------------------- BOZUK MODEL COKMEYLE DEGIL, CUMLEYLE
+     * Vosk yerel kod: eksik ya da yarim inmis bir modelle karsilasinca
+     * hata dondurmuyor, DOGRUDAN COKUYOR (Windows'ta 0xC0000005 erisim
+     * ihlali). Geriye yalnizca bir sayi kaliyor ve o sayi kullaniciya
+     * hicbir sey anlatmiyor. Onun icin modeli Vosk'a VERMEDEN once
+     * kendimiz bakiyoruz.                                             */
+
+    const dogrulama = await createValidationModels();
+
+    const dene = async (yol) => window.evaluate(
+      (p) => window.dra.stt.useFolder(p)
+        .then(() => window.dra.stt.start().then(
+          () => ({ hata: null }),
+          (e) => ({ hata: String(e?.message || e), kod: e?.code }),
+        ))
+        .then((r) => r, (e) => ({ hata: String(e?.message || e), kod: e?.code })),
+      yol,
+    );
+
+    const kucukSonuc = await dene(dogrulama.kucuk);
+    t.eq(kucukSonuc.kod, "BAD_MODEL", "cok kucuk model cokmeden reddediliyor");
+    t.has(kucukSonuc.hata || "", "kucuk", "sebebi yaziyor (boyut)");
+    t.has(kucukSonuc.hata || "", "yeniden kur", "ne yapilacagi yaziyor");
+
+    const bosSonuc = await dene(dogrulama.bosDosyali);
+    t.eq(bosSonuc.kod, "BAD_MODEL", "ici bos dosyali model cokmeden reddediliyor");
+    t.has(bosSonuc.hata || "", "yarim", "sebebi yaziyor (yarim inmis)");
+
     /* ------------------------------- motor GERCEKTEN baslatilabiliyor mu?
      * Yukaridaki "model yokken hata ver" testi motorun ilk satirlarinda
      * donuyordu; forkun yapildigi kod yoluna hic girmiyordu. Orada
@@ -231,6 +284,9 @@ export async function run(_page, _base, t) {
      * Sahte model gercek Vosk'u tatmin etmeyecegi icin basarili olmasini
      * beklemiyoruz; BEKLEDIGIMIZ, makul surede SONUCLANMASI ve hatanin
      * bir programlama hatasi olmamasi.                                   */
+    // Dogrulamayi GECEN bir model kuruyoruz; amac fork yoluna girmek.
+    await window.evaluate((p) => window.dra.stt.useFolder(p), dogrulama.buyuk);
+
     const baslatma = await window.evaluate(() =>
       Promise.race([
         window.dra.stt.start().then(

@@ -76,6 +76,117 @@ function isModelDir(dir) {
   );
 }
 
+/**
+ * Model klasorunu Vosk'a VERMEDEN ONCE dogrular.
+ *
+ * Neden gerekli: Vosk yerel kod. Eksik ya da yarim inmis bir modelle
+ * karsilasinca hata dondurmuyor, dogrudan COKUYOR (Windows'ta erisim
+ * ihlali, 0xC0000005). Cokmus bir surecten geriye yalnizca bir sayi
+ * kaliyor ve o sayi kullaniciya hicbir sey anlatmiyor.
+ *
+ * Burada ucuz ve kesin olan seylere bakiyoruz: gereken dosyalar var mi,
+ * ici bos olan var mi, klasorun toplam boyutu bir modele benziyor mu.
+ * Hepsi gecerse yine de cokebilir — ama en sik iki sebep burada
+ * yakalaniyor ve kullanici ne yapacagini ogreniyor.
+ *
+ * Doner: sorun varsa anlatan bir metin, yoksa null.
+ */
+async function modelDogrula(dir) {
+  const klasik = existsSync(join(dir, "conf"));
+
+  // Duzene gore olmazsa olmazlar.
+  const gerekli = klasik
+    ? [join(dir, "conf")]
+    : [join(dir, "final.mdl")];
+
+  for (const yol of gerekli) {
+    if (!existsSync(yol)) {
+      return `Model eksik: "${yol}" bulunamadi.`;
+    }
+  }
+
+  // Bos dosya = yarim inmis ya da yarim acilmis arsiv.
+  const bosOlanlar = [];
+  let toplam = 0;
+
+  async function tara(kok, derinlik = 0) {
+    if (derinlik > 3) return;
+    let girenler;
+    try {
+      girenler = await readdir(kok, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of girenler) {
+      const tam = join(kok, e.name);
+      if (e.isDirectory()) {
+        await tara(tam, derinlik + 1);
+        continue;
+      }
+      try {
+        const s = await stat(tam);
+        toplam += s.size;
+        if (s.size === 0) bosOlanlar.push(e.name);
+      } catch {
+        /* okunamayan dosyayi atla */
+      }
+    }
+  }
+  await tara(dir);
+
+  if (bosOlanlar.length) {
+    return `Model dosyalari yarim: ${bosOlanlar.slice(0, 5).join(", ")} ` +
+      `bos (${bosOlanlar.length} dosya). Indirme yarida kalmis olabilir.`;
+  }
+
+  /*
+   * En kucuk Vosk modeli bile 40 MB'in uzerinde. Bunun cok altindaysa
+   * arsiv yarim acilmis demektir. Esigi BILEREK dusuk tuttuk (5 MB):
+   * amac saglam bir modeli yanlislikla reddetmek degil, acikca bozuk
+   * olani yakalamak.
+   */
+  const mb = toplam / 1048576;
+  if (mb < 5) {
+    return `Model cok kucuk (${mb.toFixed(1)} MB). Gercek bir Vosk modeli ` +
+      "en az 40 MB civarindadir; arsiv yarim acilmis gorunuyor.";
+  }
+
+  return null;
+}
+
+/**
+ * Windows'ta ASCII disi karakter iceren yollari 8.3 "kisa yol" bicimine
+ * cevirir.
+ *
+ * Neden: Vosk'un C arayuzu model yolunu dar (ANSI) bir metin olarak
+ * aliyor. Kullanici adinda Turkce harf varsa — ki sik — yol
+ * "C:\Users\Şükrü\..." oluyor ve Vosk o dosyalari acamiyor; hata
+ * dondurmek yerine cokuyor. Windows her klasor icin ASCII bir kisa ad
+ * da tutuyor ("C:\Users\SUKRU~1\..."); onu kullaniyoruz.
+ *
+ * Kisa ad uretimi bazi diskler icin kapali olabilir. O zaman elimizdeki
+ * yolu oldugu gibi birakiyoruz — durumu kotulestirmiyoruz.
+ */
+async function asciiYol(yol) {
+  if (process.platform !== "win32") return yol;
+  // eslint-disable-next-line no-control-regex
+  if (!/[^\x00-\x7F]/.test(yol)) return yol;
+
+  try {
+    const { stdout } = await execFileAsync(
+      "cmd.exe",
+      ["/c", "for %I in (\"" + yol + "\") do @echo %~sI"],
+      { windowsHide: true },
+    );
+    const kisa = stdout.trim();
+    // Kisa ad uretilememisse cikti bos ya da hala Turkce olur.
+    if (kisa && !/[^\x00-\x7F]/.test(kisa) && existsSync(kisa)) return kisa;
+  } catch {
+    /* kisa ad alinamadi; asagida oldugu gibi donuyoruz */
+  }
+  return yol;
+}
+
 /** Verilen kokun altinda modeli belirli bir derinlige kadar arar. */
 async function findModel(root, depth = 3) {
   if (!existsSync(root)) return null;
@@ -132,6 +243,61 @@ async function looksLikeZip(path) {
   }
 }
 
+/**
+ * Windows cikis kodlarini anlasilir Turkceye cevirir.
+ *
+ * Yerel bir cokme ham sayi olarak geliyor ve "kod 3221225477" kullaniciya
+ * hicbir sey anlatmiyor. Bu sayilar aslinda Windows'un NTSTATUS
+ * degerleri; en sik gorulen birkacinin ne demek oldugu belli.
+ */
+const COKME_KODLARI = {
+  3221225477: {
+    ad: "erisim ihlali (0xC0000005)",
+    // En sik iki sebep: model dosyalari bozuk/eksik, ya da model yolunda
+    // Vosk'un okuyamadigi karakterler var.
+    ne: "Ses modeli okunamiyor. Genellikle modelin eksik ya da yarim " +
+      "inmis olmasindan olur. Ayar sekmesinden \"Ses modelini yeniden kur\" " +
+      "deyin.",
+  },
+  3221225781: {
+    ad: "eksik DLL (0xC0000135)",
+    ne: "Windows'ta eksik bir sistem bileseni var. Microsoft Visual C++ " +
+      "Yeniden Dagitilabilir Paketi'ni (x64) kurup tekrar deneyin.",
+  },
+  3221225595: {
+    ad: "bozuk DLL (0xC0000139)",
+    ne: "Bir sistem bileseni eksik ya da surumu uyumsuz. Microsoft Visual " +
+      "C++ Yeniden Dagitilabilir Paketi'ni (x64) kurup tekrar deneyin.",
+  },
+  3221226505: {
+    ad: "yigin bozulmasi (0xC0000409)",
+    ne: "Ses motoru beklenmedik bir veriyle karsilasti. Model dosyalari " +
+      "bozuk olabilir; yeniden kurmayi deneyin.",
+  },
+};
+
+/** Vosk'un kendi hata satirlarini ayiklar. */
+function voskSebebi(cikti) {
+  const satirlar = String(cikti || "")
+    .split(/\r?\n/)
+    .map((x) => x.trim())
+    .filter((x) => /ERROR|WARN|LOG \(Vosk/i.test(x));
+  if (!satirlar.length) return "";
+  // En sonuncusu en ilgili olan; cok uzunsa kirpiyoruz.
+  return satirlar[satirlar.length - 1].slice(0, 300);
+}
+
+/** Cikis kodunu okunabilir bir cumleye cevirir. */
+function cokmeMesaji(code, modelPath) {
+  const bilinen = COKME_KODLARI[code];
+  const yol = modelPath ? `\nKullanilan model: ${modelPath}` : "";
+
+  if (!bilinen) {
+    return `Ses motoru beklenmedik sekilde kapandi (kod ${code}).${yol}`;
+  }
+  return `Ses motoru cokti — ${bilinen.ad}.\n${bilinen.ne}${yol}`;
+}
+
 /** Motorun ve modelin durumu. */
 export async function status() {
   const dir = modelDir || (await findModel(modelRoot()));
@@ -186,7 +352,19 @@ export async function installModel(onProgress = () => {}) {
   const zipPath = join(root, "model.zip");
 
   try {
+    /*
+     * ONCE TEMIZLIYORUZ.
+     *
+     * Eskiden kurulum var olan klasorun UZERINE aciyordu. Yarim kalmis
+     * bir indirmeden sonra tekrar denendiginde eski bozuk dosyalar
+     * yerinde kaliyor, arsiv onlarin ustune aciliyor ve model yine
+     * bozuk kaliyordu — kullanici "yeniden kur" dedigi halde ayni
+     * cokme devam ediyordu.
+     */
+    await rm(root, { recursive: true, force: true });
     await mkdir(root, { recursive: true });
+    // Elde tutulan eski yol artik gecersiz.
+    modelDir = null;
     onProgress(0);
 
     const res = await fetch(MODEL_URL);
@@ -219,6 +397,16 @@ export async function installModel(onProgress = () => {}) {
     await rm(zipPath, { force: true });
 
     modelDir = await findModel(root);
+    if (modelDir) {
+      // Indirme tamamlandi diye model saglam demek degil. Burada
+      // yakalarsak kullanici cokmeyle degil, anlasilir bir cumleyle
+      // karsilasiyor.
+      const sorun = await modelDogrula(modelDir);
+      if (sorun) {
+        modelDir = null;
+        throw new Error(`${sorun}\nBaglantinizi kontrol edip tekrar deneyin.`);
+      }
+    }
     if (!modelDir) {
       // Tahmin yurutmek yerine klasorde ne oldugunu bildir.
       const tree = await describeTree(root);
@@ -242,6 +430,21 @@ export async function inspect() {
     tree: existsSync(root) ? await describeTree(root) : "(klasor yok)",
     modelPath: modelDir || (await findModel(root)),
   };
+}
+
+/**
+ * Kurulu modeli siler.
+ *
+ * Bozuk bir kurulumdan donmenin acik yolu. Motor calisiyorsa once
+ * durduruluyor: Windows acik dosyayi sildirmiyor.
+ */
+export async function removeModel() {
+  stop();
+  const root = modelRoot();
+  await rm(root, { recursive: true, force: true });
+  modelDir = null;
+  lastError = null;
+  return { removed: root };
 }
 
 /** Elle indirilmis bir model klasorunu kullanir. */
@@ -284,6 +487,26 @@ async function doStart(onResult) {
     throw Object.assign(new Error("Ses modeli kurulu degil."), { code: "NO_MODEL" });
   }
 
+  /*
+   * Modeli Vosk'a VERMEDEN once dogruluyoruz. Bozuk bir modelle Vosk
+   * hata dondurmuyor, coküyor — ve cokmus bir surecten geriye yalnizca
+   * bir sayi kaliyor. Burada yakalarsak kullaniciya ne yapacagini
+   * soyleyebiliyoruz.
+   */
+  const sorun = await modelDogrula(modelDir);
+  if (sorun) {
+    throw Object.assign(
+      new Error(`${sorun}\nAyar sekmesinden "Ses modelini yeniden kur" deyin.`),
+      { code: "BAD_MODEL", modelPath: modelDir },
+    );
+  }
+
+  /*
+   * Yolda Turkce harf varsa (kullanici adindan geliyor) Vosk dosyalari
+   * acamiyor ve yine cokuyor. Windows'un ASCII kisa adini kullaniyoruz.
+   */
+  const voskYolu = await asciiYol(modelDir);
+
   lastError = null;
   const workerPath = join(HERE, "stt-worker.mjs");
 
@@ -294,8 +517,26 @@ async function doStart(onResult) {
     const sonlandir = (fn, arg) => { if (!bitti) { bitti = true; fn(arg); } };
 
     let w;
+    /*
+     * Iscinin stderr'ini YAKALIYORUZ.
+     *
+     * Vosk basarisiz bir yuklemenin sebebini stderr'e yaziyor
+     * ("Folder '...' does not contain model files" gibi). Varsayilan
+     * ayarda o cikti dogrudan konsola gidiyor ve kullanici hicbir zaman
+     * gormuyor. Son satirlari saklayip hata mesajina ekliyoruz: sorunun
+     * ne oldugunu anlatan tek yer orasi.
+     */
+    let voskCiktisi = "";
     try {
-      w = utilityProcess.fork(workerPath, [], { serviceName: "dra-ses-motoru" });
+      w = utilityProcess.fork(workerPath, [], {
+        serviceName: "dra-ses-motoru",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      const topla = (chunk) => {
+        voskCiktisi = (voskCiktisi + String(chunk)).slice(-2000);
+      };
+      w.stderr?.on("data", topla);
+      w.stdout?.on("data", topla);
     } catch (err) {
       lastError = err?.message || "Ses motoru baslatilamadi.";
       return reject(new Error(lastError));
@@ -325,7 +566,10 @@ async function doStart(onResult) {
           clearTimeout(zamanAsimi);
           // Baslarken hata veren isci arkada asili kalmasin.
           stop();
-          sonlandir(reject, new Error(message.message));
+          const sebep = voskSebebi(voskCiktisi);
+          sonlandir(reject, new Error(
+            message.message + (sebep ? `\nMotorun soyledigi: ${sebep}` : ""),
+          ));
         } else {
           onEvent({ type: "error", message: message.message });
         }
@@ -345,13 +589,15 @@ async function doStart(onResult) {
       if (beklenen || code === 0) return;
 
       // Yerel cokme: uygulama ayakta, kullaniciya durumu bildiriyoruz.
-      lastError = lastError || `Ses motoru beklenmedik sekilde kapandi (kod ${code}).`;
+      const sebep = voskSebebi(voskCiktisi);
+      lastError = lastError
+        || cokmeMesaji(code, voskYolu) + (sebep ? `\nMotorun soyledigi: ${sebep}` : "");
       console.error(`[dra] ${lastError}`);
       onEvent({ type: "crashed", message: lastError });
       sonlandir(reject, new Error(lastError));
     });
 
-    w.postMessage({ type: "init", modelPath: modelDir });
+    w.postMessage({ type: "init", modelPath: voskYolu });
   }).then(() => status());
 }
 

@@ -1767,6 +1767,37 @@ export function mountPanel(context) {
     }
   });
 
+  /*
+   * YENIDEN KUR = once sil, sonra kur.
+   *
+   * Yalnizca "kur" demek yetmiyordu: yarim inmis bir modelden sonra
+   * arsiv eski bozuk dosyalarin uzerine aciliyor ve model yine bozuk
+   * kaliyordu. Kullanici "yeniden kur" dedigi halde ayni cokmeyi
+   * gormeye devam ediyordu.
+   */
+  $("set-model-reinstall").addEventListener("click", async () => {
+    const button = $("set-model-reinstall");
+    button.disabled = true;
+    ctx.log("system", "Eski model siliniyor…");
+    try {
+      await speech.removeEmbeddedModel();
+      ctx.log("system", "Eski model silindi. Yeniden indiriliyor (yaklasik 45 MB).");
+      await speech.installEmbeddedModel((percent) => {
+        button.textContent = `Indiriliyor… %${percent}`;
+        $("model-status").textContent = `Indiriliyor… %${percent}`;
+      });
+      ctx.log("system", "Ses modeli yeniden kuruldu. Mikrofonu deneyebilirsiniz.");
+      ctx.toast("Ses modeli yeniden kuruldu");
+    } catch (err) {
+      ctx.log("error", `Yeniden kurulamadi: ${err.message}`);
+      ctx.toast("Yeniden kurulamadi — sohbete bakin", 7000);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Ses modelini yeniden kur";
+      refreshModelStatus();
+    }
+  });
+
   $("set-model-pick").addEventListener("click", async () => {
     try {
       const result = await speech.pickEmbeddedModel();

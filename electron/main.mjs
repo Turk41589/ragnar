@@ -708,6 +708,8 @@ function registerIpc() {
 
   handle("dra:stt:inspect", async () => ({ info: await stt.inspect() }));
 
+  handle("dra:stt:remove", async () => stt.removeModel());
+
   handle("dra:stt:start", async () => {
     // Sonuclar isci surecinden gelip dogrudan arayuze aktariliyor.
     const durum = await stt.start((sonuc) => {
