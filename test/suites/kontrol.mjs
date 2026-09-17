@@ -124,6 +124,34 @@ export async function run(_page, _base, t) {
     t.eq(hata?.code, "NO_WINDOW", "olmayan pencere bildiriliyor");
     t.has(hata?.message || "", "Spotify", "hangi pencerenin arandigi yaziliyor");
 
+    /* ===================== DEGISTIRICI TUSLAR REDDEDILIYOR ==========
+     * SendKeys sade bir metin gondericisi degil: "%{F4}" pencereyi
+     * kapatir, "^{ESC}" baslat menusunu acar. Serbest birakilan bir tus
+     * alani, bu dosyanin basindaki "serbest komut calistirilmaz"
+     * kuralinin etrafindan dolasmanin yoluydu.                        */
+
+    control._setRunnerForTests(async (script) => {
+      komutlar.push(script);
+      return "TAMAM";
+    });
+
+    for (const tehlikeli of ["%{F4}", "^{ESC}", "+{TAB}", "{ENTER}", "~", "l}{a"]) {
+      sifirla();
+      let red = null;
+      try {
+        await control.sendKeysTo("YouTube", tehlikeli);
+      } catch (err) {
+        red = err;
+      }
+      t.eq(red?.code, "UNSAFE_KEYS", `degistirici tus reddediliyor: ${tehlikeli}`);
+      t.eq(komutlar.length, 0, `reddedilen tus PowerShell'e HIC gitmiyor: ${tehlikeli}`);
+    }
+
+    // Zararsiz tuslar gecmeye devam etmeli.
+    sifirla();
+    await control.sendKeysTo("YouTube", "jj");
+    t.has(son(), "'jj'", "zararsiz tuslar gonderilmeye devam ediyor");
+
     /* ============================== KACISLAR ======================== */
 
     // Tek tirnak PowerShell dizesini bozar; kacisli yazilmali.

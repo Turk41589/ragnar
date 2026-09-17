@@ -175,6 +175,27 @@ export async function startCapture(handler) {
   try {
     return await buildGraph(stream, handler);
   } catch (err) {
+    /*
+     * Yarida kalan kurulumun artiklarini da temizliyoruz.
+     *
+     * buildGraph once `ctx` atiyor, sonra dugumleri kuruyor. Arada bir
+     * hata olursa `node` bos ama `ctx` dolu kaliyordu. stopCapture
+     * "ctx varsa calis" diyor, yani sonradan cagrildiginda akisi BIR
+     * KEZ DAHA birakiyor. Sayac erken sifira dusuyor ve seviye
+     * gostergesinin hala kullandigi mikrofon kapaniyordu — daha once
+     * bir kez yasanan hatanin aynisi.
+     */
+    onChunk = null;
+    try {
+      node?.disconnect();
+      source?.disconnect();
+    } catch {
+      /* onemsiz */
+    }
+    ctx?.close().catch(() => {});
+    node = null;
+    source = null;
+    ctx = null;
     releaseStream();
     throw err;
   }

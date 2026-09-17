@@ -38,15 +38,23 @@ function bildir(olay) {
 export async function tick(now = Date.now()) {
   if (calisiyor) return { skipped: "zaten calisiyor" };
 
-  // Yetki yoksa hicbir sey yapma — ve her dakika soru sorma.
-  if (!(await permissions.granted("youtube"))) return { skipped: "izin yok" };
-  if (!youtube.status().ready) return { skipped: "kanal bagli degil" };
-
-  const sirada = await videos.due(now);
-  if (!sirada.length) return { uploaded: 0 };
-
+  // Bayrak AWAITLERDEN ONCE konuyor. Sonraya birakilirsa iki tur
+  // arasindaki bekleme sirasinda ikisi de gecip ayni videoyu iki kez
+  // yukleyebilir. Erken kapatmak icin asagida iki ayri cikis var.
   calisiyor = true;
   let basarili = 0;
+
+  let sirada;
+  try {
+    // Yetki yoksa hicbir sey yapma — ve her dakika soru sorma.
+    if (!(await permissions.granted("youtube"))) return { skipped: "izin yok" };
+    if (!youtube.status().ready) return { skipped: "kanal bagli degil" };
+
+    sirada = await videos.due(now);
+    if (!sirada.length) return { uploaded: 0 };
+  } finally {
+    if (!sirada?.length) calisiyor = false;
+  }
 
   try {
     for (const video of sirada) {

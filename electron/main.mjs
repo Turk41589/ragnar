@@ -285,7 +285,14 @@ async function runControl(body) {
       );
       return { ...sonuc, applied: kere * 10, forward: ileri };
     }
-    case "keys": return control.sendKeysTo(body.window, body.keys);
+    // Genel "keys" kanali KALDIRILDI.
+    //
+    // Herhangi bir pencereye herhangi bir tus dizisi gondermek, bu
+    // dosyanin basindaki "serbest komut calistirilmaz" kuralinin
+    // etrafindan dolasmak demekti: SendKeys'te "%{F4}" pencereyi
+    // kapatir, "^{ESC}" baslat menusunu acar. Arayuzde kullanan da
+    // yoktu. Tus gerektiren her yeni yetenek, "seek" gibi ISIMLI bir
+    // islem olarak eklenmeli.
     case "power": return control.power(body.what);
     case "brightness": return control.brightness(body.percent);
     case "open": return control.openUrl(body.url);

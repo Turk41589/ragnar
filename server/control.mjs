@@ -134,7 +134,35 @@ function psString(value) {
  * ileri/geri sarma YOK. YouTube'un kendi kisayollari var (l = 10 saniye
  * ileri, j = 10 saniye geri) ama bunlar ancak sayfa odaktayken calisir.
  */
+/**
+ * SendKeys'te ZARARSIZ sayilan tuslar.
+ *
+ * `SendKeys.SendWait` sade bir metin gondericisi DEGIL: `+ ^ % ~ ( ) { }
+ * [ ]` isaretleri Shift/Ctrl/Alt ve ozel tus anlamina geliyor. Yani
+ * serbest birakilan bir `keys` alani, "%{F4}" (pencereyi kapat) ya da
+ * "^{ESC}" (baslat menusu) gonderebilen genel bir klavye kanali demek —
+ * bu modulun en basinda yazan "serbest komut calistirilmaz" kuralinin
+ * tam tersi. Onun icin yalnizca harf, rakam ve bosluk geciyor.
+ *
+ * Su an ihtiyac duyulan tuslar zaten bunlar: YouTube'un l/j kisayollari.
+ * Baska bir tus gerekirse dogru yol, buraya IZIN vermek degil, yukaridaki
+ * gibi ISIMLI yeni bir islem eklemek.
+ */
+const GUVENLI_TUSLAR = /^[A-Za-z0-9 ]{1,32}$/;
+
 export async function sendKeysTo(titlePart, keys) {
+  const tuslar = String(keys ?? "");
+  if (!GUVENLI_TUSLAR.test(tuslar)) {
+    throw Object.assign(
+      new Error(
+        "Bu tus dizisi gonderilemez. Yalnizca harf, rakam ve bosluk " +
+          "gonderilebiliyor; degistirici tuslar (Ctrl, Alt, Shift) icin " +
+          "isimli bir islem gerekir.",
+      ),
+      { code: "UNSAFE_KEYS" },
+    );
+  }
+
   const script = `
     $ErrorActionPreference = 'Stop'
     Add-Type -AssemblyName Microsoft.VisualBasic
@@ -145,7 +173,7 @@ export async function sendKeysTo(titlePart, keys) {
     if (-not $hedef) { Write-Output 'YOK'; exit 0 }
     [Microsoft.VisualBasic.Interaction]::AppActivate($hedef.Id)
     Start-Sleep -Milliseconds 220
-    [System.Windows.Forms.SendKeys]::SendWait(${psString(keys)})
+    [System.Windows.Forms.SendKeys]::SendWait(${psString(tuslar)})
     Write-Output 'TAMAM'
   `;
   const sonuc = await powershell(script);
@@ -155,7 +183,7 @@ export async function sendKeysTo(titlePart, keys) {
       { code: "NO_WINDOW" },
     );
   }
-  return { action: "keys", target: titlePart, keys };
+  return { action: "keys", target: titlePart, keys: tuslar };
 }
 
 /**
@@ -303,7 +331,7 @@ export const ACTIONS = {
   volume: "Sesi acar ya da kisar",
   mute: "Sesi susturur / acar",
   media: "Oynat, duraklat, sonraki, onceki",
-  keys: "Odaktaki pencereye tus gonderir (ileri sarma gibi)",
+  seek: "Ileri/geri sarar (pencereyi one getirip harf tusu gonderir)",
   power: "Kilitler ya da uyutur",
   brightness: "Ekran parlakligini ayarlar",
   open: "Adres acar",

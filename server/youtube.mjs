@@ -68,6 +68,26 @@ export function status() {
   };
 }
 
+/**
+ * Yaniti JSON'a cevirir.
+ *
+ * `res.ok` dogru olsa bile govde JSON olmayabilir: yakalama portali,
+ * kurum vekil sunucusu ya da operator araya bir HTML sayfasi
+ * koyabiliyor. Ciplak `JSON.parse` o durumda "Unexpected token <" gibi
+ * kullaniciya hicbir sey anlatmayan bir hata veriyordu.
+ */
+function jsonCoz(metin) {
+  try {
+    return JSON.parse(metin);
+  } catch {
+    throw new Error(
+      "YouTube beklenmedik bir yanit verdi (JSON degil). Internet baglantiniz " +
+        "bir oturum acma sayfasina yonlendiriyor olabilir. Gelen: " +
+        String(metin).replace(/\s+/g, " ").slice(0, 120),
+    );
+  }
+}
+
 /** Google'in hata govdesinden okunabilir bir cumle cikarir. */
 function readError(status, text) {
   let detay = "";
@@ -175,7 +195,7 @@ export async function exchangeCode(code, redirect) {
   const metin = await res.text();
   if (!res.ok) throw new Error(readError(res.status, metin));
 
-  const data = JSON.parse(metin);
+  const data = jsonCoz(metin);
   if (!data.refresh_token) {
     throw new Error(
       "Google yenileme jetonu vermedi. Google Hesabi → Guvenlik → " +
@@ -213,7 +233,7 @@ async function token() {
   const metin = await res.text();
   if (!res.ok) throw new Error(readError(res.status, metin));
 
-  const data = JSON.parse(metin);
+  const data = jsonCoz(metin);
   if (!data.access_token) throw new Error("Google erisim jetonu vermedi.");
 
   access = {
@@ -241,7 +261,7 @@ export async function channel() {
   const metin = await res.text();
   if (!res.ok) throw new Error(readError(res.status, metin));
 
-  const data = JSON.parse(metin);
+  const data = jsonCoz(metin);
   const k = data.items?.[0];
   if (!k) throw new Error("Bu hesapta bir YouTube kanali bulunamadi.");
 
@@ -330,7 +350,7 @@ export async function upload({
   const yanit = await yukle.text();
   if (!yukle.ok) throw new Error(readError(yukle.status, yanit));
 
-  const sonuc = JSON.parse(yanit);
+  const sonuc = jsonCoz(yanit);
   const videoId = sonuc.id;
   if (!videoId) throw new Error("YouTube video kimligi dondurmedi.");
 

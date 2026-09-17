@@ -410,6 +410,49 @@ export async function run(_page, _base, t) {
   } finally {
     yt._setEndpointsForTests(null);
     sahte.server.close();
+  }
+
+  /* =================== 5. YANIT JSON DEGILSE ========================
+   * `res.ok` dogru olsa bile govde JSON olmayabilir: yakalama portali
+   * (otel/kafe wifi'si), kurum vekil sunucusu ya da operator araya bir
+   * HTML sayfasi koyabiliyor. Ciplak JSON.parse burada "Unexpected
+   * token <" veriyordu — kullaniciya hicbir sey anlatmayan bir hata. */
+
+  const portal = createServer((req, res) => {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end("<html><body>Oturum acin</body></html>");
+  });
+  await new Promise((r) => portal.listen(0, "127.0.0.1", r));
+
+  try {
+    const perms = await import("../../server/permissions.mjs");
+    const p = portal.address().port;
+    yt._setEndpointsForTests({
+      token: `http://127.0.0.1:${p}/token`,
+      upload: `http://127.0.0.1:${p}/upload/videos`,
+      api: `http://127.0.0.1:${p}/youtube/v3`,
+      auth: `http://127.0.0.1:${p}/auth`,
+    });
+    yt.configure({ clientId: "i", clientSecret: "g", refreshToken: "y" });
+    await perms.grant("youtube");
+
+    let portalHata = null;
+    try {
+      await yt.channel();
+    } catch (err) {
+      portalHata = err;
+    }
+    const mesaj = portalHata?.message || "";
+    t.ok(portalHata, "JSON olmayan yanit hata veriyor");
+    t.has(mesaj, "JSON degil", "hatanin sebebi aciklaniyor");
+    t.has(mesaj, "oturum acma", "ne yapilmasi gerektigi ima ediliyor");
+    t.ok(!/Unexpected token/i.test(mesaj), "ham ayristirici hatasi gosterilmiyor");
+    t.has(mesaj, "Oturum acin", "gelen yanitin bir parcasi gosteriliyor");
+
+    await perms.revokeAll();
+  } finally {
+    yt._setEndpointsForTests(null);
+    portal.close();
     delete process.env.DRA_DATA_DIR;
   }
 }

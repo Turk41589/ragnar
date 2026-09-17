@@ -49,6 +49,26 @@ export function status() {
   };
 }
 
+/**
+ * Yaniti JSON'a cevirir.
+ *
+ * `res.ok` dogru olsa bile govde JSON olmayabilir: yakalama portali,
+ * kurum vekil sunucusu ya da operator araya bir HTML sayfasi
+ * koyabiliyor. Ciplak `JSON.parse` o durumda "Unexpected token <" gibi
+ * kullaniciya hicbir sey anlatmayan bir hata veriyordu.
+ */
+function jsonCoz(metin) {
+  try {
+    return JSON.parse(metin);
+  } catch {
+    throw new Error(
+      "WhatsApp beklenmedik bir yanit verdi (JSON degil). Internet baglantiniz " +
+        "bir oturum acma sayfasina yonlendiriyor olabilir. Gelen: " +
+        String(metin).replace(/\s+/g, " ").slice(0, 120),
+    );
+  }
+}
+
 function readError(kod, metin) {
   let detay = "";
   try {
@@ -141,7 +161,7 @@ export async function test() {
 
   const metin = await res.text();
   if (!res.ok) throw new Error(readError(res.status, metin));
-  const d = JSON.parse(metin);
+  const d = jsonCoz(metin);
 
   return {
     phone: d.display_phone_number || null,
