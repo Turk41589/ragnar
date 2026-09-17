@@ -218,6 +218,25 @@
                 &laquo;ahmeti 10 dakika sustur&raquo;, &laquo;sohbete yaz merhaba&raquo;.
               </small>
             </li>
+            <li class="settings__stack">
+              <label for="set-google-key">Google arama anahtari (istege bagli)</label>
+              <input id="set-google-key" type="password" placeholder="API anahtari"
+                     autocomplete="off" maxlength="120" />
+              <label for="set-google-cx">Arama motoru kimligi (cx)</label>
+              <input id="set-google-cx" type="text" placeholder="a1b2c3d4e5f6g7h8i"
+                     autocomplete="off" maxlength="120" />
+              <button class="btn btn--icon btn--wide" type="button" id="set-google-save">
+                Kaydet ve sina
+              </button>
+              <p class="nextalarm" id="google-status">Anahtar girilmedi</p>
+              <small class="hint">
+                Google arama sayfasi otomatik isteklere kapali; resmi yol bu API.
+                Girmezseniz DRA yine arastirir (Wikipedia ve DuckDuckGo ile) —
+                anahtar Turkce sonuclari ve konuyla ilgili GERCEK gorselleri
+                belirgin sekilde iyilestirir. Gunde 100 sorgu ucretsiz; asilirsa
+                para odemeden durur. Anahtar yalnizca bu bilgisayarda kalir.
+              </small>
+            </li>
             <li>
               <span>E-posta raporu</span>
               <button class="switch" type="button" id="set-mail" role="switch" aria-checked="false"></button>

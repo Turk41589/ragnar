@@ -79,6 +79,21 @@ function sendJson(res, status, body) {
   res.end(payload);
 }
 
+/**
+ * Arama modulu tembel yukleniyor: kullanilmadikca hic yuklenmesin.
+ * Bir kez yukleyip sakliyoruz ki Google anahtarinin durumu saglik
+ * bilgisinde de sorulabilsin.
+ */
+let aramaModulu = null;
+async function aramaYukle() {
+  if (!aramaModulu) aramaModulu = await import("./search.mjs");
+  return aramaModulu;
+}
+
+function googleDurumu() {
+  return aramaModulu?.googleStatus?.() || { ready: false, keySet: false, cxSet: false };
+}
+
 async function readBody(req, limit = 256 * 1024) {
   const chunks = [];
   let size = 0;
@@ -220,7 +235,7 @@ const server = createServer(async (req, res) => {
       // Jeton yalnizca ayni kokenden okunabilir; capraz kokenli JavaScript
       // yaniti goremez cunku CORS basligi gondermiyoruz.
       token: SESSION_TOKEN,
-      search: { enabled: searchEnabled },
+      search: { enabled: searchEnabled, google: googleDurumu() },
       kick: kick.status(),
       tts: tts.status(),
     piper: piper.status(),
@@ -269,13 +284,21 @@ const server = createServer(async (req, res) => {
 
   /* ---------------------------------------------------------- arama -- */
 
+
+  if (url.pathname === "/api/search/configure" && req.method === "POST") {
+    return handleAction(req, res, async (body) => {
+      const { configureGoogle } = await aramaYukle();
+      return { google: configureGoogle({ key: body.key, cx: body.cx }) };
+    });
+  }
+
   if (url.pathname === "/api/search" && req.method === "POST") {
     return handleAction(req, res, async (body) => {
       if (!searchEnabled) {
         throw new Error("Web aramasi kapali. Ayar sekmesinden acabilirsiniz.");
       }
       // Modul yalnizca gerektiginde yuklenir; kapaliyken hic dokunulmaz.
-      const { search } = await import("./search.mjs");
+      const { search } = await aramaYukle();
       return { result: await search(body.query) };
     });
   }
@@ -287,7 +310,7 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === "/api/search/rich" && req.method === "POST") {
     return handleAction(req, res, async (body) => {
-      const { richSearch } = await import("./search.mjs");
+      const { richSearch } = await aramaYukle();
       return { result: await richSearch(body.query, { limit: Number(body.limit) || 4 }) };
     });
   }

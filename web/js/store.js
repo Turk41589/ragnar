@@ -37,6 +37,10 @@ const DEFAULTS = {
   // Piper: cihazda calisan ucretsiz ses. Program ve ses modeli yolu.
   piperBin: "",
   piperVoice: "",
+  // Google arama (Programmable Search). Anahtar ve arama motoru kimligi
+  // bu bilgisayarda kalir; girilmezse DRA anahtarsiz kaynaklarla calisir.
+  googleKey: "",
+  googleCx: "",
   // E-posta raporu: Gmail adresi + UYGULAMA SIFRESI (normal sifre degil).
   mailMode: false,
   mailUser: "",
@@ -99,6 +103,8 @@ function coerce(saved) {
     store.elevenModel = saved.elevenModel.trim().slice(0, 80);
   }
   if (typeof saved.mailMode === "boolean") store.mailMode = saved.mailMode;
+  if (typeof saved.googleKey === "string") store.googleKey = saved.googleKey;
+  if (typeof saved.googleCx === "string") store.googleCx = saved.googleCx;
   if (typeof saved.mailUser === "string") store.mailUser = saved.mailUser.slice(0, 200);
   if (typeof saved.mailPass === "string") store.mailPass = saved.mailPass.slice(0, 100);
 

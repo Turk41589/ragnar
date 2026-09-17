@@ -1693,6 +1693,11 @@ async function connectServer() {
     if (store.ttsProvider === "elevenlabs" && store.elevenKey) {
       await system.configureTts(store.elevenKey, store.elevenVoice, store.elevenModel);
     }
+    // Google arama anahtari da ayni sekilde: diskte yalnizca bu
+    // tarayicida durur, arka tarafa her acilista bildirilir.
+    if (store.googleKey && store.googleCx) {
+      await system.configureSearch(store.googleKey, store.googleCx);
+    }
     panel.syncSettings();
   } catch (err) {
     console.warn("[dra] sunucu yetenekleri kullanilamiyor:", err.message);

@@ -756,6 +756,71 @@ export async function run(page, base, t, { external }) {
   t.ok(arastirma.sahneVar, "arastirma komutu sahne verisi de tasiyor");
   t.has(arastirma.sahneBaslik, "eyfel", "sahnede sorulan soru yaziyor");
 
+  /* ------------------------------------------- Google arama anahtari -
+   * Google arama sayfasi otomatik isteklere kapali; resmi yol kendi
+   * anahtarinizi istiyor. Anahtar ISTEGE BAGLI: girilmezse DRA yine
+   * arastirir. Anahtarin kendisi arka tarafa gider ama geri GELMEZ.  */
+
+  await page.click('.tab[data-tab="modlar"]');
+  await page.waitForTimeout(150);
+
+  const gugil = await page.evaluate(async () => {
+    const { store, saveStore } = await import("/js/store.js");
+    const sistem = await import("/js/system.js");
+
+    const durum = () => document.getElementById("google-status").textContent;
+
+    store.googleKey = "";
+    store.googleCx = "";
+    saveStore();
+    const panel = await import("/js/panel.js");
+    panel.syncSettings();
+    const bos = durum();
+
+    store.googleKey = "ANAHTAR";
+    saveStore();
+    panel.syncSettings();
+    const eksik = durum();
+
+    store.googleCx = "KIMLIK";
+    saveStore();
+    panel.syncSettings();
+    const tam = durum();
+
+    // Arka tarafa bildir; donen bilgide anahtarin KENDISI olmamali.
+    let bildirim = null;
+    try {
+      bildirim = await sistem.configureSearch(store.googleKey, store.googleCx);
+    } catch (err) {
+      bildirim = { hata: err.message };
+    }
+
+    const saglik = sistem.info().search?.google || {};
+
+    // Temizle: sonraki testler etkilenmesin.
+    store.googleKey = "";
+    store.googleCx = "";
+    saveStore();
+    await sistem.configureSearch("", "");
+
+    return {
+      bos, eksik, tam, bildirim, saglik,
+      alanVar: Boolean(document.getElementById("set-google-key")),
+      sifreTipi: document.getElementById("set-google-key").getAttribute("type"),
+      hepsi: JSON.stringify({ bildirim, saglik }),
+    };
+  });
+
+  t.ok(gugil.alanVar, "Modlar sekmesinde anahtar alani var");
+  t.eq(gugil.sifreTipi, "password", "anahtar alani ekranda gizli yaziliyor");
+  t.has(gugil.bos, "girilmedi", "anahtarsizken durum bunu soyluyor");
+  t.has(gugil.bos, "DuckDuckGo", "anahtarsizken de calistigi soyleniyor");
+  t.has(gugil.eksik, "Eksik", "tek basina anahtar yetmiyor, cx de gerekiyor");
+  t.has(gugil.tam, "Kaydedildi", "ikisi girilince kaydedildigi soyleniyor");
+  t.eq(gugil.saglik.ready, true, "arka taraf anahtari aldi");
+  t.eq(gugil.saglik.keySet, true, "anahtarin VAR OLDUGU biliniyor");
+  t.ok(!gugil.hepsi.includes("ANAHTAR"), "anahtarin KENDISI arayuze geri donmuyor");
+
   /* ------------------------------------------------------- ag yalitimi */
   t.eq(external, [], "localhost disina hicbir istek atilmadi");
 }

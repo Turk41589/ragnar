@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld("dra", {
 
   search: {
     setEnabled: (enabled) => call("dra:search:toggle", { enabled }),
+    configure: (key, cx) => call("dra:search:configure", { key, cx }),
     query: (q) => call("dra:search", { query: q }),
     rich: (q, limit) => call("dra:search:rich", { query: q, limit }),
   },

@@ -46,6 +46,26 @@ const ROOT = join(HERE, "..");
  */
 const GIZLI_BASLAT = process.argv.includes("--gizli");
 
+/**
+ * Google arama anahtarinin durumu.
+ *
+ * Arama modulu tembel yukleniyor (kullanilmadikca hic yuklenmesin
+ * diye). Saglik bilgisi her acilista soruluyor ve modulu yalnizca
+ * bunun icin yuklemek gereksiz — daha once yuklenmisse durumu
+ * oradan, yuklenmemisse "hazir degil" diyoruz.
+ */
+let aramaModulu = null;
+
+/** Arama modulunu bir kez yukleyip saklar. */
+async function aramaYukle() {
+  if (!aramaModulu) aramaModulu = await import("../server/search.mjs");
+  return aramaModulu;
+}
+
+function googleDurumu() {
+  return aramaModulu?.googleStatus?.() || { ready: false, keySet: false, cxSet: false };
+}
+
 let mainWindow = null;
 let splashWindow = null;
 let tray = null;
@@ -362,7 +382,7 @@ function registerIpc() {
     desktop: true,
     // Arayuz gizli mi baslatildigini bilmeli: o zaman mikrofonu kendisi acar.
     hiddenLaunch: GIZLI_BASLAT,
-    search: { enabled: searchEnabled },
+    search: { enabled: searchEnabled, google: googleDurumu() },
     kick: kick.status(),
     tts: tts.status(),
     piper: piper.status(),
@@ -395,6 +415,11 @@ function registerIpc() {
     return { name: entry.name };
   });
 
+  handle("dra:search:configure", async ({ key, cx }) => {
+    const { configureGoogle } = await aramaYukle();
+    return { google: configureGoogle({ key, cx }) };
+  });
+
   handle("dra:search:toggle", async ({ enabled }) => {
     // Arama artik kapatilamiyor; eski cagrilar sessizce basarili donsun.
     return { enabled: true };
@@ -402,7 +427,7 @@ function registerIpc() {
 
   handle("dra:search", async ({ query }) => {
     // Kapaliyken modul hic yuklenmez.
-    const { search } = await import("../server/search.mjs");
+    const { search } = await aramaYukle();
     return { result: await search(query) };
   });
 
@@ -618,7 +643,7 @@ function registerIpc() {
   });
 
   handle("dra:search:rich", async ({ query, limit }) => {
-    const { richSearch } = await import("../server/search.mjs");
+    const { richSearch } = await aramaYukle();
     return { result: await richSearch(query, { limit: Number(limit) || 4 }) };
   });
 

@@ -286,6 +286,10 @@ export function syncSettings() {
   $("montage-image-info").textContent = store.montageImage || "Gorsel secilmedi";
   $("montage-music-info").textContent = store.montageMusic || "Muzik secilmedi";
 
+  $("set-google-key").value = store.googleKey;
+  $("set-google-cx").value = store.googleCx;
+  refreshGoogleStatus();
+
   syncSwitch($("set-mail"), store.mailMode);
   $("mail-fields").hidden = !store.mailMode;
   $("set-mail-user").value = store.mailUser;
@@ -684,6 +688,25 @@ export function setMontageStatus(text) {
 }
 
 /* ----------------------------------------------------------------- e-posta */
+
+/**
+ * Google arama anahtarinin durumu.
+ *
+ * "Anahtar girildi" ile "anahtar CALISIYOR" ayri seyler: bicimi dogru
+ * ama gecersiz bir anahtar da girilmis gorunur. Onun icin yalnizca
+ * "Kaydet ve sina" gercek bir sorgu atip sonucu buraya yaziyor.
+ */
+function refreshGoogleStatus() {
+  const el = $("google-status");
+  if (!el) return;
+  if (!store.googleKey && !store.googleCx) {
+    el.textContent = "Anahtar girilmedi — Wikipedia ve DuckDuckGo ile calisiyor";
+  } else if (!store.googleKey || !store.googleCx) {
+    el.textContent = "Eksik: hem anahtar hem arama motoru kimligi gerekiyor";
+  } else {
+    el.textContent = "Kaydedildi — «Kaydet ve sina» ile dogrulayin";
+  }
+}
 
 function refreshMailStatus() {
   const el = $("mail-status");
@@ -1448,6 +1471,36 @@ export function mountPanel(context) {
       ctx.log("system", "E-posta raporu kapatildi.");
     }
     refreshMailStatus();
+  });
+
+  for (const id of ["set-google-key", "set-google-cx"]) {
+    $(id).addEventListener("change", (event) => {
+      if (id === "set-google-key") store.googleKey = event.target.value.trim();
+      else store.googleCx = event.target.value.trim();
+      saveStore();
+      refreshGoogleStatus();
+    });
+  }
+
+  $("set-google-save").addEventListener("click", async () => {
+    if (!store.googleKey || !store.googleCx) {
+      ctx.toast("Hem anahtari hem arama motoru kimligini girin");
+      return;
+    }
+    $("google-status").textContent = "Sinaniyor…";
+    try {
+      await system.configureSearch(store.googleKey, store.googleCx);
+      // Gercek bir sorgu atiyoruz: anahtarin KABUL EDILDIGINI ancak
+      // boyle bilebiliriz. Bicimi dogru ama gecersiz bir anahtar,
+      // yalnizca kaydedilince "tamam" gorunurdu.
+      const sonuc = await system.richSearch("test", 1);
+      const ozet = `Calisiyor — ${sonuc?.provider || "?"} cevapladi`;
+      $("google-status").textContent = ozet;
+      ctx.toast("Google aramasi calisiyor");
+    } catch (err) {
+      $("google-status").textContent = `Hata: ${err.message}`;
+      ctx.toast(`Google aramasi calismadi: ${err.message}`, 7000);
+    }
   });
 
   for (const id of ["set-mail-user", "set-mail-pass"]) {

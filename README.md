@@ -122,7 +122,7 @@ npm test                       # hızlı testler, ~9 dk
 npm run test:tam               # alarmın gerçekten çalmasını da bekler, +2.5 dk
 ```
 
-`npm test` sunucuyu kendi başlatır, tarayıcıyı açar ve **992 doğrulama**
+`npm test` sunucuyu kendi başlatır, tarayıcıyı açar ve **1026 doğrulama**
 çalıştırır:
 
 * **Kod taraması** — kodu çalıştırmadan okur. Hiçbir yerde tanımlanmamış
@@ -219,11 +219,46 @@ Tek kaynağa bağlı kalmak kırılgan: DuckDuckGo'nun HTML ucu tarayıcı olmay
 isteklere sık sık **403** veriyor ve araştırma tamamen çalışmaz hale geliyordu.
 Artık kaynaklar sırayla deneniyor, ilk cevap veren kazanıyor:
 
+0. **Google** — yalnızca kendi anahtarınızı girerseniz (aşağıda)
 1. **Wikipedia** — olgusal sorular için; özet, görsel ve bağlantı verir
 2. **DuckDuckGo anlık cevap** — kısa tanımlar, hesaplamalar
 3. **DuckDuckGo sonuç sayfası** — en geniş kapsam (tarayıcı başlıklarıyla)
 4. **DuckDuckGo lite** — aynı motorun sade sayfası; HTML ucu 403 verdiğinde
    genelde bu geçer
+
+### Google araması (isteğe bağlı)
+
+Google'ın arama **sayfası** otomatik isteklere kapalı — kazımaya çalışan her
+istek er ya da geç CAPTCHA veya 403 alır. Resmî yol **Programmable Search
+JSON API** ve kendi anahtarınızı ister.
+
+Anahtar girmezseniz hiçbir şey değişmez: DRA Wikipedia ve DuckDuckGo ile
+araştırmaya devam eder. Girerseniz iki şey belirgin biçimde iyileşir:
+
+* **Türkçe sonuçlar ve güncel bilgi** — DuckDuckGo'nun Türkçe kapsamı zayıf
+* **Gerçek görseller** — şu ana kadar sahnede kaynak sayfaların önizleme
+  görselleri (`og:image`) kullanılıyordu; çoğu zaman sitenin logosu ya da
+  alakasız bir kapak çıkıyor. Görsel araması konunun kendisini getiriyor
+
+Nasıl alınır:
+
+1. [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+   → yeni bir **API anahtarı** oluşturun, "Custom Search API"yi etkinleştirin
+2. [Programmable Search Engine](https://programmablesearchengine.google.com/)
+   → yeni bir arama motoru oluşturun, **"tüm web'i ara"** seçin
+3. Oradaki **Arama motoru kimliği (cx)** ile anahtarı Modlar sekmesine girin
+4. **"Kaydet ve sına"** — gerçek bir sorgu atıp sonucu yazar
+
+> **Günde 100 sorgu ücretsiz.** Aşılırsa Google para almadan **durur**;
+> sessizce faturaya dönüşmez. Kota dolduğunda DRA susmaz, zincirdeki diğer
+> kaynaklardan devam eder ve ne olduğunu söyler.
+>
+> Görsel araması **ayrı bir sorgu** sayılır, bu yüzden yalnızca gerçekten
+> görsel gösterilecekse yapılıyor — boşuna kota harcanmıyor.
+>
+> Anahtar yalnızca bu bilgisayarda kalır ve arka tarafta **diske yazılmaz**;
+> her açılışta arayüzden bildirilir. Sağlık bilgisinde anahtarın kendisi
+> değil, yalnızca var olup olmadığı taşınır.
 
 Hangi kaynağın cevapladığı kartta yazıyor. Hiçbirine ulaşılamazsa **hangisinin
 neden başarısız olduğu** tek tek gösteriliyor — "araştırmıyor" demek yerine

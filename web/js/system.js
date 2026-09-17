@@ -172,6 +172,22 @@ export async function setSearchEnabled(enabled) {
 
 export const searchEnabled = () => Boolean(serverInfo.search?.enabled);
 
+/** Google arama anahtari tanimli mi? (Anahtarin kendisi buraya gelmez.) */
+export const googleReady = () => Boolean(serverInfo.search?.google?.ready);
+
+/**
+ * Google arama anahtarini arka tarafa bildirir.
+ * Anahtar sunucuda/ana surecte DISKE YAZILMIYOR; surec kapaninca
+ * kayboluyor ve her acilista buradan yeniden bildiriliyor.
+ */
+export async function configureSearch(key, cx) {
+  const sonuc = desktop
+    ? await bridge(() => window.dra.search.configure(key, cx))
+    : await post("/api/search/configure", { key, cx });
+  if (sonuc?.google) serverInfo.search = { ...serverInfo.search, google: sonuc.google };
+  return sonuc;
+}
+
 export async function webSearch(query) {
   const data = desktop
     ? await bridge(() => window.dra.search.query(query))

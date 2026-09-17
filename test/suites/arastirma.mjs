@@ -41,6 +41,192 @@ const json = (res, kod, nesne) => {
 export async function run(_page, _base, t) {
   const search = await import("../../server/search.mjs");
 
+  /* ============ 0. GOOGLE — anahtar varsa ONCE o ================= *
+   * Google arama SAYFASI otomatik isteklere kapali (CAPTCHA / 403).
+   * Resmi yol Programmable Search JSON API ve kendi anahtarini
+   * istiyor. Anahtar YOKSA bu kaynak zincire hic girmemeli; uygulama
+   * anahtarsiz da calismaya devam etmeli.                            */
+
+  // --- anahtar yokken: Google HIC cagrilmamali ---
+  const anahtarsiz = await startFake((url, res) => {
+    if (url.pathname === "/google") return json(res, 200, { items: [] });
+    if (url.pathname === "/w/api.php") {
+      return json(res, 200, { query: { search: [{ title: "Kedi" }] } });
+    }
+    if (url.pathname.startsWith("/page/summary/")) {
+      return json(res, 200, { title: "Kedi", extract: "Kedi bir hayvandir." });
+    }
+    return json(res, 404, {});
+  });
+
+  try {
+    search.configureGoogle({});
+    t.eq(search.googleStatus().ready, false, "anahtarsizken Google hazir degil");
+
+    search._setEndpointsForTests({
+      google: `${anahtarsiz.base}/google`,
+      wikiSearch: `${anahtarsiz.base}/w/api.php`,
+      wiki: `${anahtarsiz.base}/page/summary/`,
+      ddgApi: "http://127.0.0.1:1/",
+      ddgHtml: "http://127.0.0.1:1/",
+      ddgLite: "http://127.0.0.1:1/",
+    });
+
+    const r = await search.richSearch("kedi", { withImages: false });
+    t.eq(r.provider, "Wikipedia", "anahtar yokken zincir Wikipedia'dan devam ediyor");
+    t.ok(
+      !anahtarsiz.kayit.some((k) => k.path === "/google"),
+      "anahtar yokken Google ucuna HIC gidilmiyor",
+    );
+
+    // Yapilandirilmamis kaynak "denendi" SAYILMAMALI. Sayilsaydi, ag
+    // tamamen koptugunda kullaniciya "bulamadim" denirdi — oysa sorun
+    // bulamamak degil, hicbir yere ulasamamak.
+    search._setEndpointsForTests({
+      google: "http://127.0.0.1:1/",
+      wikiSearch: "http://127.0.0.1:1/",
+      wiki: "http://127.0.0.1:1/",
+      ddgApi: "http://127.0.0.1:1/",
+      ddgHtml: "http://127.0.0.1:1/",
+      ddgLite: "http://127.0.0.1:1/",
+    });
+    let kopuk = null;
+    try {
+      await search.richSearch("hicbir sey", { withImages: false });
+    } catch (err) {
+      kopuk = err;
+    }
+    t.eq(kopuk?.code, "NO_SOURCE", "anahtarsiz Google ag hatasini maskelemiyor");
+    t.eq(kopuk?.tried?.length, 4, "atlanan kaynak denenenler listesine yazilmiyor");
+  } finally {
+    anahtarsiz.server.close();
+  }
+
+  // --- anahtar varken: Google ONCE ve gorselleriyle ---
+  const gugil = await startFake((url, res) => {
+    if (url.pathname !== "/google") return json(res, 404, {});
+
+    // Gorsel aramasi ayri bir cagri: searchType=image
+    if (url.searchParams.get("searchType") === "image") {
+      return json(res, 200, {
+        items: [
+          { link: "https://foto.com/eyfel1.jpg", displayLink: "foto.com",
+            image: { contextLink: "https://foto.com/sayfa" } },
+          { link: "https://foto.com/eyfel2.jpg", displayLink: "foto.com" },
+          // Sema dogrulanmali: bu elenmeli.
+          { link: "javascript:alert(1)", displayLink: "kotu" },
+        ],
+      });
+    }
+
+    return json(res, 200, {
+      items: [
+        { title: "Eyfel Kulesi", link: "https://vikipedi.org/eyfel",
+          snippet: "Eyfel Kulesi 330 metre yuksekligindedir." },
+        { title: "Eyfel hakkinda", link: "https://gezi.com/eyfel", snippet: "Paris'in simgesi." },
+        // Ayni siteden ikinci kayit elenmeli (cesitlilik).
+        { title: "Eyfel 2", link: "https://gezi.com/eyfel-2", snippet: "ikinci" },
+      ],
+    });
+  });
+
+  try {
+    const durum = search.configureGoogle({ key: "GIZLI-ANAHTAR", cx: "arama-kimligi" });
+    t.eq(durum.ready, true, "anahtar girilince Google hazir");
+    t.ok(!("key" in durum), "anahtarin kendisi durum bilgisinde tasinmiyor");
+
+    search._setEndpointsForTests({
+      google: `${gugil.base}/google`,
+      // Digerleri kasten BOZUK: Google cevap verirken denenmemeliler.
+      wikiSearch: "http://127.0.0.1:1/",
+      wiki: "http://127.0.0.1:1/",
+      ddgApi: "http://127.0.0.1:1/",
+      ddgHtml: "http://127.0.0.1:1/",
+      ddgLite: "http://127.0.0.1:1/",
+    });
+
+    const r = await search.richSearch("eyfel kulesi kac metre", { limit: 4, withImages: true });
+    t.eq(r.provider, "Google", "anahtar varsa ONCE Google");
+    t.has(r.summary.text, "330 metre", "ilk sonucun ozeti cevap oluyor");
+    t.eq(r.summary.source, "vikipedi.org", "cevabin KAYNAGI soyleniyor");
+    t.eq(r.results.length, 2, "ayni siteden tekrar eden sonuc eleniyor");
+    t.eq(r.results[0].url, "https://vikipedi.org/eyfel", "kaynak bagi dogru");
+
+    // Gorseller: og:image tahmini degil, GERCEK gorsel aramasi.
+    t.eq(r.images.length, 2, "gorsel aramasindan gorsel geliyor");
+    t.eq(r.images[0].src, "https://foto.com/eyfel1.jpg", "gorsel adresi dogru");
+    t.ok(
+      !r.images.some((g) => g.src.startsWith("javascript")),
+      "gorsel adresinde de sema dogrulaniyor",
+    );
+
+    // Istek gercekten dogru kuruldu mu?
+    const istek = gugil.kayit.find((k) => k.path === "/google" && !k.query.searchType);
+    t.eq(istek.query.key, "GIZLI-ANAHTAR", "anahtar istege konuyor");
+    t.eq(istek.query.cx, "arama-kimligi", "arama motoru kimligi gonderiliyor");
+    t.eq(istek.query.hl, "tr", "Turkce sonuc isteniyor");
+    t.eq(istek.query.gl, "tr", "Turkiye bolgesi isteniyor");
+
+    const gorselIstek = gugil.kayit.find((k) => k.query.searchType === "image");
+    t.ok(gorselIstek, "gorseller icin ayri bir arama yapiliyor");
+    t.eq(gorselIstek.query.safe, "active", "gorsel aramasinda guvenli kip acik");
+
+    // withImages:false ise gorsel aramasi da YAPILMAMALI — bosu bosuna
+    // kotadan sorgu harcamanin anlami yok.
+    gugil.kayit.length = 0;
+    await search.richSearch("eyfel", { withImages: false });
+    t.ok(
+      !gugil.kayit.some((k) => k.query.searchType === "image"),
+      "gorsel istenmiyorsa gorsel aramasi yapilmiyor (kota harcanmiyor)",
+    );
+  } finally {
+    gugil.server.close();
+  }
+
+  // --- kota dolunca anlasilir hata ve ZINCIR DEVAM ETMELI ---
+  const kota = await startFake((url, res) => {
+    if (url.pathname === "/google") {
+      return json(res, 403, { error: { message: "Quota exceeded for quota metric" } });
+    }
+    if (url.pathname === "/w/api.php") {
+      return json(res, 200, { query: { search: [{ title: "Eyfel Kulesi" }] } });
+    }
+    if (url.pathname.startsWith("/page/summary/")) {
+      return json(res, 200, { title: "Eyfel Kulesi", extract: "Paris'te bir kule." });
+    }
+    return json(res, 404, {});
+  });
+
+  try {
+    search.configureGoogle({ key: "K", cx: "C" });
+    search._setEndpointsForTests({
+      google: `${kota.base}/google`,
+      wikiSearch: `${kota.base}/w/api.php`,
+      wiki: `${kota.base}/page/summary/`,
+      ddgApi: "http://127.0.0.1:1/",
+      ddgHtml: "http://127.0.0.1:1/",
+      ddgLite: "http://127.0.0.1:1/",
+    });
+
+    const r = await search.richSearch("eyfel kulesi", { withImages: false });
+    t.eq(r.provider, "Wikipedia", "Google kotasi dolunca zincir DURMUYOR, devam ediyor");
+
+    // Kullanici ne oldugunu anlamali.
+    t.has(
+      search._internal.googleHatasi(403, JSON.stringify({ error: { message: "Quota exceeded" } })),
+      "kota",
+      "kota hatasi anlasilir Turkce veriyor",
+    );
+    t.has(
+      search._internal.googleHatasi(400, JSON.stringify({ error: { message: "Invalid cx value" } })),
+      "cx",
+      "yanlis arama motoru kimligi soyleniyor",
+    );
+  } finally {
+    kota.server.close();
+    search.configureGoogle({});
+  }
+
   /* ============ 1. Wikipedia calisiyorsa ONDAN cevap ============= */
 
   const hepsi = await startFake((url, res) => {

@@ -124,6 +124,7 @@ async function pageImage(url) {
  * Adresler degisken: testler yerel taklitlere yonlendirebilsin.
  */
 let ENDPOINTS = {
+  google: "https://www.googleapis.com/customsearch/v1",
   wiki: "https://tr.wikipedia.org/api/rest_v1/page/summary/",
   wikiSearch: "https://tr.wikipedia.org/w/api.php",
   ddgApi: "https://api.duckduckgo.com/",
@@ -133,6 +134,7 @@ let ENDPOINTS = {
 
 export function _setEndpointsForTests(next) {
   ENDPOINTS = next ? { ...ENDPOINTS, ...next } : {
+    google: "https://www.googleapis.com/customsearch/v1",
     wiki: "https://tr.wikipedia.org/api/rest_v1/page/summary/",
     wikiSearch: "https://tr.wikipedia.org/w/api.php",
     ddgApi: "https://api.duckduckgo.com/",
@@ -147,6 +149,165 @@ const BROWSER_HEADERS = {
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "accept-language": "tr-TR,tr;q=0.9,en;q=0.8",
 };
+
+/* ------------------------------------------------------------- Google */
+
+/**
+ * Google Programmable Search (Custom Search JSON API).
+ *
+ * NEDEN AYRI BIR ANAHTAR GEREKIYOR: Google arama sayfasini otomatik
+ * isteklere kapatiyor — kazimaya calisan her istek er ya da gec CAPTCHA
+ * ya da 403 aliyor. Resmi yol bu API ve kendi anahtarinizi istiyor.
+ * Ucretsiz katman gunde 100 sorgu; kisisel kullanim icin fazlasiyla
+ * yeter, asilirsa Google'a para odemeden DURUYOR (sessizce faturaya
+ * donusmuyor).
+ *
+ * Anahtar GIRILMEDIYSE bu kaynak zincire hic girmiyor: uygulama
+ * anahtarsiz da calismaya devam ediyor, yalnizca Wikipedia ve
+ * DuckDuckGo ile.
+ *
+ * Anahtar diskte SUNUCU TARAFINDA tutulmuyor; her acilista arayuzden
+ * bildiriliyor — ElevenLabs ve YouTube'da oldugu gibi.
+ */
+let google = { key: null, cx: null };
+
+export function configureGoogle({ key, cx } = {}) {
+  const temiz = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  google = { key: temiz(key), cx: temiz(cx) };
+  return googleStatus();
+}
+
+export function googleStatus() {
+  return {
+    ready: Boolean(google.key && google.cx),
+    // Anahtarin kendisi asla disari verilmez; yalnizca var olup olmadigi.
+    keySet: Boolean(google.key),
+    cxSet: Boolean(google.cx),
+  };
+}
+
+/** Google'in hata govdesinden okunabilir bir cumle cikarir. */
+function googleHatasi(status, govde) {
+  let sebep = "";
+  try {
+    sebep = JSON.parse(govde)?.error?.message || "";
+  } catch {
+    sebep = String(govde).slice(0, 160);
+  }
+  if (status === 403 && /quota|rate/i.test(sebep)) {
+    return "Google arama kotasi doldu (gunluk 100 ucretsiz sorgu). " +
+      "Yarin sifirlanir; o zamana kadar diger kaynaklar kullaniliyor.";
+  }
+  if (status === 400 && /cx/i.test(sebep)) {
+    return "Google arama motoru kimligi (cx) gecersiz. Modlar sekmesinden kontrol edin.";
+  }
+  if (status === 400 || status === 403) {
+    return `Google anahtari kabul edilmedi${sebep ? `: ${sebep}` : "."}`;
+  }
+  return `Google ${status} dondu${sebep ? `: ${sebep}` : "."}`;
+}
+
+async function googleCagir(params) {
+  const res = await fetch(`${ENDPOINTS.google}?` + new URLSearchParams(params), {
+    headers: { "user-agent": UA },
+    signal: AbortSignal.timeout(8000),
+  });
+  const metin = await res.text();
+  if (!res.ok) throw new Error(googleHatasi(res.status, metin));
+  try {
+    return JSON.parse(metin);
+  } catch {
+    throw new Error("Google beklenmedik bir yanit verdi (JSON degil).");
+  }
+}
+
+/**
+ * Konuyla ilgili GERCEK gorseller.
+ *
+ * Sahnede su ana kadar kaynak sayfalarin onizleme gorselleri
+ * (`og:image`) kullaniliyordu — cogu zaman sitenin logosu ya da
+ * alakasiz bir kapak cikiyor. Gorsel aramasi konunun kendisini
+ * getiriyor.
+ *
+ * Basarisiz olursa sessizce bos donuyor: gorsel bir suslemedir,
+ * cevabin kendisi degil.
+ */
+async function googleGorseller(q) {
+  try {
+    const d = await googleCagir({
+      key: google.key, cx: google.cx, q,
+      searchType: "image", num: "4", safe: "active", hl: "tr", gl: "tr",
+    });
+    return (d.items || [])
+      .map((x) => {
+        // Sema dogrulanmadan karta/sahneye adres gecmiyor.
+        let u;
+        try {
+          u = new URL(x.link);
+        } catch {
+          return null;
+        }
+        if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+        return { src: u.href, site: x.displayLink || "", url: x.image?.contextLink || null };
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function fromGoogle(q, limit, gorselIstiyor) {
+  if (!google.key || !google.cx) {
+    // ATLANDI, denendi degil. Ayrimi korumak sart: asagida "hicbir
+    // kaynaga ULASILAMADI" ile "ulasildi ama sonuc yok" farkli seyler.
+    // Girilmemis bir anahtari "denendi" saymak, ag koptugunda
+    // kullaniciya "bulamadim" dedirtirdi.
+    throw Object.assign(new Error("Google anahtari girilmemis"), { code: "SKIPPED" });
+  }
+
+  const d = await googleCagir({
+    key: google.key, cx: google.cx, q,
+    num: String(Math.max(1, Math.min(10, limit))),
+    hl: "tr", gl: "tr", safe: "active",
+  });
+
+  const kayitlar = [];
+  const siteler = new Set();
+  for (const x of d.items || []) {
+    let u;
+    try {
+      u = new URL(x.link);
+    } catch {
+      continue;
+    }
+    if (u.protocol !== "https:" && u.protocol !== "http:") continue;
+
+    const site = u.hostname.replace(/^www\./, "");
+    // Ayni siteden ust uste kayitlar yerine cesitlilik.
+    if (siteler.has(site)) continue;
+    siteler.add(site);
+
+    kayitlar.push({ title: x.title || site, url: u.href, site, snippet: x.snippet || "" });
+  }
+
+  if (!kayitlar.length) throw Object.assign(new Error("yok"), { code: "NO_RESULT" });
+
+  return {
+    provider: "Google",
+    // Google "su cevap" demiyor, sonuc listesi veriyor. Ilk sonucun
+    // ozetini cevap olarak kullaniyoruz ve KAYNAGINI soyluyoruz.
+    summary: kayitlar[0].snippet
+      ? { text: kayitlar[0].snippet, source: kayitlar[0].site, url: kayitlar[0].url }
+      : null,
+    results: kayitlar,
+    /*
+     * Gorsel aramasi AYRI bir sorgu ve ayri bir kota kalemi. Ucretsiz
+     * katman gunde 100 sorgu; istenmeyen gorsel icin yarisini harcamak
+     * anlamsiz. Yalnizca gercekten gosterilecekse cagriliyor.
+     */
+    images: gorselIstiyor ? await googleGorseller(q) : [],
+  };
+}
 
 /**
  * Wikipedia: olgusal sorularin en guvenilir kaynagi.
@@ -413,6 +574,10 @@ export async function richSearch(query, { limit = 4, withImages = true } = {}) {
    * cevapladigi da doniyor: bilginin nereden geldigi gorunur olmali.
    */
   const zincir = [
+    // Anahtar girilmisse once Google: Turkce sonuclarda ve guncel
+    // bilgide digerlerinden acik ara iyi. Anahtar yoksa NOT_APPLICABLE
+    // ile kendini atliyor.
+    ["Google", () => fromGoogle(q, limit, withImages)],
     ["Wikipedia", () => fromWikipedia(q)],
     ["DuckDuckGo anlik cevap", () => fromDdgApi(q)],
     ["DuckDuckGo sonuclari", () => fromDdgHtml(q, limit)],
@@ -449,6 +614,9 @@ export async function richSearch(query, { limit = 4, withImages = true } = {}) {
         at: Date.now(),
       };
     } catch (err) {
+      // Yapilandirilmamis kaynak HIC DENENMEDI: ne "ulasildi" sayilir
+      // ne de denenenler listesine yazilir.
+      if (err?.code === "SKIPPED") continue;
       // Kaynaga ulasildi ama sonuc yok / uygun degil: ag sorunu degil.
       if (err?.code === "NO_RESULT" || err?.code === "NOT_APPLICABLE") ulasildi = true;
       denenenler.push(`${ad}: ${err.message}`);
@@ -504,4 +672,5 @@ export async function search(query) {
 
 export const _internal = {
   parseResults, parseLite, cleanUrl, stripHtml, wikiUygunMu, basligiOrtusuyorMu,
+  googleHatasi,
 };
