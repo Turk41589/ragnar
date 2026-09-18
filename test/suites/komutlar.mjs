@@ -63,8 +63,46 @@ export async function run(page, base, t) {
     ["5 dakika zamanlayici kur", "zamanlayici kuruldu"],
     ["sabah yedi bucukta alarm kur", "07:30"],
     ["alarmlarim", "alarminiz var"],
-    ["hava durumu", "disariya hicbir baglanti"],
   ];
+
+  /*
+   * HAVA artik "yapamam" DEMIYOR.
+   *
+   * Eskiden "disariya hicbir baglanti kurmayacak sekilde tasarlandim"
+   * diyordu. O cumle artik dogru degil — web arastirmasi hep acik.
+   * Kendi yetenegini yanlis anlatan bir cevap, olmayan bir sinir
+   * uyduruyor demektir.
+   */
+  const havaCevabi = await page.evaluate(async () => {
+    const { runCommand } = await import("/js/commands.js");
+    const cagrildi = [];
+    const ctx = {
+      research: async (q) => { cagrildi.push(q); return { text: "Bugun parcali bulutlu." }; },
+    };
+    const sonuc = await runCommand("hava durumu", ctx);
+    return { cagrildi, metin: sonuc?.text || "" };
+  });
+
+  t.eq(havaCevabi.cagrildi.length, 1, "hava sorusu ARASTIRMAYA gidiyor");
+  t.has(havaCevabi.metin, "parcali bulutlu", "arastirmanin cevabi veriliyor");
+  t.has(havaCevabi.metin, "Sehir soylerseniz", "sehir sorulmadiysa ipucu veriliyor");
+  t.ok(
+    !/hicbir baglanti|soyleyemem/i.test(havaCevabi.metin),
+    "artik 'yapamam' demiyor",
+  );
+
+  // Arastirma basarisizsa ipucu EKLENMEMELI: sorun sehir degil.
+  const havaBasarisiz = await page.evaluate(async () => {
+    const { runCommand } = await import("/js/commands.js");
+    const sonuc = await runCommand("hava durumu", {
+      research: async () => ({ text: '"hava durumu" icin bir sey bulamadim.' }),
+    });
+    return sonuc?.text || "";
+  });
+  t.ok(
+    !/Sehir soylerseniz/.test(havaBasarisiz),
+    "cevap bulunamadiysa sehir ipucu eklenmiyor (yaniltici olurdu)",
+  );
 
   for (const [input, expected] of matchCases) {
     await tell(page, input);

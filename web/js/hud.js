@@ -408,6 +408,62 @@ function cardRow(label, value, percent) {
 }
 
 /**
+ * Fiyat listesi — ucuzdan pahaliya.
+ *
+ * "En ucuz nerede" diye soran biri bir paragraf degil, sirali bir liste
+ * bekliyor. En ucuz olan isaretleniyor; her satir kaynagina gidiyor ki
+ * fiyat dogrulanabilsin (arama sonuclarindaki fiyat eski olabilir).
+ */
+function fiyatTablosu(liste) {
+  const kutu = document.createElement("div");
+  kutu.className = "prices";
+
+  const bas = document.createElement("p");
+  bas.className = "prices__head";
+  bas.textContent = "Ucuzdan pahaliya";
+  kutu.append(bas);
+
+  const ul = document.createElement("ul");
+  ul.className = "prices__list";
+
+  for (const [i, k] of liste.slice(0, 8).entries()) {
+    const li = document.createElement("li");
+    li.className = "prices__item";
+    if (i === 0) li.dataset.best = "1";
+
+    const adres = guvenliAdres(k.url);
+    const ad = document.createElement(adres ? "a" : "span");
+    ad.className = "prices__site";
+    if (adres) {
+      ad.href = adres;
+      ad.target = "_blank";
+      ad.rel = "noopener noreferrer";
+    }
+    ad.textContent = k.site || "?";
+
+    const tutar = document.createElement("b");
+    tutar.className = "prices__price";
+    tutar.textContent = k.priceText;
+
+    const baslik = document.createElement("span");
+    baslik.className = "prices__title";
+    baslik.textContent = k.title || "";
+
+    li.append(ad, tutar, baslik);
+    ul.append(li);
+  }
+  kutu.append(ul);
+
+  // Fiyat arama sonucundan okunuyor; siteye girince degismis olabilir.
+  const not = document.createElement("small");
+  not.className = "prices__note";
+  not.textContent = "Fiyatlar arama sonuclarindan okundu, degismis olabilir — siteye girip dogrulayin.";
+  kutu.append(not);
+
+  return kutu;
+}
+
+/**
  * Gelen kutusu gorunumu.
  *
  * Kullanicinin istedigi sey bir "posta kutusu ekran goruntusu" gibi
@@ -626,6 +682,8 @@ export function logCard(data) {
     }
 
     if (section.inbox) card.append(gelenKutusu(section.inbox));
+
+    if (section.prices?.length) card.append(fiyatTablosu(section.prices));
   }
 
   li.append(card);

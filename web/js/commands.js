@@ -806,9 +806,40 @@ const RULES = [
       "hava durumu", "hava nasil", "disarisi nasil", "yagmur yagacak mi",
       "hava kac derece", "sicaklik kac", "hava",
     ],
-    run: () =>
-      "Hava durumunu soyleyemem. Bunun icin konumunuzu bir hava servisine " +
-      "gondermem gerekirdi; disariya hicbir baglanti kurmayacak sekilde tasarlandim.",
+    /*
+     * GERCEKTEN hava sorulmus olmali.
+     *
+     * "hava nasil" ifadesindeki "nasil" tek basina puan topluyordu ve
+     * "kuru fasulye nasil yapilir" gibi cumleler bu kurala geliyordu.
+     * Cumlede hava ile ilgili bir kelime yoksa bu kural bize ait degil.
+     */
+    guard: (n) => /\b(hava|sicaklik|yagmur|kar|ruzgar|disarisi|derece)\b/.test(n),
+    /*
+     * ESKIDEN "soyleyemem, disariya baglanmam" diyordu. O cumle artik
+     * dogru degil: web arastirmasi HEP ACIK. Kendi yetenegini yanlis
+     * anlatan bir cevap, olmayan bir sinir uyduruyor.
+     */
+    run: async (n, raw, ctx) => {
+      if (!ctx.research) return "Hava durumunu arastiramiyorum.";
+      const sonuc = await ctx.research(raw);
+      const metin = typeof sonuc === "string" ? sonuc : sonuc?.text || "";
+
+      /*
+       * Sehir ipucunu YALNIZCA cevap bulunduysa ekliyoruz.
+       *
+       * Arastirma basarisiz oldugunda ("bulamadim", "ulasamadim") ustune
+       * "sehir soylerseniz daha isabetli olur" demek yaniltici: sorun
+       * sehir degil, cevabin hic gelmemis olmasi.
+       */
+      const basarisiz = /bulamadim|ulasamadim|anlayamadim|hata/i.test(metin);
+      const sehirSoylenmis = raw.trim().split(/\s+/).length > 3;
+      const not = basarisiz || sehirSoylenmis
+        ? ""
+        : " Sehir soylerseniz daha isabetli olur — «Ankara hava durumu» gibi.";
+
+      if (typeof sonuc === "string") return metin + not;
+      return { ...sonuc, text: metin + not };
+    },
   },
 
   /* -- uygulama / oyun acma --------------------------------------------- */
@@ -1400,9 +1431,53 @@ export async function runCommand(rawText, ctx) {
  * sorulacak bir sey degil. Buradakiler ise disaridan bir olgu isteyen
  * kaliplar: "kac metre", "nedir", "ne kadar", "kim".
  */
+/*
+ * SORU ISARETLERI — disaridan bir bilgi istendigini gosteren kaliplar.
+ *
+ * Eski liste cok darrdi ve sonucu su oluyordu:
+ *   "minecraftta ... nasil yapilir"  → hava durumu kuralina
+ *   "kuru fasulye nasil yapilir"     → hava durumu kuralina
+ *   "iphone 15 en ucuz hangi sitede" → TARIH kuralina, DRA gunun
+ *                                       tarihini soyluyordu
+ *
+ * Yani "nasil" iceren her soru havaya, "hangi" iceren her soru tarihe
+ * gidiyordu. Liste artik gercekten sorulan seyleri kapsiyor.
+ */
+const SORU_ISARETI = new RegExp([
+  "\\bkac\\b", "\\bkacta\\b", "\\bkac tane\\b", "\\bkac para\\b",
+  "\\bkac lira\\b", "\\bkac tl\\b",
+  "\\bnedir\\b", "\\bne kadar\\b", "\\bne demek\\b", "\\bne ise yarar\\b",
+  "\\bkimdir\\b", "\\bkim\\b",
+  "\\bneden\\b", "\\bnicin\\b",
+  "\\bnasil\\b",
+  "\\bnerede\\b", "\\bnerde\\b", "\\bnereden\\b", "\\bnereye\\b",
+  "\\bhangi\\b",
+  "\\bne zaman\\b",
+  "\\btarif\\b", "\\btarifi\\b", "\\btarifleri\\b",
+  "\\byapilir\\b", "\\byapilisi\\b", "\\byapimi\\b",
+  "\\ben ucuz\\b", "\\ben uygun\\b", "\\ben iyi\\b",
+  "\\bfiyat\\b", "\\bfiyati\\b", "\\bfiyatlari\\b",
+].join("|"));
+
+/*
+ * ISTISNA — sorunun konusu DRA'NIN KENDI DURUMU.
+ *
+ * "hangi gundeyiz" bir soru ama cevabi internette degil, burada.
+ * Listeyi genisletirken bunlari disarida birakmak sart; yoksa saat ve
+ * tarih komutlari arastirmaya gonderilir.
+ */
+const KENDI_DURUMU = /\b(gun|gunlerden|gundeyiz|tarih|tarihteyiz|saat|saati|vakit|alarm|alarmlar|alarmlarim|zamanlayici|sayac|not|notlar|notlarim|pil|batarya)\b/;
+
+/**
+ * Bu metin DISARIDAN bilgi isteyen bir soru mu?
+ *
+ * Oyle ise yerel komutlara degil arastirmaya gitmeli.
+ */
 function soruMu(text) {
   const n = normalize(text);
-  return /\b(kac|kacta|nedir|ne kadar|kimdir|neden|hangi yil|kac tane)\b/.test(n);
+  if (!SORU_ISARETI.test(n)) return false;
+  // Konusu DRA'nin kendi durumuysa yerel komut kalsin.
+  return !KENDI_DURUMU.test(n);
 }
 
 /**

@@ -41,6 +41,116 @@ const json = (res, kod, nesne) => {
 export async function run(_page, _base, t) {
   const search = await import("../../server/search.mjs");
 
+  /* ============ NIYET: her soru ayni cevabi hak etmiyor ========== *
+   * "En ucuz nerede" diye soran biri ansiklopedi paragrafi degil,
+   * SIRALI BIR FIYAT LISTESI bekliyor. "Nasil yapilir" diyen biri tek
+   * bir cumle degil, birkac kaynak istiyor.                          */
+
+  t.eq(search.niyet("iphone 15 en ucuz hangi sitede"), "fiyat", "fiyat sorusu taniniyor");
+  t.eq(search.niyet("playstation 5 fiyatlari"), "fiyat", "fiyat kelimesi taniniyor");
+  t.eq(search.niyet("mercimek corbasi tarifi"), "tarif", "tarif sorusu taniniyor");
+  t.eq(search.niyet("kuru fasulye nasil yapilir"), "tarif", "yemek yapimi tarif sayiliyor");
+  t.eq(search.niyet("minecraft redstone nasil calisir"), "nasil", "nasil sorusu taniniyor");
+  t.eq(search.niyet("eyfel kulesi kac metre"), null, "sradan soru niyetsiz");
+
+  /* --- Turkce fiyat yazimi --- */
+  t.eq(search.fiyatBul("1.299,00 TL"), [1299], "binlik nokta, kurus virgul");
+  t.eq(search.fiyatBul("₺1.299"), [1299], "TL isareti onde");
+  t.eq(search.fiyatBul("12.345,67 ₺"), [12345.67], "kurus okunuyor");
+  t.eq(search.fiyatBul("1299 TL"), [1299], "ayracsiz yazim");
+  t.eq(search.fiyatBul("5 TL kargo"), [], "cok kucuk tutar fiyat sayilmiyor");
+  t.eq(search.fiyatBul("bir sey yok"), [], "tutar yoksa bos");
+  t.eq(
+    search.fiyatBul("eski fiyat 1.500 TL, indirimli 1.199,90 TL").sort((a, b) => a - b),
+    [1199.9, 1500],
+    "birden fazla tutar cikariliyor",
+  );
+
+  /* --- fiyat sorusu: sorguya "fiyat" ekleniyor, liste siralaniyor --- */
+
+  const dukkan = await startFake((url, res) => {
+    if (url.pathname !== "/google") return json(res, 404, {});
+    if (url.searchParams.get("searchType") === "image") return json(res, 200, { items: [] });
+    return json(res, 200, {
+      items: [
+        { title: "iPhone 15 128GB", link: "https://pahali.com/a", snippet: "54.999,00 TL" },
+        { title: "iPhone 15 128GB", link: "https://ucuz.com/b", snippet: "49.250 TL kargo bedava" },
+        { title: "iPhone 15 kilif", link: "https://orta.com/c", snippet: "Fiyati 51.400,50 TL" },
+        { title: "iPhone 15 inceleme", link: "https://blog.com/d", snippet: "fiyat bilgisi yok" },
+      ],
+    });
+  });
+
+  try {
+    search.configureGoogle({ key: "K", cx: "C" });
+    search._setEndpointsForTests({
+      google: `${dukkan.base}/google`,
+      wikiSearch: "http://127.0.0.1:1/", wiki: "http://127.0.0.1:1/",
+      ddgApi: "http://127.0.0.1:1/", ddgHtml: "http://127.0.0.1:1/", ddgLite: "http://127.0.0.1:1/",
+    });
+
+    const r = await search.richSearch("iphone 15 en ucuz hangi sitede", { withImages: false });
+
+    t.eq(r.intent, "fiyat", "sonuc niyeti tasiyor");
+    t.eq(r.prices.length, 3, "fiyati okunabilen her sonuc listede");
+    t.eq(r.prices[0].site, "ucuz.com", "EN UCUZ basta");
+    t.eq(r.prices[0].price, 49250, "en ucuz tutar dogru");
+    t.eq(r.prices[2].site, "pahali.com", "en pahali sonda");
+    t.has(r.prices[0].priceText, "49.250", "tutar Turkce bicimde yaziliyor");
+    t.ok(
+      !r.prices.some((k) => k.site === "blog.com"),
+      "fiyati olmayan sonuc listeye girmiyor",
+    );
+
+    // Sorguya "fiyat" eklenmeli: aksi halde arama motoru tanitim
+    // sayfasini donduruyor, satis sayfasini degil.
+    const istek = dukkan.kayit.find((k) => k.path === "/google" && !k.query.searchType);
+    t.has(istek.query.q, "fiyat", "sorguya fiyat kelimesi ekleniyor");
+
+    // Kullaniciya SORDUGU sey gosterilmeli, bizim ekledigimiz kelime degil.
+    t.eq(r.query, "iphone 15 en ucuz hangi sitede", "ekranda kullanicinin sorusu yaziyor");
+
+    // Fiyat sorusunda daha genis kapsam isteniyor.
+    t.ok(Number(istek.query.num) >= 8, "fiyat sorusunda daha cok sonuc isteniyor");
+  } finally {
+    dukkan.server.close();
+    search.configureGoogle({});
+  }
+
+  /* --- tarif sorusu: daha cok kaynak, fiyat listesi YOK --- */
+
+  const mutfak = await startFake((url, res) => {
+    if (url.pathname !== "/google") return json(res, 404, {});
+    if (url.searchParams.get("searchType") === "image") return json(res, 200, { items: [] });
+    return json(res, 200, {
+      items: Array.from({ length: 6 }, (_, i) => ({
+        title: `Mercimek corbasi tarifi ${i + 1}`,
+        link: `https://tarif${i}.com/a`,
+        snippet: "Malzemeler: kirmizi mercimek, sogan…",
+      })),
+    });
+  });
+
+  try {
+    search.configureGoogle({ key: "K", cx: "C" });
+    search._setEndpointsForTests({
+      google: `${mutfak.base}/google`,
+      wikiSearch: "http://127.0.0.1:1/", wiki: "http://127.0.0.1:1/",
+      ddgApi: "http://127.0.0.1:1/", ddgHtml: "http://127.0.0.1:1/", ddgLite: "http://127.0.0.1:1/",
+    });
+
+    const r = await search.richSearch("mercimek corbasi tarifi", { limit: 4, withImages: false });
+    t.eq(r.intent, "tarif", "tarif niyeti tasiniyor");
+    t.eq(r.prices.length, 0, "tarif sorusunda fiyat listesi yok");
+    t.ok(r.results.length >= 6, `tarif sorusunda daha cok kaynak geliyor (${r.results.length})`);
+
+    const istek = mutfak.kayit.find((k) => k.path === "/google" && !k.query.searchType);
+    t.ok(!/fiyat/.test(istek.query.q), "tarif sorgusuna fiyat kelimesi EKLENMIYOR");
+  } finally {
+    mutfak.server.close();
+    search.configureGoogle({});
+  }
+
   /* ============ 0. GOOGLE — anahtar varsa ONCE o ================= *
    * Google arama SAYFASI otomatik isteklere kapali (CAPTCHA / 403).
    * Resmi yol Programmable Search JSON API ve kendi anahtarini

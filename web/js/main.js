@@ -557,6 +557,13 @@ function arastirmaSun(r) {
     });
   }
 
+  /*
+   * FIYAT SORUSU en ustte sirali liste olarak geliyor.
+   * "En ucuz nerede" diye soran biri paragraf degil, karsilastirma
+   * bekliyor — ve cevabi ilk satirda gormeli.
+   */
+  if (r.prices?.length) bolumler.push({ prices: r.prices });
+
   if (r.images?.length) {
     bolumler.push({ images: r.images.slice(0, 4) });
   }
@@ -573,18 +580,35 @@ function arastirmaSun(r) {
     });
   }
 
+  const NIYET_BASLIK = {
+    fiyat: "Fiyat karsilastirmasi",
+    tarif: "Tarif",
+    nasil: "Nasil yapilir",
+  };
+
   hud.logCard({
-    title: `Arastirma: ${r.query}`,
+    title: `${NIYET_BASLIK[r.intent] || "Arastirma"}: ${r.query}`,
     subtitle: `${r.provider || "?"} — ${r.results?.length || 0} kaynak`,
     sections: bolumler,
   });
 
-  const metin = r.summary
-    ? r.summary.text
-    : (() => {
-        const ilk = r.results?.[0];
-        return ilk ? `${ilk.snippet || ilk.title} (${ilk.site})` : "Bir sey bulamadim.";
-      })();
+  /*
+   * SOZLU cevap da niyete gore degisiyor. Fiyat sorusunda ozet paragrafi
+   * okumak ise yaramaz; kullanicinin duymak istedigi sey en ucuzun
+   * nerede ve kac para oldugu.
+   */
+  let metin;
+  if (r.prices?.length) {
+    const ucuz = r.prices[0];
+    const kacYer = r.prices.length;
+    metin = `En ucuz ${ucuz.site} sitesinde: ${ucuz.priceText}.` +
+      (kacYer > 1 ? ` ${kacYer} yerde fiyat buldum, listeyi ekrana cikardim.` : "");
+  } else if (r.summary) {
+    metin = r.summary.text;
+  } else {
+    const ilk = r.results?.[0];
+    metin = ilk ? `${ilk.snippet || ilk.title} (${ilk.site})` : "Bir sey bulamadim.";
+  }
 
   /*
    * Kart sohbette KALICI olarak duruyor (kaynaklar tiklanabilir olsun

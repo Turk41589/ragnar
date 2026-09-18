@@ -122,7 +122,7 @@ npm test                       # hızlı testler, ~9 dk
 npm run test:tam               # alarmın gerçekten çalmasını da bekler, +2.5 dk
 ```
 
-`npm test` sunucuyu kendi başlatır, tarayıcıyı açar ve **1026 doğrulama**
+`npm test` sunucuyu kendi başlatır, tarayıcıyı açar ve **1095 doğrulama**
 çalıştırır:
 
 * **Kod taraması** — kodu çalıştırmadan okur. Hiçbir yerde tanımlanmamış
@@ -276,6 +276,29 @@ sayfaların önizleme görselleri, ve tıklanabilir bağlantılar. Bilginin nere
 geldiği görünür olmalı — kendi doğrulamanızı yapabilesiniz.
 
 Kendiliğinden dolaşmaz: yalnızca siz bir şey sorduğunuzda arar.
+
+### Her soru aynı cevabı hak etmiyor
+
+DRA sorunun **ne tür bir cevap istediğini** ayırt ediyor:
+
+| Soru | Ne yapıyor |
+|---|---|
+| "iphone 15 en ucuz hangi sitede" | Sorguya "fiyat" ekler, daha çok sonuç ister, snippet'lerden **TL tutarlarını okuyup ucuzdan pahalıya sıralar** |
+| "mercimek çorbası tarifi" | Daha çok kaynak getirir; tek özet bu tür soruya yetmiyor |
+| "minecraft redstone nasıl çalışır" | Aynı şekilde geniş kaynak |
+| "eyfel kulesi kaç metre" | Klasik özet + kaynaklar |
+
+Fiyat listesinde en ucuz olan işaretli ve **her satır kaynağına gidiyor** —
+fiyat arama sonucundan okunduğu için siteye girince değişmiş olabilir,
+kart bunu açıkça yazıyor.
+
+Türkçe fiyat yazımı okunuyor: `1.299,00 TL`, `₺1.299`, `12.345,67 ₺`.
+Bir sonuçta birden fazla tutar geçiyorsa (indirimli/eski fiyat) **en
+düşüğü** alınıyor — sorulan şey "en uygun".
+
+> **Neden daha fazlası değil:** DRA'nın içinde bir dil modeli yok. Tarifi
+> ya da oyun adımlarını kendi cümleleriyle yazamaz; kaynakları bulur,
+> özeti ve bağlantıları verir. Adımları sitenin kendisinden okursunuz.
 
 ### Anlatırken ortadaki ekran
 

@@ -63,6 +63,27 @@ const CASES = [
   // GERCEK SORULAR komut onerisine dusmemeli; arastirmaya gitmeli.
   ["eyfel kulesi kaç metre",null],["bugün dolar kaç lira",null],
   ["fotosentez nedir",null],["türkiye'nin nüfusu ne kadar",null],
+  /*
+   * KULLANICININ BILDIRDIGI HATALAR.
+   *
+   * Soru isaretleri listesi cok darrdi ve sonuc suydu:
+   *   "nasil" iceren her soru  → HAVA DURUMU kuralina
+   *   "hangi" iceren her soru  → TARIH kuralina (DRA gunun tarihini
+   *                              soyluyordu)
+   * Yani oyun, yemek ve fiyat sorulari arastirmaya hic ulasmiyordu.
+   */
+  ["minecraftta ateşten koruma iksiri nasıl yapılır",null],
+  ["kuru fasulye nasıl yapılır",null],
+  ["mercimek çorbası tarifi",null],
+  ["iphone 15 en ucuz hangi sitede",null],
+  ["playstation 5 fiyatları",null],
+  ["en uygun fiyata nereden alabilirim",null],
+  ["minecraft redstone nasıl çalışır",null],
+  ["kek tarifi",null],
+  // Hava GERCEKTEN sorulmussa hava kurali calismali.
+  ["hava durumu","hava"],["bugün hava nasıl","hava"],["ankara hava durumu","hava"],
+  // DRA'nin KENDI durumu hala yerel komut: soru bicimli olmalari fark etmez.
+  ["hangi gündeyiz","tarih"],["saat kaç","saat"],["ayın kaçı","tarih"],
   ["ayarları aç","panel-ac"],["ayarlar","panel-ac"],
   ["sesini kapat","sesi-kapat"],["sus","sesi-kapat"],["sessiz ol","sesi-kapat"],
   ["sesini aç","sesi-ac"],

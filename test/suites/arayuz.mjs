@@ -821,6 +821,47 @@ export async function run(page, base, t, { external }) {
   t.eq(gugil.saglik.keySet, true, "anahtarin VAR OLDUGU biliniyor");
   t.ok(!gugil.hepsi.includes("ANAHTAR"), "anahtarin KENDISI arayuze geri donmuyor");
 
+  /* ------------------------------------------------- fiyat listesi ---
+   * "En ucuz nerede" sorusunun cevabi bir paragraf degil, sirali bir
+   * liste. En ucuz olan goze carpmali ve her satir kaynagina gitmeli —
+   * fiyat arama sonucundan okundugu icin dogrulanabilir olmali.     */
+
+  const fiyat = await page.evaluate(async () => {
+    const hud = await import("/js/hud.js");
+    hud.logCard({
+      title: "Fiyat karsilastirmasi: iphone 15",
+      sections: [{
+        prices: [
+          { site: "ucuz.com", url: "https://ucuz.com/b", title: "iPhone 15 128GB", price: 49250, priceText: "49.250 TL" },
+          { site: "orta.com", url: "https://orta.com/c", title: "iPhone 15", price: 51400, priceText: "51.400 TL" },
+          { site: "kotu.com", url: "javascript:alert(1)", title: "iPhone 15", price: 54999, priceText: "54.999 TL" },
+        ],
+      }],
+    });
+
+    const el = [...document.querySelectorAll(".card")].at(-1).querySelector(".prices");
+    const satirlar = [...el.querySelectorAll(".prices__item")];
+    return {
+      siteler: satirlar.map((x) => x.querySelector(".prices__site").textContent),
+      tutarlar: satirlar.map((x) => x.querySelector(".prices__price").textContent),
+      enUcuzIsaretli: satirlar[0].dataset.best === "1",
+      digerleriIsaretsiz: satirlar.slice(1).every((x) => x.dataset.best !== "1"),
+      baglar: satirlar.map((x) => {
+        const a = x.querySelector(".prices__site");
+        return a.tagName === "A" ? a.getAttribute("href") : null;
+      }),
+      not: el.querySelector(".prices__note")?.textContent || "",
+    };
+  });
+
+  t.eq(fiyat.siteler, ["ucuz.com", "orta.com", "kotu.com"], "sira korunuyor (ucuzdan pahaliya)");
+  t.eq(fiyat.tutarlar[0], "49.250 TL", "tutar yaziliyor");
+  t.ok(fiyat.enUcuzIsaretli, "EN UCUZ olan isaretleniyor");
+  t.ok(fiyat.digerleriIsaretsiz, "yalnizca en ucuz isaretli");
+  t.eq(fiyat.baglar[0], "https://ucuz.com/b", "satir kaynagina gidiyor");
+  t.eq(fiyat.baglar[2], null, "tehlikeli adres tiklanabilir yapilmiyor");
+  t.has(fiyat.not, "degismis olabilir", "fiyatin dogrulanmasi gerektigi yaziyor");
+
   /* ------------------------------------------------------- ag yalitimi */
   t.eq(external, [], "localhost disina hicbir istek atilmadi");
 }

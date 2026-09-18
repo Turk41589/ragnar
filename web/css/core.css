@@ -888,3 +888,84 @@ body[data-state="speaking"] .backdrop__glow {
   font-size: 0.8rem;
   color: var(--ink-dim, #8fa3b5);
 }
+
+/* ====================================================== fiyat listesi ==
+ * "En ucuz nerede" sorusunun cevabi: ucuzdan pahaliya sirali, en ucuz
+ * olani belirgin. Her satir kaynagina gidiyor — fiyat arama sonucundan
+ * okundugu icin dogrulanabilir olmali.
+ */
+.prices {
+  margin-top: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.prices__head {
+  margin: 0;
+  padding: 7px 11px;
+  font-size: 0.7rem;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.prices__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prices__item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  padding: 8px 11px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* En ucuz olan goze carpsin: sorunun cevabi o. */
+.prices__item[data-best="1"] {
+  background: color-mix(in srgb, var(--ok, #35e6a0) 9%, transparent);
+}
+
+.prices__site {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prices__site:hover { text-decoration: underline; }
+
+.prices__price {
+  font-size: 0.88rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--ink, #e6f0f7);
+}
+
+.prices__item[data-best="1"] .prices__price { color: var(--ok, #35e6a0); }
+
+.prices__title {
+  grid-column: 1 / -1;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--ink-soft, #b9c8d6);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.prices__note {
+  display: block;
+  padding: 7px 11px;
+  font-size: 0.7rem;
+  color: var(--ink-dim, #8fa3b5);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}

@@ -561,9 +561,106 @@ async function fromDdgLite(q, limit) {
   return { provider: "DuckDuckGo", summary: null, results: sonuclar, images: [] };
 }
 
+/* ----------------------------------------------------------- niyet */
+
+function sadelestir(x) {
+  return String(x || "").toLocaleLowerCase("tr")
+    .replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g")
+    .replace(/ü/g, "u").replace(/ö/g, "o").replace(/ç/g, "c");
+}
+
+/**
+ * Soru ne tur bir cevap istiyor?
+ *
+ * Her soruya ayni bicimde cevap vermek ise yaramiyor: "en ucuz nerede"
+ * diyen biri bir ansiklopedi paragrafi degil, SIRALI BIR FIYAT LISTESI
+ * bekliyor. "Nasil yapilir" diyen biri tek bir cumle degil, birkac
+ * kaynak istiyor.
+ *
+ * Doner: "fiyat" | "tarif" | "nasil" | null
+ */
+export function niyet(q) {
+  const n = sadelestir(q);
+  if (/(en ucuz|en uygun|fiyat|kac para|kac lira|kac tl|nereden al|hangi sitede|satin al|indirim)/.test(n)) {
+    return "fiyat";
+  }
+  if (/(tarif|malzemeler|nasil yapilir|nasil yapilisi|yapilisi|yapimi|nasil pisirilir)/.test(n)) {
+    return "tarif";
+  }
+  if (/(nasil|adim adim|rehber|nasil calisir|nasil kullanilir)/.test(n)) return "nasil";
+  return null;
+}
+
+/**
+ * Metinden Turk Lirasi tutarlarini cikarir.
+ *
+ * Turkce yazim: binlik ayraci nokta, kurus ayraci virgul.
+ *   "1.299,00 TL"  "₺1.299"  "1299,90 TL"  "12.345,67 ₺"
+ *
+ * Cok kucuk ve cok buyuk degerler eleniyor: "5 TL kargo" ya da bir
+ * telefon numarasi fiyat degil.
+ */
+export function fiyatBul(metin) {
+  const bulunan = [];
+  const kalip = /(?:₺|\bTL\b)\s*([\d][\d.\s]{0,12}(?:,\d{1,2})?)|([\d][\d.\s]{0,12}(?:,\d{1,2})?)\s*(?:₺|\bTL\b)/gi;
+  let m;
+  while ((m = kalip.exec(String(metin || "")))) {
+    const ham = (m[1] || m[2] || "").trim();
+    if (!ham) continue;
+    // Binlik ayraclarini at, kurus virgulunu noktaya cevir.
+    const sayi = Number(ham.replace(/[.\s]/g, "").replace(",", "."));
+    if (!Number.isFinite(sayi)) continue;
+    if (sayi < 10 || sayi > 10_000_000) continue;
+    bulunan.push(sayi);
+  }
+  return bulunan;
+}
+
+/** Tutari okunabilir bicime cevirir. */
+function fiyatYaz(n) {
+  return `${n.toLocaleString("tr-TR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} TL`;
+}
+
+/**
+ * Sonuclardan fiyat listesi cikarir, UCUZDAN PAHALIYA siralar.
+ *
+ * Her sonucta birden fazla tutar gecebiliyor (indirimli/eski fiyat,
+ * taksit). EN DUSUGUNU aliyoruz: kullanicinin sordugu sey "en uygun".
+ */
+function fiyatListesi(sonuclar) {
+  const liste = [];
+  for (const k of sonuclar || []) {
+    const tutarlar = fiyatBul(`${k.title || ""} ${k.snippet || ""}`);
+    if (!tutarlar.length) continue;
+    const enDusuk = Math.min(...tutarlar);
+    liste.push({
+      site: k.site,
+      url: k.url,
+      title: k.title,
+      price: enDusuk,
+      priceText: fiyatYaz(enDusuk),
+    });
+  }
+  return liste.sort((a, b) => a.price - b.price);
+}
+
 export async function richSearch(query, { limit = 4, withImages = true } = {}) {
-  const q = (query || "").trim();
-  if (!q) throw new Error("Bos arama.");
+  const ham = (query || "").trim();
+  if (!ham) throw new Error("Bos arama.");
+
+  /*
+   * NIYETE GORE SORGUYU VE KAPSAMI AYARLIYORUZ.
+   *
+   * Fiyat sorusunda "fiyat" kelimesi sorguda yoksa ekliyoruz: arama
+   * motoru aksi halde urunun tanitim sayfasini donduruyor, satis
+   * sayfasini degil. Tarif ve "nasil yapilir" sorularinda daha cok
+   * kaynak istiyoruz — tek bir ozet bu tur sorulara yetmiyor.
+   */
+  const tur = niyet(ham);
+  const q = tur === "fiyat" && !/fiyat/i.test(ham) ? `${ham} fiyat` : ham;
+  const kapsam = tur === "fiyat" ? Math.max(limit, 8)
+    : (tur === "tarif" || tur === "nasil") ? Math.max(limit, 6)
+    : limit;
 
   /*
    * TEK KAYNAGA BAGLI KALMIYORUZ.
@@ -577,12 +674,12 @@ export async function richSearch(query, { limit = 4, withImages = true } = {}) {
     // Anahtar girilmisse once Google: Turkce sonuclarda ve guncel
     // bilgide digerlerinden acik ara iyi. Anahtar yoksa NOT_APPLICABLE
     // ile kendini atliyor.
-    ["Google", () => fromGoogle(q, limit, withImages)],
+    ["Google", () => fromGoogle(q, kapsam, withImages)],
     ["Wikipedia", () => fromWikipedia(q)],
     ["DuckDuckGo anlik cevap", () => fromDdgApi(q)],
-    ["DuckDuckGo sonuclari", () => fromDdgHtml(q, limit)],
+    ["DuckDuckGo sonuclari", () => fromDdgHtml(q, kapsam)],
     // HTML ucu 403 verdiginde son sans: ayni motorun sade sayfasi.
-    ["DuckDuckGo lite", () => fromDdgLite(q, limit)],
+    ["DuckDuckGo lite", () => fromDdgLite(q, kapsam)],
   ];
 
   const denenenler = [];
@@ -605,11 +702,18 @@ export async function richSearch(query, { limit = 4, withImages = true } = {}) {
           .filter(Boolean);
       }
 
+      const kayitlar = (sonuc.results || []).slice(0, kapsam);
+
       return {
-        query: q,
+        // Kullaniciya SORDUGU seyi gosteriyoruz; sorguya ekledigimiz
+        // kelimeyi degil.
+        query: ham,
         provider: sonuc.provider,
+        intent: tur,
         summary: sonuc.summary,
-        results: (sonuc.results || []).slice(0, limit),
+        results: kayitlar,
+        // Fiyat sorusuysa ucuzdan pahaliya sirali liste.
+        prices: tur === "fiyat" ? fiyatListesi(kayitlar) : [],
         images: gorseller.slice(0, 4),
         at: Date.now(),
       };
@@ -630,7 +734,7 @@ export async function richSearch(query, { limit = 4, withImages = true } = {}) {
    */
   if (ulasildi) {
     throw Object.assign(
-      new Error(`"${q}" icin bir sey bulamadim.`),
+      new Error(`"${ham}" icin bir sey bulamadim.`),
       { code: "NO_RESULT", tried: denenenler },
     );
   }
@@ -672,5 +776,5 @@ export async function search(query) {
 
 export const _internal = {
   parseResults, parseLite, cleanUrl, stripHtml, wikiUygunMu, basligiOrtusuyorMu,
-  googleHatasi,
+  googleHatasi, fiyatListesi, fiyatYaz,
 };
