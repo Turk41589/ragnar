@@ -27,7 +27,7 @@ function fail(message) {
   send({ type: "error", message });
 }
 
-async function init(modelPath) {
+async function init(modelPath, dilbilgisi) {
   if (!vosk) {
     const mod = await import("vosk-koffi");
     vosk = mod.default || mod;
@@ -67,7 +67,50 @@ async function init(modelPath) {
     );
   }
 
-  recognizer = new vosk.Recognizer({ model, sampleRate: SAMPLE_RATE });
+  tanimlayiciKur(dilbilgisi);
+
+  // Model yuklendi; bundan sonraki gunlukler yalnizca gurultu.
+  vosk.setLogLevel?.(-1);
+  send({ type: "ready", grammar: Boolean(sonDilbilgisi) });
+}
+
+/** Son kullanilan sozcuk listesi; yeniden kurarken lazim. */
+let sonDilbilgisi = null;
+
+/**
+ * Tanimlayiciyi kurar.
+ *
+ * DILBILGISI (sinirli sozcuk listesi) verilirse Vosk yalnizca o
+ * sozcukleri duyabiliyor. Kucuk modeller serbest konusmada zayif:
+ * kullanici "dra" diyor, model Turkcedeki butun sozcukler arasindan
+ * secim yaptigi icin "bira" duyuyordu. Liste verilince o karisiklik
+ * ortadan kalkiyor.
+ *
+ * Liste bos ya da yoksa normal (serbest) kip.
+ */
+function tanimlayiciKur(dilbilgisi) {
+  // Eskisini birak: model sayaci tutuyor, bosa yer kaplamasin.
+  try {
+    recognizer?.free();
+  } catch {
+    /* zaten kapali olabilir */
+  }
+  recognizer = null;
+
+  const liste = Array.isArray(dilbilgisi) ? dilbilgisi.filter(Boolean) : null;
+  sonDilbilgisi = liste && liste.length ? liste : null;
+
+  const secenekler = { model, sampleRate: SAMPLE_RATE };
+  if (sonDilbilgisi) {
+    /*
+     * "[unk]" SART: listede olmayan bir sey duyulursa Vosk bunu
+     * isaretleyebilsin. Olmazsa duydugu her sesi listedeki en yakin
+     * sozcuge zorluyor ve saglam olmayan sonuclar uretiyor.
+     */
+    secenekler.grammar = [...sonDilbilgisi, "[unk]"];
+  }
+
+  recognizer = new vosk.Recognizer(secenekler);
 
   // Ayni tuzak burada da var: Recognizer da NULL donebiliyor.
   if (!recognizer.handle) {
@@ -75,16 +118,11 @@ async function init(modelPath) {
     throw new Error("Ses tanimlayici kurulamadi (model yuklendi ama tanimlayici acilmadi).");
   }
 
-  // Model yuklendi; bundan sonraki gunlukler yalnizca gurultu.
-  vosk.setLogLevel?.(-1);
-
-  // Kelime zamanlamalari gerekmiyor; kapatmak isi hafifletiyor.
   try {
     recognizer.setWords(false);
   } catch {
     /* bu surumde yoksa onemli degil */
   }
-  send({ type: "ready" });
 }
 
 /*
@@ -122,23 +160,37 @@ export function metniAl(sonuc, alan) {
   return "";
 }
 
+/**
+ * "[unk]" isaretini temizler.
+ *
+ * Sinirli sozcuk listesi kipinde Vosk, listede olmayan sesleri "[unk]"
+ * olarak isaretliyor. Bu bir sozcuk degil; komut olarak islenirse
+ * anlamsiz sonuclar cikiyor.
+ */
+function ayikla(metin) {
+  return String(metin || "")
+    .replace(/\[unk\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function feed(pcm) {
   if (!recognizer) return;
   const buffer = Buffer.from(pcm.buffer || pcm, pcm.byteOffset || 0, pcm.byteLength || pcm.length);
 
   if (recognizer.acceptWaveform(buffer)) {
-    const text = metniAl(recognizer.result(), "text");
+    const text = ayikla(metniAl(recognizer.result(), "text"));
     if (text) send({ type: "result", final: text });
     return;
   }
 
-  const partial = metniAl(recognizer.partialResult(), "partial");
+  const partial = ayikla(metniAl(recognizer.partialResult(), "partial"));
   if (partial) send({ type: "result", partial });
 }
 
 function reset() {
   if (!recognizer) return;
-  const text = metniAl(recognizer.finalResult(), "text");
+  const text = ayikla(metniAl(recognizer.finalResult(), "text"));
   if (text) send({ type: "result", final: text });
 }
 
@@ -157,7 +209,15 @@ function close() {
 process.parentPort?.on("message", async (event) => {
   const message = event.data;
   try {
-    if (message.type === "init") await init(message.modelPath);
+    if (message.type === "init") await init(message.modelPath, message.grammar);
+    else if (message.type === "grammar") {
+      // Model yerinde kaliyor (pahali olan o); yalnizca tanimlayici
+      // yeniden kuruluyor.
+      if (model) {
+        tanimlayiciKur(message.words);
+        send({ type: "grammar", active: Boolean(sonDilbilgisi) });
+      }
+    }
     else if (message.type === "feed") feed(message.pcm);
     else if (message.type === "reset") reset();
     else if (message.type === "close") close();

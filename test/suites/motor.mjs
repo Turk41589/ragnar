@@ -110,16 +110,53 @@ export async function run(_page, _base, t) {
     "tanimlayici handle'i da kontrol ediliyor",
   );
 
-  // Sirasi onemli: kontrol Recognizer'dan SONRA gelirse hicbir ise yaramaz.
-  const kontrolYeri = kaynak.indexOf("if (!model.handle)");
-  const recYeri = kaynak.indexOf("new vosk.Recognizer");
-  t.ok(kontrolYeri < recYeri, "kontrol Recognizer cagrisindan ONCE geliyor");
+  /*
+   * SIRA onemli ve bunu FONKSIYON ICINDE olcmek gerekiyor: kod
+   * duzenlendikce dosyadaki satir sirasi degisiyor ama calisma sirasi
+   * ayni kaliyor. Once metni fonksiyonlara boluyoruz.
+   */
+  const govde = (ad) => {
+    const bas = kaynak.indexOf(`function ${ad}(`);
+    if (bas === -1) return "";
+    // Bir sonraki ust duzey fonksiyona kadar.
+    const sonraki = kaynak.indexOf("\nfunction ", bas + 1);
+    const sonraki2 = kaynak.indexOf("\nasync function ", bas + 1);
+    const son = Math.min(
+      ...[sonraki, sonraki2, kaynak.length].filter((x) => x > bas),
+    );
+    return kaynak.slice(bas, son);
+  };
 
-  // Vosk'un sebebi susturulmamali: setLogLevel(-1) model kurulmadan
-  // ONCE cagrilirsa, basarisizligin sebebini anlatan tek satir kayboluyor.
-  const susturma = kaynak.indexOf("setLogLevel?.(-1)");
+  const initGovde = govde("init");
+  const kurGovde = govde("tanimlayiciKur");
+
+  t.ok(initGovde.length > 0, "init govdesi bulundu");
+  t.ok(kurGovde.length > 0, "tanimlayiciKur govdesi bulundu");
+
+  // init: modeli kur → tutamaci KONTROL ET → tanimlayiciyi kur.
+  const modelYeri = initGovde.indexOf("new vosk.Model");
+  const kontrolYeri = initGovde.indexOf("if (!model.handle)");
+  const kurCagrisi = initGovde.indexOf("tanimlayiciKur(");
+  t.ok(modelYeri < kontrolYeri, "model kurulduktan SONRA tutamac kontrol ediliyor");
+  t.ok(kontrolYeri < kurCagrisi, "tutamac kontrolu tanimlayiciyi kurmadan ONCE");
+
+  // Recognizer tanimlayiciKur icinde ve tutamaci orada da kontrol ediliyor.
+  t.ok(kurGovde.includes("new vosk.Recognizer"), "tanimlayici tek yerde kuruluyor");
   t.ok(
-    susturma === -1 || susturma > recYeri,
+    kurGovde.indexOf("new vosk.Recognizer") < kurGovde.indexOf("if (!recognizer.handle)"),
+    "tanimlayici tutamaci kurulduktan sonra kontrol ediliyor",
+  );
+
+  /*
+   * Vosk'un sebebi susturulmamali: setLogLevel(-1) model kurulmadan
+   * ONCE cagrilirsa, basarisizligin sebebini anlatan tek satir kayboluyor.
+   * Olcum yine init govdesinde.
+   */
+  const acik = initGovde.indexOf("setLogLevel?.(0)");
+  const kapali = initGovde.indexOf("setLogLevel?.(-1)");
+  t.ok(acik !== -1 && acik < modelYeri, "gunlukler model kurulmadan ONCE aciliyor");
+  t.ok(
+    kapali === -1 || kapali > kurCagrisi,
     "Vosk gunlukleri model yuklenmeden once susturulmuyor",
   );
 

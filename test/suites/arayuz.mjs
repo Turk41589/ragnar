@@ -927,6 +927,53 @@ export async function run(page, base, t, { external }) {
   t.eq(ses.durduktanSonra, false, "durdurunca yakalama kapaniyor");
   t.ok(Number.isFinite(ses.saglik.contextRate), "ornekleme hizi raporlaniyor");
 
+  /* --------------------------------------------- komut kipi sozlugu --
+   * Kullanici "dra" diyor, model "bira" duyuyordu. Sebep: kucuk model
+   * Turkcedeki BUTUN sozcukler arasindan secim yapiyor. Motora
+   * "yalnizca bunlari duyabilirsin" demek karisikligi ortadan
+   * kaldiriyor. Liste komut tablosundan URETILIYOR — elle tutulan
+   * ikinci bir liste olsaydi kurallar degistikce sessizce eskirdi.   */
+
+  const sozluk = await page.evaluate(async () => {
+    const { vocabulary } = await import("/js/commands.js");
+    const liste = vocabulary(["hey dra", "dra uyan"]);
+    return {
+      adet: liste.length,
+      // Uyandirma ve sik komutlar listede olmali.
+      varlar: ["dra", "hey dra", "saat", "alarm", "rapor", "muzik", "youtube"]
+        .filter((k) => liste.includes(k)),
+      // Karistirilan sozcukler listede OLMAMALI.
+      yoklar: ["bira", "birader", "dur", "kira"].filter((k) => liste.includes(k)),
+      sayilarVar: ["bir", "iki", "yedi", "bucuk"].every((k) => liste.includes(k)),
+      hepsiKucuk: liste.every((k) => k === k.toLocaleLowerCase("tr")),
+      bosYok: liste.every((k) => k.trim().length > 0),
+      sirali: liste.every((k, i) => i === 0 || liste[i - 1] <= k),
+    };
+  });
+
+  t.ok(sozluk.adet > 150, `sozluk komut tablosundan uretiliyor (${sozluk.adet} sozcuk)`);
+  t.eq(sozluk.varlar.length, 7, "uyandirma ve sik komutlar sozlukte");
+  t.eq(sozluk.yoklar, [], '"bira" gibi karistirilan sozcukler sozlukte YOK');
+  t.ok(sozluk.sayilarVar, "sayilar sozlukte (alarm, zamanlayici, hesap icin)");
+  t.ok(sozluk.hepsiKucuk, "sozluk kucuk harfe indirgenmis");
+  t.ok(sozluk.bosYok, "sozlukte bos girdi yok");
+  t.ok(sozluk.sirali, "sozluk sirali (tekrar yok, karsilastirilabilir)");
+
+  // Komut kipi KAPALIYKEN sozluk verilmemeli: serbest soru sorulabilsin.
+  const kapali = await page.evaluate(async () => {
+    const { store, saveStore } = await import("/js/store.js");
+    const eski = store.commandMode;
+
+    store.commandMode = false;
+    saveStore();
+    const kapaliyken = window.__draSesSozlugu ? window.__draSesSozlugu() : "yok";
+
+    store.commandMode = eski;
+    saveStore();
+    return kapaliyken;
+  });
+  t.ok(kapali === "yok" || kapali === null, "komut kipi kapaliyken sozluk verilmiyor");
+
   /* ------------------------------------------------------- ag yalitimi */
   t.eq(external, [], "localhost disina hicbir istek atilmadi");
 }

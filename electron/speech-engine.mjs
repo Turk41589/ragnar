@@ -523,15 +523,15 @@ export async function useModelFrom(path) {
  * Vosk ayri bir surecte baslatilir; bu surecte olusabilecek bir yerel
  * cokme uygulamayi etkilemez. Model yoksa anlasilir bir hata verilir.
  */
-export function start(onResult) {
+export function start(onResult, dilbilgisi = null) {
   if (workerReady) return status();
   // Es zamanli iki cagri iki isci acmasin.
   if (starting) return starting;
-  starting = doStart(onResult).finally(() => { starting = null; });
+  starting = doStart(onResult, dilbilgisi).finally(() => { starting = null; });
   return starting;
 }
 
-async function doStart(onResult) {
+async function doStart(onResult, dilbilgisi) {
   try {
     await eskiKonumdanTasi();
     modelDir = modelDir || (await findModel(modelRoot()));
@@ -665,8 +665,20 @@ async function doStart(onResult) {
       sonlandir(reject, new Error(lastError));
     });
 
-    w.postMessage({ type: "init", modelPath: voskYolu });
+    w.postMessage({ type: "init", modelPath: voskYolu, grammar: dilbilgisi });
   }).then(() => status());
+}
+
+/**
+ * Sozcuk listesini degistirir (sinirli kip ac/kapa).
+ *
+ * Model yerinde kaliyor — pahali olan o. Yalnizca tanimlayici yeniden
+ * kuruluyor, bu da aninda oluyor.
+ */
+export function setGrammar(words) {
+  if (!workerReady || !worker) return { applied: false, reason: "motor calismiyor" };
+  worker.postMessage({ type: "grammar", words });
+  return { applied: true, active: Array.isArray(words) && words.length > 0 };
 }
 
 /** Motoru durdurur ve kaynaklari birakir. */

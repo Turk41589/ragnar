@@ -710,13 +710,17 @@ function registerIpc() {
 
   handle("dra:stt:remove", async () => stt.removeModel());
 
-  handle("dra:stt:start", async () => {
+  handle("dra:stt:start", async ({ grammar } = {}) => {
     // Sonuclar isci surecinden gelip dogrudan arayuze aktariliyor.
     const durum = await stt.start((sonuc) => {
       mainWindow?.webContents.send("dra:stt:result", sonuc);
-    });
+    }, Array.isArray(grammar) && grammar.length ? grammar : null);
     return { status: durum };
   });
+
+  handle("dra:stt:grammar", async ({ words }) => stt.setGrammar(
+    Array.isArray(words) && words.length ? words : null,
+  ));
 
   handle("dra:stt:stop", async () => {
     stt.stop();

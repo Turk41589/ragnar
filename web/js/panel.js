@@ -286,6 +286,7 @@ export function syncSettings() {
   $("montage-image-info").textContent = store.montageImage || "Gorsel secilmedi";
   $("montage-music-info").textContent = store.montageMusic || "Muzik secilmedi";
 
+  syncSwitch($("set-command-mode"), store.commandMode);
   $("set-google-key").value = store.googleKey;
   $("set-google-cx").value = store.googleCx;
   refreshGoogleStatus();
@@ -1744,6 +1745,24 @@ export function mountPanel(context) {
         : "Tarayici motoru secildi",
     );
     ctx.onSpeechModeChanged();
+  });
+
+  $("set-command-mode").addEventListener("click", async () => {
+    store.commandMode = !store.commandMode;
+    saveStore();
+    syncSwitch($("set-command-mode"), store.commandMode);
+
+    /*
+     * Motor calisiyorsa ANINDA uyguluyoruz — model yeniden
+     * yuklenmiyor, yalnizca tanimlayici kuruluyor. Kullanici ayari
+     * degistirip hemen deneyebilsin.
+     */
+    try {
+      await ctx.applyCommandMode();
+      ctx.toast(store.commandMode ? "Komut kipi acik" : "Serbest kip acik");
+    } catch (err) {
+      ctx.toast(`Uygulanamadi: ${err.message}`, 5000);
+    }
   });
 
   $("set-model-install").addEventListener("click", async () => {

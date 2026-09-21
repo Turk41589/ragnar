@@ -170,10 +170,11 @@ contextBridge.exposeInMainWorld("dra", {
     status: () => call("dra:stt:status"),
     install: () => call("dra:stt:install"),
     remove: () => call("dra:stt:remove"),
+    grammar: (words) => call("dra:stt:grammar", { words }),
     useFolder: (path) => call("dra:stt:use-folder", { path }),
     pickFolder: () => call("dra:stt:pick-folder"),
     inspect: () => call("dra:stt:inspect"),
-    start: () => call("dra:stt:start"),
+    start: (grammar) => call("dra:stt:start", { grammar }),
     stop: () => call("dra:stt:stop"),
     /** Ses parcasi gonderir (16 kHz, tek kanal, 16-bit). */
     feed: (int16) => ipcRenderer.send("dra:stt:feed", int16),

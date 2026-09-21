@@ -113,6 +113,30 @@ rozetin `cihazda` yazdığını doğrulayın.
 yenileyin. Tüm istekler `localhost:4173`'e olmalı, başka hiçbir alan adı
 görünmemeli.
 
+### Komut kipi — doğru tanımanın anahtarı
+
+Gömülü model (`vosk-model-small-tr-0.3`) yaklaşık 45 MB. Serbest
+konuşmada Türkçe başarımı sınırlı: **"dra" derken "bira" duyabiliyor.**
+Sebep, modelin Türkçedeki *bütün* sözcükler arasından seçim yapması.
+
+**Komut kipi** açıkken motora "yalnızca şu sözcükleri duyabilirsin"
+deniyor. Liste **komut tablosundan üretiliyor** — elle tutulan ikinci
+bir liste olsaydı kurallar değiştikçe sessizce eskirdi. İçinde
+uyandırma sözcükleri, bütün komut ifadeleri, sayılar ve günlük
+bağlayıcılar var (~760 sözcük). "bira" listede olmadığı için model onu
+artık üretemiyor.
+
+Karşılığı: serbest soru sormak zorlaşır. Araştırma sorusu soracaksanız
+Ayar sekmesinden kapatın — ya da yazarak sorun.
+
+Varsayılan **açık**, çünkü asıl şikâyet yanlış anlama.
+
+**Uzun uyandırma sözü.** "dra" tek heceye yakın ve tanıma için en zor
+durum. **"hey dra"** ve **"dra uyan"** de — iki sözcüklü kalıp çok daha
+sağlam tanınıyor. Gerçek asistanların "Hey Google", "Alexa" gibi uzun
+uyandırma sözleri kullanmasının sebebi tam olarak bu. Kısa biçim de
+çalışmaya devam ediyor.
+
 ### Ses ayrı bir iş parçacığında
 
 Ses yakalama **AudioWorklet** ile ayrı bir ses iş parçacığında çalışır.

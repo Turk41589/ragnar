@@ -150,9 +150,9 @@ function sureSinirli(soz, ms, mesaj) {
   ]);
 }
 
-async function startEmbedded() {
+async function startEmbedded(dilbilgisi) {
   await sureSinirli(
-    window.dra.stt.start(),
+    window.dra.stt.start(dilbilgisi),
     30000,
     "Ses motoru yanit vermedi. Uygulamayi kapatip yeniden acin; sorun surerse " +
       "Ayar sekmesinden \"Ses tanimasini sina\" deyin.",
@@ -178,10 +178,19 @@ async function startEmbedded() {
  * `startListening` hemen donuyor (uyandirma yolunda beklemek istemiyoruz),
  * ama mikrofon dugmesi "acildi" demeden once sonucu bilmek zorunda.
  */
-export async function startEmbeddedAndWait() {
+export async function startEmbeddedAndWait(dilbilgisi = null) {
   if (embeddedRunning) return true;
-  await startEmbedded();
+  await startEmbedded(dilbilgisi);
   return true;
+}
+
+/**
+ * Sinirli sozcuk listesini acar/kapatir.
+ * Motor calisiyorsa aninda uygulaniyor; model yeniden yuklenmiyor.
+ */
+export async function setEmbeddedGrammar(words) {
+  if (!embedded) return { applied: false };
+  return window.dra.stt.grammar(words);
 }
 
 function stopEmbedded() {

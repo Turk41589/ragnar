@@ -1377,6 +1377,54 @@ function scoreRules(raw, ctx) {
  * Hangi kurallarin ne puan aldigini dondurur (test ve teshis icin).
  * Yanlis yonlendirmeleri ancak buradan gorebiliyoruz.
  */
+/**
+ * DRA'nin ANLADIGI butun sozcukler.
+ *
+ * Ne ise yarar: kucuk ses modelleri serbest konusmada zayif. Vosk'a
+ * "yalnizca bu sozcukleri duyabilirsin" demek dogrulugu carpici bicimde
+ * artiriyor. "dra" yerine "bira" duymasinin sebebi, modelin Turkcedeki
+ * BUTUN sozcukler arasindan secim yapmasi; listede "bira" yoksa o
+ * karisiklik ortadan kalkiyor.
+ *
+ * Liste komut tablosundan URETILIYOR — elle tutulan ikinci bir liste
+ * olsaydi kurallar degistikce sessizce eskirdi.
+ */
+export function vocabulary(ekSozcukler = []) {
+  const kume = new Set();
+
+  const ekle = (metin) => {
+    const n = normalize(metin);
+    if (!n) return;
+    // Hem butun ifadeyi hem tek tek sozcukleri veriyoruz: Vosk ikisinden
+    // de yararlaniyor (ifade kalibi + sozcuk dagarcigi).
+    kume.add(n);
+    for (const parca of n.split(/\s+/)) if (parca.length > 1) kume.add(parca);
+  };
+
+  for (const rule of RULES) {
+    for (const ifade of rule.phrases || []) ekle(ifade);
+    if (rule.example) ekle(rule.example);
+  }
+
+  // Sayilar komutlarda cok geciyor (alarm, zamanlayici, hesap, ses).
+  for (const sayi of [
+    "sifir", "bir", "iki", "uc", "dort", "bes", "alti", "yedi", "sekiz",
+    "dokuz", "on", "yirmi", "otuz", "kirk", "elli", "altmis", "yetmis",
+    "seksen", "doksan", "yuz", "bin", "bucuk", "ceyrek", "yarim",
+  ]) kume.add(sayi);
+
+  // Gunluk baglayicilar: bunlar olmadan cumleler taninmiyor.
+  for (const k of [
+    "bana", "benim", "lutfen", "simdi", "hemen", "sonra", "once", "biraz",
+    "cok", "az", "daha", "ve", "ile", "icin", "bu", "su", "o", "ne", "mi",
+    "misin", "musun", "var", "yok", "evet", "hayir", "tamam", "olur",
+  ]) kume.add(k);
+
+  for (const ek of ekSozcukler) ekle(ek);
+
+  return [...kume].sort();
+}
+
 export function explain(rawText, limit = 3, ctx = null) {
   return scoreRules(rawText, ctx)
     .slice(0, limit)

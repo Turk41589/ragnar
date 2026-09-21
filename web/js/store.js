@@ -14,6 +14,13 @@ const DEFAULTS = {
   localSpeechOnly: true,
   // "gomulu" = uygulamanin kendi motoru (Vosk), "tarayici" = Web Speech.
   speechEngine: "gomulu",
+  /*
+   * KOMUT KIPI — ses motoruna yalnizca DRA'nin anladigi sozcukleri
+   * duyabilecegini soyler. Kucuk model serbest konusmada zayif ("dra"
+   * yerine "bira" duyuyor); liste verilince dogruluk carpici bicimde
+   * artiyor. Karsiligi: serbest soru sormak zorlasir.
+   */
+  commandMode: true,
   speechRate: 1.05,
   bootSequence: true,
   autoSleepMinutes: 2.5, // 0 = otomatik uyku kapali
@@ -81,6 +88,7 @@ function coerce(saved) {
 
   if (typeof saved.voiceEnabled === "boolean") store.voiceEnabled = saved.voiceEnabled;
   if (typeof saved.bootSequence === "boolean") store.bootSequence = saved.bootSequence;
+  if (typeof saved.commandMode === "boolean") store.commandMode = saved.commandMode;
   if (typeof saved.localSpeechOnly === "boolean") store.localSpeechOnly = saved.localSpeechOnly;
   if (saved.speechEngine === "gomulu" || saved.speechEngine === "tarayici") {
     store.speechEngine = saved.speechEngine;

@@ -12,7 +12,9 @@ import * as speech from "./speech.js";
 import * as audio from "./audio.js";
 import * as hud from "./hud.js";
 import { mountReactor, mountWave } from "./reactor.js";
-import { runCommand, normalize, suggestCommand, nearestCommand } from "./commands.js";
+import {
+  runCommand, normalize, suggestCommand, nearestCommand, vocabulary,
+} from "./commands.js";
 import { store, loadStore, saveStore } from "./store.js";
 import * as panel from "./panel.js";
 import * as alarms from "./alarms.js";
@@ -24,6 +26,16 @@ import * as system from "./system.js";
 const BASE_WAKE_WORDS = [
   "dra", "dara", "dira", "dera", "draa",
   "tra", "tira", "tara", "de ra", "d ra",
+  /*
+   * "hey dra" ve "dra uyan": UZUN bicimler bilerek var.
+   *
+   * "dra" tek heceye yakin ve ses tanima icin en zor durum — model onu
+   * "bira", "bir", "dur" gibi seylerle karistiriyor. Iki sozcuklu bir
+   * kalip cok daha saglam taniniyor; gercek asistanlarin "Hey Google",
+   * "Alexa" gibi uzun uyandirma sozleri kullanmasinin sebebi bu.
+   * Kisa bicim de calismaya devam ediyor.
+   */
+  "hey dra", "hey dara", "dra uyan", "dara uyan", "hey dira",
 ];
 
 /** Temel liste + ayarlardan gelen ek sozcukler. */
@@ -32,6 +44,21 @@ let wakeWords = new Set(BASE_WAKE_WORDS);
 function rebuildWakeWords() {
   wakeWords = new Set([...BASE_WAKE_WORDS, ...store.extraWakeWords.map(normalize)]);
 }
+
+/**
+ * Ses motoruna verilecek sozcuk listesi.
+ *
+ * Komut kipi acikken motor YALNIZCA bunlari duyabiliyor. Liste komut
+ * tablosundan ureiliyor; uyandirma sozcukleri ve kullanicinin kendi
+ * ekledikleri de iceride.
+ */
+function sesSozlugu() {
+  if (!store.commandMode) return null;
+  return vocabulary([...BASE_WAKE_WORDS, ...store.extraWakeWords]);
+}
+
+// Testler icin: arayuzde calisan gercek karari sorgulayabilmek adina.
+if (typeof window !== "undefined") window.__draSesSozlugu = sesSozlugu;
 
 /* ============================================================ elemanlar */
 
@@ -1499,6 +1526,12 @@ const ctx = {
     return kanalSun(veri.kanal, veri.sira);
   },
 
+  /** Komut kipi ayarini calisan motora uygular. */
+  applyCommandMode: async () => {
+    if (!speech.embeddedAvailable()) return { applied: false };
+    return speech.setEmbeddedGrammar(sesSozlugu());
+  },
+
   /** Panelden gelen, izin gerektiren isler icin ayni akis. */
   withPermission: (is) => izinliCalis(is),
 
@@ -1922,7 +1955,7 @@ async function enableMicInner() {
     // izin reddedilse ya da cihaz olmasa bile dugme acik gorunuyor,
     // kullaniciya hicbir sey soylenmiyordu.
     try {
-      await speech.startEmbeddedAndWait();
+      await speech.startEmbeddedAndWait(sesSozlugu());
     } catch (err) {
       const mesaj = err?.message || "Mikrofon acilamadi.";
       hud.log("error", mesaj);
