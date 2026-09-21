@@ -113,6 +113,24 @@ rozetin `cihazda` yazdığını doğrulayın.
 yenileyin. Tüm istekler `localhost:4173`'e olmalı, başka hiçbir alan adı
 görünmemeli.
 
+### Türkçe harfli kullanıcı adı
+
+Windows kullanıcı adınızda Türkçe harf varsa (`msı`, `Şükrü`, `Gökçe`…)
+ses modeli **kullanıcı adı geçmeyen** bir klasöre kurulur:
+`C:\ProgramData\DRA\ses-modeli`.
+
+Sebebi: ses motorunun C arayüzü model yolunu dar (ANSI) metin olarak
+alıyor. `ı` harfi UTF-8'de iki bayt ve Windows onu Türkçe kod sayfasıyla
+okuyunca yol bozuluyor. Dosyalar yerinde duruyor ama motor klasörü
+bulamıyor — ve hata mesajı bunu söylemiyor, "klasörde model yok" diyor.
+
+Daha önce kurulmuş bir model eski konumdaysa **kendiliğinden taşınır**;
+aynı diskte olduğu için anında biter ve 45 MB yeniden inmez. Taşıma
+başarısız olursa hiçbir şey bozulmaz: model eski yerinde kalır ve
+Windows'un ASCII kısa adı (`MSI~1`) denenir.
+
+ASCII bir kullanıcı adınız varsa hiçbir şey değişmez.
+
 ### Otomatik testler
 
 ```bash

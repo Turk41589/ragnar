@@ -150,4 +150,66 @@ export async function run(_page, _base, t) {
   t.eq(sahte.code, 0, "gercek olmayan model klasoru de cokertmiyor");
   t.eq(sahte.signal, null, "sahte modelde de SIGSEGV yok");
   t.ok(sahte.cikti.includes("SONUC:"), "sonuc raporlaniyor");
+
+  /* ============ 5. Turkce harfli kullanici adi =================== */
+  await runYolSecimi(t);
+}
+
+/**
+ * Turkce harfli kullanici adi.
+ *
+ * GERCEK OLAY: kullanicinin Windows adi "msı" (noktasiz ı) ve model yolu
+ * "C:\Users\msı\AppData\Roaming\DRA\ses-modeli\..." oluyordu. Dosyalar
+ * yerinde — 56 MB, hepsi tam — ama Vosk klasoru BULAMIYOR:
+ *
+ *   ERROR (VoskAPI:Model()) Folder '...' does not contain model files
+ *
+ * Sebep: Vosk'un C arayuzu yolu DAR (ANSI) metin olarak aliyor. "ı"
+ * harfi UTF-8'de iki bayt; Windows onu Turkce kod sayfasiyla okuyunca
+ * yol bozuluyor.
+ *
+ * Cozum: kullanici adi GECMEYEN, tamamen ASCII bir klasor.
+ */
+async function runYolSecimi(t) {
+  const { asciiDisi, guvenliKok } = await import("../../electron/yol.mjs");
+
+  /* --- ASCII tespiti --- */
+  t.eq(asciiDisi("C:\\Users\\mehmet\\AppData"), false, "duz ascii yol temiz");
+  t.eq(asciiDisi("C:\\Users\\msı\\AppData"), true, "noktasiz ı yakalaniyor");
+  t.eq(asciiDisi("C:\\Users\\Şükrü\\AppData"), true, "Ş ve ü yakalaniyor");
+  t.eq(asciiDisi("C:\\Users\\Gökçe\\x"), true, "ö ve ç yakalaniyor");
+  t.eq(asciiDisi(""), false, "bos metin sorun degil");
+
+  /* --- kok secimi --- */
+  const ascii = guvenliKok({
+    userData: "C:\\Users\\mehmet\\AppData\\Roaming\\DRA",
+    programData: "C:\\ProgramData",
+    platform: "win32",
+  });
+  t.ok(ascii.includes("mehmet"), "ascii kullanici adinda VARSAYILAN konum korunuyor");
+
+  const turkce = guvenliKok({
+    userData: "C:\\Users\\msı\\AppData\\Roaming\\DRA",
+    programData: "C:\\ProgramData",
+    platform: "win32",
+  });
+  t.ok(!asciiDisi(turkce), "Turkce adda secilen konum tamamen ASCII");
+  t.ok(!turkce.includes("msı"), "secilen konum kullanici adini TASIMIYOR");
+  t.ok(turkce.includes("ProgramData"), "ProgramData altina geciliyor");
+
+  // ProgramData yoksa ya da o da bozuksa: elimizdekiyle devam.
+  const pdYok = guvenliKok({
+    userData: "C:\\Users\\msı\\AppData\\Roaming\\DRA",
+    programData: undefined,
+    platform: "win32",
+  });
+  t.ok(pdYok.includes("msı"), "ProgramData yoksa varsayilana donuluyor (kotulestirmiyoruz)");
+
+  // Windows disinda sorun yok: UTF-8 yollar sorunsuz calisiyor.
+  const linux = guvenliKok({
+    userData: "/home/msı/.config/DRA",
+    programData: undefined,
+    platform: "linux",
+  });
+  t.ok(linux.includes("msı"), "Windows disinda yol degistirilmiyor");
 }

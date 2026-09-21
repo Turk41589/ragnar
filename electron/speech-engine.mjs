@@ -12,13 +12,14 @@
 import { app, utilityProcess } from "electron";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, open, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, open, readdir, rename, rm, stat } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { join, dirname } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
+import { asciiDisi, guvenliKok } from "./yol.mjs";
 
 /**
  * Bu dosyanin bulundugu klasor. Isci sureci buradan baslatiliyor.
@@ -50,8 +51,40 @@ export function onEngineEvent(handler) {
 }
 
 /** Modelin duracagi klasor (kullanici veri dizini). */
+/** Modelin duracagi klasor. */
 function modelRoot() {
+  return guvenliKok({
+    userData: app.getPath("userData"),
+    programData: process.env.ProgramData,
+    platform: process.platform,
+  });
+}
+
+/** Uygulamanin kendi veri klasorundeki ESKI konum. */
+function eskiModelRoot() {
   return join(app.getPath("userData"), "ses-modeli");
+}
+
+/**
+ * Model eski (Turkce harfli) konumdaysa yeni ASCII konuma TASIR.
+ *
+ * Boylece 45 MB'lik model yeniden indirilmiyor. Ayni diskte oldugu icin
+ * tasima aninda bitiyor. Basarisiz olursa hicbir sey bozulmuyor: model
+ * eski yerinde kaliyor ve asagidaki kisa-yol yontemi devreye giriyor.
+ */
+async function eskiKonumdanTasi() {
+  const eski = eskiModelRoot();
+  const yeni = modelRoot();
+  if (eski === yeni) return;
+  if (!existsSync(eski) || existsSync(yeni)) return;
+
+  try {
+    await mkdir(dirname(yeni), { recursive: true });
+    await rename(eski, yeni);
+    console.log(`[dra] ses modeli ASCII konuma tasindi: ${yeni}`);
+  } catch (err) {
+    console.warn(`[dra] model tasinamadi (${err.message}); eski yerinde kullanilacak.`);
+  }
 }
 
 /**
@@ -169,18 +202,26 @@ async function modelDogrula(dir) {
  */
 async function asciiYol(yol) {
   if (process.platform !== "win32") return yol;
-  // eslint-disable-next-line no-control-regex
-  if (!/[^\x00-\x7F]/.test(yol)) return yol;
+  if (!asciiDisi(yol)) return yol;
 
+  /*
+   * Yol ORTAM DEGISKENIYLE gidiyor, arguman olarak DEGIL.
+   *
+   * Ilk hali argumandi ve ise yaramadi: Node argumani UTF-8 yaziyor,
+   * cmd.exe onu OEM kod sayfasiyla okuyor ve Turkce harf yine
+   * bozuluyor. Ortam degiskenleri Windows'ta UTF-16 tasiniyor, yani
+   * bozulma yok. Ciktisi olan KISA AD zaten saf ASCII.
+   */
   try {
     const { stdout } = await execFileAsync(
       "cmd.exe",
-      ["/c", "for %I in (\"" + yol + "\") do @echo %~sI"],
-      { windowsHide: true },
+      ["/c", 'for %I in ("%DRA_MODEL_YOLU%") do @echo %~sI'],
+      { windowsHide: true, env: { ...process.env, DRA_MODEL_YOLU: yol } },
     );
     const kisa = stdout.trim();
-    // Kisa ad uretilememisse cikti bos ya da hala Turkce olur.
-    if (kisa && !/[^\x00-\x7F]/.test(kisa) && existsSync(kisa)) return kisa;
+    // Kisa ad uretilememisse (bazi disklerde 8.3 adlari kapali) cikti
+    // bos kalir ya da hala Turkce olur.
+    if (kisa && !asciiDisi(kisa) && existsSync(kisa)) return kisa;
   } catch {
     /* kisa ad alinamadi; asagida oldugu gibi donuyoruz */
   }
@@ -300,7 +341,9 @@ function cokmeMesaji(code, modelPath) {
 
 /** Motorun ve modelin durumu. */
 export async function status() {
-  const dir = modelDir || (await findModel(modelRoot()));
+  const dir = modelDir
+    || (await findModel(modelRoot()))
+    || (await findModel(eskiModelRoot()));
   let sizeMb = null;
   if (dir) {
     try {
@@ -424,11 +467,17 @@ export async function installModel(onProgress = () => {}) {
 /** Model klasorunun icerigini dondurur (teshis dugmesi icin). */
 export async function inspect() {
   const root = modelRoot();
+  const eski = eskiModelRoot();
   return {
     root,
     exists: existsSync(root),
     tree: existsSync(root) ? await describeTree(root) : "(klasor yok)",
-    modelPath: modelDir || (await findModel(root)),
+    modelPath: modelDir || (await findModel(root)) || (await findModel(eski)),
+    // Turkce harfli kullanici adinda model ASCII bir konuma tasiniyor;
+    // teshiste iki konumu da gostermek gerekiyor.
+    legacyRoot: eski === root ? null : eski,
+    legacyExists: eski !== root && existsSync(eski),
+    pathHasNonAscii: asciiDisi(root),
   };
 }
 
@@ -441,7 +490,12 @@ export async function inspect() {
 export async function removeModel() {
   stop();
   const root = modelRoot();
+  // Her iki konumu da temizliyoruz: yarim kalmis bir tasima geride
+  // bozuk bir kopya birakmis olabilir.
   await rm(root, { recursive: true, force: true });
+  if (eskiModelRoot() !== root) {
+    await rm(eskiModelRoot(), { recursive: true, force: true });
+  }
   modelDir = null;
   lastError = null;
   return { removed: root };
@@ -479,7 +533,10 @@ export function start(onResult) {
 
 async function doStart(onResult) {
   try {
+    await eskiKonumdanTasi();
     modelDir = modelDir || (await findModel(modelRoot()));
+    // Tasinamadiysa model hala eski yerinde olabilir; orayi da bak.
+    if (!modelDir) modelDir = await findModel(eskiModelRoot());
   } catch {
     modelDir = null;
   }
@@ -567,8 +624,19 @@ async function doStart(onResult) {
           // Baslarken hata veren isci arkada asili kalmasin.
           stop();
           const sebep = voskSebebi(voskCiktisi);
+          /*
+           * Yol hala ASCII disiysa sebebi BUYUK IHTIMALLE odur.
+           * Kullanici "klasorde dosyalar var, neden bulamiyor?" diye
+           * bakmasin; gercek sebebi soyluyoruz.
+           */
+          const yolNotu = asciiDisi(voskYolu)
+            ? "\nSEBEP MUHTEMELEN YOL: kullanici adinizda Turkce harf var " +
+              `(${voskYolu}). Ses motoru bu harfleri okuyamiyor. Ayar ` +
+              "sekmesinden \"Ses modelini yeniden kur\" deyin; model Turkce " +
+              "harf gecmeyen bir klasore kurulacak."
+            : "";
           sonlandir(reject, new Error(
-            message.message + (sebep ? `\nMotorun soyledigi: ${sebep}` : ""),
+            message.message + (sebep ? `\nMotorun soyledigi: ${sebep}` : "") + yolNotu,
           ));
         } else {
           onEvent({ type: "error", message: message.message });
