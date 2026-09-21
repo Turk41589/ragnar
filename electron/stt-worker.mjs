@@ -87,23 +87,58 @@ async function init(modelPath) {
   send({ type: "ready" });
 }
 
+/*
+ * SONUCLAR ZATEN COZULMUS GELIYOR.
+ *
+ * `result()`, `partialResult()` ve `finalResult()` kutuphanenin kendi
+ * icinde JSON.parse'dan geciyor ve NESNE donduruyor. Eskiden ustune bir
+ * daha JSON.parse cagiriyordum; nesne once metne cevriliyor ve
+ * "[object Object]" ayristirilmaya calisiliyordu:
+ *
+ *     Ses motoru hata verdi: "[object Object]" is not valid JSON
+ *
+ * Metin isteyen tek fonksiyon `resultString()`. Asagidaki yardimcilar
+ * ikisini de kabul ediyor ki kutuphane surum degistirirse kirilmasin.
+ */
+export function metniAl(sonuc, alan) {
+  if (sonuc === null || sonuc === undefined) return "";
+
+  // Nesne: dogrudan oku.
+  if (typeof sonuc === "object") return String(sonuc[alan] ?? "").trim();
+
+  // Metin: JSON olabilir.
+  if (typeof sonuc === "string") {
+    const ham = sonuc.trim();
+    if (!ham) return "";
+    try {
+      return String(JSON.parse(ham)?.[alan] ?? "").trim();
+    } catch {
+      // JSON degilse elimizdeki metni bozuk sayip atiyoruz; cagiran
+      // tarafta cokme olmasin.
+      return "";
+    }
+  }
+
+  return "";
+}
+
 function feed(pcm) {
   if (!recognizer) return;
   const buffer = Buffer.from(pcm.buffer || pcm, pcm.byteOffset || 0, pcm.byteLength || pcm.length);
 
   if (recognizer.acceptWaveform(buffer)) {
-    const text = (JSON.parse(recognizer.result())?.text || "").trim();
+    const text = metniAl(recognizer.result(), "text");
     if (text) send({ type: "result", final: text });
     return;
   }
 
-  const partial = (JSON.parse(recognizer.partialResult())?.partial || "").trim();
+  const partial = metniAl(recognizer.partialResult(), "partial");
   if (partial) send({ type: "result", partial });
 }
 
 function reset() {
   if (!recognizer) return;
-  const text = (JSON.parse(recognizer.finalResult())?.text || "").trim();
+  const text = metniAl(recognizer.finalResult(), "text");
   if (text) send({ type: "result", final: text });
 }
 

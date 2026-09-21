@@ -153,6 +153,74 @@ export async function run(_page, _base, t) {
 
   /* ============ 5. Turkce harfli kullanici adi =================== */
   await runYolSecimi(t);
+
+  /* ============ 6. Sonuc okuma: CIFT AYRISTIRMA ================== */
+  await runSonucOkuma(t);
+}
+
+/**
+ * Sonuclarin okunmasi.
+ *
+ * GERCEK OLAY: model nihayet yuklendi, ses akmaya basladi ve DRA
+ * "[object Object]" is not valid JSON dedi.
+ *
+ * Sebep: vosk-koffi'nin `result()`, `partialResult()` ve `finalResult()`
+ * fonksiyonlari kendi iclerinde JSON.parse'dan geciyor ve NESNE
+ * donduruyor. Ben ustune bir daha JSON.parse cagiriyordum; nesne once
+ * metne cevriliyor ("[object Object]") ve ayristirilmaya calisiliyordu.
+ *
+ * Metin donduren tek fonksiyon `resultString()`.
+ */
+async function runSonucOkuma(t) {
+  const { metniAl } = await import("../../electron/stt-worker.mjs");
+
+  /* --- kutuphanenin GERCEKTE donduregu sey: nesne --- */
+  t.eq(metniAl({ text: "merhaba dunya" }, "text"), "merhaba dunya", "nesneden metin okunuyor");
+  t.eq(metniAl({ partial: "merha" }, "partial"), "merha", "nesneden ara sonuc okunuyor");
+  t.eq(metniAl({ text: "  bosluklu  " }, "text"), "bosluklu", "bosluklar kirpiliyor");
+  t.eq(metniAl({ text: "" }, "text"), "", "bos metin bos donuyor");
+  t.eq(metniAl({}, "text"), "", "alan yoksa bos donuyor");
+
+  /* --- eski davranis: JSON metni de kabul edilsin (surum degisirse) --- */
+  t.eq(metniAl('{"text":"merhaba"}', "text"), "merhaba", "JSON metni de okunabiliyor");
+  t.eq(metniAl('{"partial":"mer"}', "partial"), "mer", "JSON ara sonucu okunabiliyor");
+
+  /* --- hicbir durumda COKMEMELI --- */
+  for (const kotu of [null, undefined, "", "   ", "bozuk json", "[object Object]", 42, true]) {
+    let patladi = false;
+    let sonuc;
+    try {
+      sonuc = metniAl(kotu, "text");
+    } catch {
+      patladi = true;
+    }
+    t.ok(!patladi, `bozuk girdi cokertmiyor: ${JSON.stringify(kotu)}`);
+    t.eq(sonuc, "", `bozuk girdi bos donuyor: ${JSON.stringify(kotu)}`);
+  }
+
+  /*
+   * ASIL REGRESYON: nesne verildiginde ESKI kod ne yapiyordu?
+   * JSON.parse(nesne) → JSON.parse("[object Object]") → SyntaxError.
+   * Yeni kod ayni girdide sessizce dogru cevabi veriyor.
+   */
+  let eskiKodPatladi = false;
+  try {
+    JSON.parse({ text: "merhaba" });
+  } catch {
+    eskiKodPatladi = true;
+  }
+  t.ok(eskiKodPatladi, "eski yol GERCEKTEN patliyor (test anlamli)");
+  t.eq(metniAl({ text: "merhaba" }, "text"), "merhaba", "yeni yol ayni girdide calisiyor");
+
+  /* --- isci dosyasi artik sonuclari cift ayristirmıyor --- */
+  const { readFile } = await import("node:fs/promises");
+  const kaynak = await readFile(join(ROOT, "electron", "stt-worker.mjs"), "utf8");
+  for (const cagri of ["result()", "partialResult()", "finalResult()"]) {
+    t.ok(
+      !kaynak.includes(`JSON.parse(recognizer.${cagri}`),
+      `recognizer.${cagri} cift ayristirilmiyor`,
+    );
+  }
 }
 
 /**
