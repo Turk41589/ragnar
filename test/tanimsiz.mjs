@@ -35,6 +35,8 @@ const GLOBALS = new Set([
   "matchMedia","CustomEvent","MutationObserver","ResizeObserver","IntersectionObserver",
   "Image","Audio","AudioContext","webkitAudioContext","MediaRecorder","MediaStream",
   "SpeechSynthesisUtterance","speechSynthesis","webkitSpeechRecognition","SpeechRecognition",
+  "AudioWorkletNode","AudioWorkletProcessor","registerProcessor","sampleRate","currentTime",
+  "MediaStreamTrack","MediaStreamAudioSourceNode","GainNode","AnalyserNode",
   "HTMLElement","Element","Node","NodeList","DOMParser","XMLHttpRequest","WebSocket",
   "HTMLInputElement","HTMLCanvasElement","HTMLAudioElement","HTMLVideoElement","Option",
   "customElements","CSS","devicePixelRatio","screen","scrollTo","close","open","name",

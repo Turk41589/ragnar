@@ -862,6 +862,71 @@ export async function run(page, base, t, { external }) {
   t.eq(fiyat.baglar[2], null, "tehlikeli adres tiklanabilir yapilmiyor");
   t.has(fiyat.not, "degismis olabilir", "fiyatin dogrulanmasi gerektigi yaziyor");
 
+  /* ------------------------------------------- ses ayri is parcaciginda
+   * ScriptProcessorNode'un geri cagrisi ANA IS PARCACIGINDA calisiyordu
+   * — reaktor animasyonu ve dalga tuvaliyle ayni yerde. Ana is
+   * parcacigi tikandiginda ses parcalari gecikiyor ya da atlaniyor:
+   * Vosk kopuk ses duyuyor ("her seferinde cok yanlis anliyor") ve
+   * DRA'nin kendi sesi uzuyor ("orrrrrneeekkk").
+   *
+   * AudioWorklet ayri bir ses is parcaciginda calisiyor. Modul BLOB
+   * adresinden yukleniyor cunku uygulama file:// uzerinden calisiyor
+   * ve ayri dosya yuklemesi engelleniyor.                             */
+
+  const ses = await page.evaluate(async () => {
+    const mic = await import("/js/mic-capture.js");
+
+    // Gercek mikrofon yok; sessiz bir akis uretiyoruz. Sinadigimiz sey
+    // sesin ICERIGI degil, YOLUN kurulup parca uretmesi.
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const uretim = new AudioCtx();
+    const hedef = uretim.createMediaStreamDestination();
+    const osc = uretim.createOscillator();
+    osc.frequency.value = 440;
+    osc.connect(hedef);
+    osc.start();
+
+    // acquireStream yerine dogrudan bu akisi kullandirmak icin
+    // getUserMedia'yi gecici olarak degistiriyoruz.
+    const gercek = navigator.mediaDevices.getUserMedia;
+    navigator.mediaDevices.getUserMedia = async () => hedef.stream;
+
+    const parcalar = [];
+    let hata = null;
+    try {
+      await mic.startCapture((pcm) => parcalar.push(pcm.length));
+      // Birkac parca birikene kadar bekle.
+      const bitis = Date.now() + 4000;
+      while (parcalar.length < 2 && Date.now() < bitis) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    } catch (err) {
+      hata = String(err?.message || err);
+    }
+
+    const saglik = mic.captureHealth();
+    mic.stopCapture();
+    // Durdurduktan SONRAKI durum ayrica okunuyor.
+    const sonra = mic.captureHealth();
+    navigator.mediaDevices.getUserMedia = gercek;
+    osc.stop();
+    await uretim.close();
+
+    return {
+      hata, parcaSayisi: parcalar.length, ornekSayisi: parcalar[0] || 0,
+      saglik, durduktanSonra: sonra.capturing,
+    };
+  });
+
+  t.eq(ses.hata, null, "ses yakalama kuruluyor");
+  t.eq(ses.saglik.engine, "worklet", "ses AYRI IS PARCACIGINDA yakalaniyor (worklet)");
+  t.ok(ses.parcaSayisi >= 2, `ses parcalari uretiliyor (${ses.parcaSayisi})`);
+  t.ok(ses.ornekSayisi > 0, `parcalarda ornek var (${ses.ornekSayisi})`);
+  t.ok(ses.saglik.peak > 0, "parcalarda GERCEKTEN ses var (tepe > 0)");
+  t.eq(ses.saglik.capturing, true, "calisirken yakalama acik gorunuyor");
+  t.eq(ses.durduktanSonra, false, "durdurunca yakalama kapaniyor");
+  t.ok(Number.isFinite(ses.saglik.contextRate), "ornekleme hizi raporlaniyor");
+
   /* ------------------------------------------------------- ag yalitimi */
   t.eq(external, [], "localhost disina hicbir istek atilmadi");
 }

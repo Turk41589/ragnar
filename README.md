@@ -113,6 +113,28 @@ rozetin `cihazda` yazdığını doğrulayın.
 yenileyin. Tüm istekler `localhost:4173`'e olmalı, başka hiçbir alan adı
 görünmemeli.
 
+### Ses ayrı bir iş parçacığında
+
+Ses yakalama **AudioWorklet** ile ayrı bir ses iş parçacığında çalışır.
+Örnek alma, hız düşürme ve tamsayıya çevirme orada yapılır; ana iş
+parçacığına yalnızca hazır parça gelir.
+
+Neden önemli: eski yol (`ScriptProcessorNode`) ana iş parçacığında
+çalışıyordu — reaktör animasyonu ve dalga tuvaliyle aynı yerde. Ana iş
+parçacığı tıkandığında ses parçaları gecikiyor ya da atlanıyordu ve bu
+iki ayrı şikâyet olarak görünüyordu:
+
+* Tanıma "her seferinde çok yanlış" — motora kopuk kopuk ses gidiyor
+* DRA konuşurken sesi uzuyor — "örrrrrneeekkk"
+
+Worklet modülü **blob adresinden** yüklenir: uygulama `file://`
+üzerinden çalıştığı için ayrı bir dosya yüklemesi engellenir, blob
+adresi ise aynı kökene sayılır. Worklet kurulamazsa eski yola düşülür ve
+teşhis ekranı bunu açıkça yazar.
+
+Ayar → **"Ses tanımasını sına"** satırında `Ses yolu: ayrı iş
+parçacığında (iyi)` yazmalı.
+
 ### Türkçe harfli kullanıcı adı
 
 Windows kullanıcı adınızda Türkçe harf varsa (`msı`, `Şükrü`, `Gökçe`…)

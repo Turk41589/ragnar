@@ -102,7 +102,7 @@ export function releaseStream() {
 }
 
 export function capturing() {
-  return Boolean(node);
+  return Boolean(node || workletNode);
 }
 
 /* --------------------------------------------------------------- teshis */
@@ -120,10 +120,13 @@ const health = {
   lastChunkAt: 0,
   contextRate: null,
   resampled: false,
+  // "worklet" = ses ayri is parcaciginda (iyi olan)
+  // "islemci" = eski ScriptProcessor yolu (ana is parcaciginda)
+  engine: null,
 };
 
 export function captureHealth() {
-  return { ...health, capturing: Boolean(node) };
+  return { ...health, capturing: Boolean(node || workletNode) };
 }
 
 /* ---------------------------------------------------------- ornekleme */
@@ -163,39 +166,204 @@ function toPcm16(input) {
 }
 
 /**
+ * Kurulumun artiklarini temizler.
+ *
+ * Iki ayri yol (worklet ve ScriptProcessor) ve birkac hata dali var;
+ * temizligi tek yerde toplamak, "yarim kalan kurulum akisi iki kez
+ * biraktiriyor" hatasinin tekrarini onluyor.
+ */
+function temizle() {
+  onChunk = null;
+  try {
+    workletNode?.disconnect();
+    node?.disconnect();
+    source?.disconnect();
+  } catch {
+    /* onemsiz */
+  }
+  if (workletNode) workletNode.port.onmessage = null;
+  ctx?.close().catch(() => {});
+  if (blobAdresi) {
+    URL.revokeObjectURL(blobAdresi);
+    blobAdresi = null;
+  }
+  workletNode = null;
+  node = null;
+  source = null;
+  ctx = null;
+}
+
+/* ------------------------------------------------- ses is parcacigi --
+ *
+ * NEDEN BU GEREKLI.
+ *
+ * ScriptProcessorNode'un geri cagrisi ANA IS PARCACIGINDA calisiyor —
+ * reaktor animasyonu, dalga tuvali ve arayuzun geri kalaniyla ayni
+ * yerde. Ana is parcacigi tikandiginda ses geri cagrisi gecikiyor ya da
+ * atlaniyor. Sonucu iki ayri sikayet olarak goruluyordu:
+ *
+ *   - Tanima "her seferinde cok yanlis": Vosk'a kopuk kopuk ses
+ *     gidiyor. Eksik parcalarla dogru tanima mumkun degil.
+ *   - DRA konusurken ses uzuyordu ("orrrrrneeekkk"): ses grafigi ana is
+ *     parcacigini bekliyor, yetisemeyince ornekler tekrarlaniyor.
+ *
+ * AudioWorklet ayri bir SES IS PARCACIGINDA calisiyor. Ornek alma,
+ * hiz dusurme ve tamsayiya cevirme orada yapiliyor; ana is parcacigina
+ * yalnizca hazir parca geliyor. Animasyon ne kadar agir olursa olsun
+ * ses artik etkilenmiyor.
+ *
+ * Modul BLOB adresinden yukleniyor: uygulama file:// uzerinden
+ * calistigi icin ayri bir dosyayi yuklemek engelleniyor, blob adresi
+ * ise ayni kokene sayiliyor.
+ */
+const WORKLET_KAYNAK = `
+class DraYakalayici extends AudioWorkletProcessor {
+  constructor(secenekler) {
+    super();
+    const o = secenekler.processorOptions;
+    this.hedefHiz = o.hedefHiz;
+    this.parcaBoyu = o.parcaBoyu;
+    this.biriken = [];
+    this.birikenUzunluk = 0;
+  }
+
+  /** Basit ortalamali hiz dusurme (takma frekanslari azaltir). */
+  indir(girdi) {
+    const oran = sampleRate / this.hedefHiz;
+    if (oran === 1) return girdi;
+    const uzunluk = Math.floor(girdi.length / oran);
+    const cikti = new Float32Array(uzunluk);
+    for (let i = 0; i < uzunluk; i += 1) {
+      const bas = Math.floor(i * oran);
+      const son = Math.min(girdi.length, Math.floor((i + 1) * oran));
+      let toplam = 0;
+      for (let j = bas; j < son; j += 1) toplam += girdi[j];
+      cikti[i] = son > bas ? toplam / (son - bas) : girdi[bas] || 0;
+    }
+    return cikti;
+  }
+
+  process(girisler) {
+    const kanal = girisler[0] && girisler[0][0];
+    if (!kanal) return true;
+
+    // Giris tamponu her karede YENIDEN KULLANILIYOR; kopyalamak sart.
+    this.biriken.push(new Float32Array(kanal));
+    this.birikenUzunluk += kanal.length;
+    if (this.birikenUzunluk < this.parcaBoyu) return true;
+
+    const hepsi = new Float32Array(this.birikenUzunluk);
+    let yer = 0;
+    for (const p of this.biriken) { hepsi.set(p, yer); yer += p.length; }
+    this.biriken = [];
+    this.birikenUzunluk = 0;
+
+    const indirilmis = this.indir(hepsi);
+
+    let tepe = 0;
+    const pcm = new Int16Array(indirilmis.length);
+    for (let i = 0; i < indirilmis.length; i += 1) {
+      const v = Math.max(-1, Math.min(1, indirilmis[i]));
+      const m = v < 0 ? -v : v;
+      if (m > tepe) tepe = m;
+      pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+    }
+
+    // Tamponu TASIYARAK gonderiyoruz: kopyalanmiyor.
+    this.port.postMessage({ pcm, tepe, hiz: sampleRate }, [pcm.buffer]);
+    return true;
+  }
+}
+registerProcessor("dra-yakalayici", DraYakalayici);
+`;
+
+let workletNode = null;
+let blobAdresi = null;
+
+async function buildWorklet(stream, handler) {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx || typeof AudioWorkletNode !== "function") {
+    throw new Error("AudioWorklet yok");
+  }
+
+  try {
+    ctx = new AudioCtx({ sampleRate: SAMPLE_RATE });
+  } catch {
+    ctx = new AudioCtx();
+  }
+  if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+  if (!ctx.audioWorklet) throw new Error("audioWorklet yok");
+
+  blobAdresi = URL.createObjectURL(new Blob([WORKLET_KAYNAK], { type: "text/javascript" }));
+  await ctx.audioWorklet.addModule(blobAdresi);
+
+  health.chunks = 0;
+  health.peak = 0;
+  health.lastChunkAt = 0;
+  health.contextRate = ctx.sampleRate;
+  health.resampled = ctx.sampleRate !== SAMPLE_RATE;
+  health.engine = "worklet";
+
+  onChunk = handler;
+  source = ctx.createMediaStreamSource(stream);
+  workletNode = new AudioWorkletNode(ctx, "dra-yakalayici", {
+    numberOfInputs: 1,
+    numberOfOutputs: 0,
+    processorOptions: { hedefHiz: SAMPLE_RATE, parcaBoyu: CHUNK },
+  });
+
+  workletNode.port.onmessage = (olay) => {
+    if (!onChunk) return;
+    const { pcm, tepe } = olay.data;
+    health.chunks += 1;
+    health.lastChunkAt = Date.now();
+    if (tepe > health.peak) health.peak = tepe;
+    onChunk(pcm);
+  };
+
+  source.connect(workletNode);
+  /*
+   * Cikisa BAGLAMIYORUZ. ScriptProcessor'un calismasi icin bir cikisa
+   * baglanmasi gerekiyordu; worklet'in gerekmiyor. Baglamamak sesin
+   * hoparlorden donmesi riskini tamamen ortadan kaldiriyor.
+   */
+  return true;
+}
+
+/**
  * Yakalamayi baslatir. Her hazir parca icin `handler(Int16Array)` cagrilir.
  */
 export async function startCapture(handler) {
-  if (node) return true;
+  if (node || workletNode) return true;
 
   const stream = await acquireStream();
 
   // Bu noktadan sonraki her hata akisi BIRAKMALI; yoksa mikrofon
   // sonsuza kadar acik kalir (node null oldugu icin kimse kapatmaz).
   try {
-    return await buildGraph(stream, handler);
+    /*
+     * ONCE WORKLET: ses isini ana is parcacigindan cikariyor.
+     * Kurulamazsa (eski tarayici, blob engeli) eski yola duşuyoruz —
+     * kotu tanima, hic tanimamaktan iyidir.
+     */
+    try {
+      return await buildWorklet(stream, handler);
+    } catch (workletHatasi) {
+      console.warn("[dra] AudioWorklet kurulamadi, eski yola dusuluyor:", workletHatasi.message);
+      temizle();
+      return await buildGraph(stream, handler);
+    }
   } catch (err) {
     /*
      * Yarida kalan kurulumun artiklarini da temizliyoruz.
      *
-     * buildGraph once `ctx` atiyor, sonra dugumleri kuruyor. Arada bir
+     * Kurulum once `ctx` atiyor, sonra dugumleri kuruyor. Arada bir
      * hata olursa `node` bos ama `ctx` dolu kaliyordu. stopCapture
      * "ctx varsa calis" diyor, yani sonradan cagrildiginda akisi BIR
      * KEZ DAHA birakiyor. Sayac erken sifira dusuyor ve seviye
-     * gostergesinin hala kullandigi mikrofon kapaniyordu — daha once
-     * bir kez yasanan hatanin aynisi.
+     * gostergesinin hala kullandigi mikrofon kapaniyordu.
      */
-    onChunk = null;
-    try {
-      node?.disconnect();
-      source?.disconnect();
-    } catch {
-      /* onemsiz */
-    }
-    ctx?.close().catch(() => {});
-    node = null;
-    source = null;
-    ctx = null;
+    temizle();
     releaseStream();
     throw err;
   }
@@ -216,6 +384,7 @@ async function buildGraph(stream, handler) {
   health.lastChunkAt = 0;
   health.contextRate = ctx.sampleRate;
   health.resampled = ctx.sampleRate !== SAMPLE_RATE;
+  health.engine = "islemci";
 
   onChunk = handler;
   source = ctx.createMediaStreamSource(stream);
@@ -262,18 +431,8 @@ export function stopCapture() {
    * okumaya basliyor ve startMeter `if (analyser) return` ile erken
    * donduğu icin uygulama yeniden acilmadan duzelmiyordu.
    */
-  if (!node && !ctx) return;
+  if (!node && !ctx && !workletNode) return;
 
-  onChunk = null;
-  try {
-    node?.disconnect();
-    source?.disconnect();
-  } catch {
-    /* onemsiz */
-  }
-  ctx?.close().catch(() => {});
-  node = null;
-  source = null;
-  ctx = null;
+  temizle();
   releaseStream();
 }

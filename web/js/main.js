@@ -1578,6 +1578,19 @@ const ctx = {
         `Parcalardaki en yuksek seviye: ${(yakalama.peak * 100).toFixed(1)}%`,
         `Ornekleme: ${yakalama.contextRate || "—"} Hz` +
           (yakalama.resampled ? " → 16000 Hz'e indiriliyor" : ""),
+        /*
+         * HANGI YOL kullaniliyor? Onemli, cunku eski yol (ScriptProcessor)
+         * ana is parcaciginda calisiyor ve animasyon agirlastiginda ses
+         * parcalari gecikiyor. Tanimanin bozuk olmasinin ve DRA'nin
+         * sesinin uzamasinin sebebi buydu.
+         */
+        `Ses yolu: ${
+          yakalama.engine === "worklet"
+            ? "ayri is parcaciginda (iyi)"
+            : yakalama.engine === "islemci"
+              ? "ANA IS PARCACIGINDA — tanima bozulabilir"
+              : "—"
+        }`,
       );
     }
 
