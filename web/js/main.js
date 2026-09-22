@@ -23,20 +23,37 @@ import * as system from "./system.js";
 /* ============================================================ ayarlar */
 
 /** Uyandirma kelimesinin ses tanimadan cikabilecegi temel bicimleri. */
+/*
+ * UYANDIRMA SOZCUKLERI — modelin GERCEKTEN urettigi bicimler.
+ *
+ * Bu listeyi yazarken yaptigim hata suydu: "dra"nin dogru duyulmasini
+ * bekledim. Ama "dra" TURKCE BIR SOZCUK DEGIL; ses modelinin
+ * sozlugunde yoksa onu hicbir zaman uretemez. Model duydugu sese en
+ * yakin GERCEK sozcugu veriyor — kullanicida bu "bira" ve "bir" oldu.
+ *
+ * Dogru yaklasim modeli zorlamak degil, ne diyorsa onu kabul etmek.
+ * Liste iki bolume ayrildi cunku risk esit degil.
+ */
+
+/** Her yerde gecerse uyandiran, AYIRT EDICI bicimler. */
 const BASE_WAKE_WORDS = [
-  "dra", "dara", "dira", "dera", "draa",
+  "dra", "dara", "dira", "dera", "draa", "dira",
   "tra", "tira", "tara", "de ra", "d ra",
-  /*
-   * "hey dra" ve "dra uyan": UZUN bicimler bilerek var.
-   *
-   * "dra" tek heceye yakin ve ses tanima icin en zor durum — model onu
-   * "bira", "bir", "dur" gibi seylerle karistiriyor. Iki sozcuklu bir
-   * kalip cok daha saglam taniniyor; gercek asistanlarin "Hey Google",
-   * "Alexa" gibi uzun uyandirma sozleri kullanmasinin sebebi bu.
-   * Kisa bicim de calismaya devam ediyor.
-   */
+  // Model "dra" yerine bunlari uretiyor (kullanicidan gelen gozlem).
+  "bira", "bra", "dira", "tura", "dura",
+  // Uzun bicimler cok daha saglam taniniyor — "Hey Google" mantigi.
   "hey dra", "hey dara", "dra uyan", "dara uyan", "hey dira",
+  "hey bira", "bira uyan",
 ];
+
+/*
+ * YALNIZCA CUMLENIN TAMAMI buysa uyandiran sozcukler.
+ *
+ * "bir" gunluk konusmada surekli geciyor ("bir dakika", "bir sey").
+ * Her yerde kabul edilseydi DRA durmadan uyanirdi. Ama tek basina
+ * soylenmis "bir", buyuk ihtimalle kullanicinin "dra" demesidir.
+ */
+const EXACT_WAKE_WORDS = ["bir", "dur", "bur", "der", "tur"];
 
 /** Temel liste + ayarlardan gelen ek sozcukler. */
 let wakeWords = new Set(BASE_WAKE_WORDS);
@@ -54,7 +71,7 @@ function rebuildWakeWords() {
  */
 function sesSozlugu() {
   if (!store.commandMode) return null;
-  return vocabulary([...BASE_WAKE_WORDS, ...store.extraWakeWords]);
+  return vocabulary([...BASE_WAKE_WORDS, ...EXACT_WAKE_WORDS, ...store.extraWakeWords]);
 }
 
 // Testler icin: arayuzde calisan gercek karari sorgulayabilmek adina.
@@ -278,6 +295,12 @@ function isWakePhrase(text) {
   if (!n) return false;
   if (wakeWords.has(n)) return true;
 
+  /*
+   * Riskli sozcukler YALNIZCA cumlenin tamamiysa kabul ediliyor.
+   * "bir dakika" uyandirmamali, tek basina "bir" uyandirmali.
+   */
+  if (EXACT_WAKE_WORDS.includes(n)) return true;
+
   for (const token of n.split(" ")) {
     if (wakeWords.has(token)) return true;
     // "dra", "draya", "drayi" gibi ekli bicimler
@@ -286,10 +309,15 @@ function isWakePhrase(text) {
   return false;
 }
 
+// Testler icin: uyandirma karari, uyku/uyanma dizisinden gecirmeden
+// dogrudan sorgulanabilsin. (Dizi `deafUntil` korumasina takiliyor ve
+// olculen sey uyandirma mantigi olmaktan cikiyor.)
+if (typeof window !== "undefined") window.__draUyandirirMi = isWakePhrase;
+
 /** Komuttan bas taraftaki uyandirma kelimesini temizler. */
 function stripWakeWord(text) {
   return text
-    .replace(/^\s*(hey|ey|hay)?\s*(dra|dara|dira|dera|tra)\b[\s,.:!?]*/i, "")
+    .replace(/^\s*(hey|ey|hay)?\s*(dra|dara|dira|dera|tra|bira|bra|dura|tura)\b[\s,.:!?]*/i, "")
     .trim();
 }
 
@@ -1524,6 +1552,86 @@ const ctx = {
     });
     if (!veri) return null;
     return kanalSun(veri.kanal, veri.sira);
+  },
+
+  /**
+   * HAM DINLEME — "ne duyuyorsun?".
+   *
+   * Tanima dogrulugu tartisilirken tahmin yurutmek yerine motorun
+   * GERCEKTE ne urettigini goruyoruz. Bu sure boyunca hicbir komut
+   * calismiyor; duyulan her sey oldugu gibi sohbete yaziliyor.
+   */
+  rawListen: async (saniye = 30, onTick = () => {}) => {
+    if (!speech.embeddedAvailable()) {
+      hud.log("error", "Bu surumde gomulu motor yok.");
+      return;
+    }
+    if (!state.micEnabled) {
+      hud.log("error", "Once mikrofonu acin, sonra bu dugmeye basin.");
+      return;
+    }
+
+    const sozluk = sesSozlugu();
+    hud.log(
+      "system",
+      `Dinliyorum — ${saniye} saniye. Konusun; duydugum her seyi oldugu gibi ` +
+        "yazacagim, hicbir komut calismayacak.\n" +
+        `Komut kipi: ${store.commandMode ? `ACIK (${sozluk?.length || 0} sozcuk)` : "KAPALI"}`,
+    );
+
+    const duyulanlar = [];
+    let sonAra = "";
+
+    const birak = speech.listenRaw(({ text, final }) => {
+      if (final) {
+        duyulanlar.push(text);
+        hud.log("system", `duydum → "${text}"`);
+        sonAra = "";
+      } else if (text !== sonAra) {
+        // Ara sonuclar cok sik geliyor; yalnizca degisince yaziyoruz.
+        sonAra = text;
+        hud.setCaption(`… ${text}`, "interim");
+      }
+    });
+
+    try {
+      for (let kalan = saniye; kalan > 0; kalan -= 1) {
+        onTick(kalan);
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    } finally {
+      birak();
+    }
+
+    const yakalama = speech.micHealth?.() || {};
+    hud.logCard({
+      title: "Ne duydum",
+      subtitle: `${duyulanlar.length} sonuc`,
+      sections: [
+        {
+          heading: "Duyulanlar",
+          items: duyulanlar.length ? duyulanlar : ["(hicbir sey duyulmadi)"],
+        },
+        {
+          heading: "Ortam",
+          rows: [
+            ["Komut kipi", store.commandMode ? `acik (${sozluk?.length || 0} sozcuk)` : "kapali"],
+            ["Ses yolu", yakalama.engine === "worklet" ? "ayri is parcaciginda" : String(yakalama.engine || "—")],
+            ["Ornekleme", `${yakalama.contextRate || "—"} Hz`],
+            ["Giden parca", String(yakalama.chunks || 0)],
+            ["En yuksek seviye", `${((yakalama.peak || 0) * 100).toFixed(1)}%`],
+          ],
+        },
+      ],
+    });
+
+    if (!duyulanlar.length) {
+      hud.log(
+        "error",
+        "Hic sonuc gelmedi. Mikrofon seviyesi %0 ise cihaz secimi yanlis olabilir; " +
+          "seviye oynuyorsa motor sesi anlamiyor demektir.",
+      );
+    }
   },
 
   /** Komut kipi ayarini calisan motora uygular. */

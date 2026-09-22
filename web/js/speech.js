@@ -85,6 +85,24 @@ export async function inspectEmbeddedModel() {
  * Ses tanimadan gelen metin buradan sonra uygulamanin geri kalanina
  * "heard" olayi olarak akar — tarayici motoruyla ayni yol.
  */
+/**
+ * HAM DINLEME — "ne duyuyorsun?" kipi.
+ *
+ * Neden var: tanima dogrulugu tartisilirken herkes tahmin yurutuyor.
+ * Motorun GERCEKTE ne urettigini gormeden hangi sozcugun neye
+ * benzedigini bilemeyiz. Bu kip acikken her sonuc oldugu gibi
+ * bildiriliyor ve HICBIR KOMUT CALISMIYOR — yanlislikla bir sey
+ * yapmasin diye.
+ */
+let hamDinleyici = null;
+
+export function listenRaw(handler) {
+  hamDinleyici = typeof handler === "function" ? handler : null;
+  return () => { hamDinleyici = null; };
+}
+
+export const rawListening = () => Boolean(hamDinleyici);
+
 export function handleRecognitionResult({ partial, final }) {
   if (Date.now() < deafUntil) return false;
   const text = (final || partial || "").trim();
@@ -92,6 +110,16 @@ export function handleRecognitionResult({ partial, final }) {
 
   lastResultAt = Date.now();
   stats.results += 1;
+
+  /*
+   * Ham kipte sonuc YALNIZCA raporlaniyor; komut hattina hic girmiyor.
+   * Amac motorun ciktisini tarafsiz gormek.
+   */
+  if (hamDinleyici) {
+    hamDinleyici({ text, final: Boolean(final) });
+    return true;
+  }
+
   emit("heard", {
     text,
     alternatives: [text],

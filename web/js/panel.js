@@ -1747,6 +1747,22 @@ export function mountPanel(context) {
     ctx.onSpeechModeChanged();
   });
 
+  $("set-raw-listen").addEventListener("click", async () => {
+    const button = $("set-raw-listen");
+    if (button.dataset.calisiyor === "1") return;
+    button.dataset.calisiyor = "1";
+    try {
+      await ctx.rawListen(30, (kalan) => {
+        button.textContent = `Dinliyorum… ${kalan} sn`;
+      });
+    } catch (err) {
+      ctx.toast(`Dinlenemedi: ${err.message}`, 6000);
+    } finally {
+      button.dataset.calisiyor = "0";
+      button.textContent = "Ne duyuyorsun? (30 sn)";
+    }
+  });
+
   $("set-command-mode").addEventListener("click", async () => {
     store.commandMode = !store.commandMode;
     saveStore();

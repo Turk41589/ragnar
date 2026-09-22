@@ -974,6 +974,52 @@ export async function run(page, base, t, { external }) {
   });
   t.ok(kapali === "yok" || kapali === null, "komut kipi kapaliyken sozluk verilmiyor");
 
+  /* ------------------------------------------- uyandirma sozcukleri --
+   * HATAM: "dra"nin dogru duyulmasini bekledim. Ama "dra" TURKCE BIR
+   * SOZCUK DEGIL — ses modelinin sozlugunde yoksa onu hicbir zaman
+   * uretemez. Model duydugu sese en yakin GERCEK sozcugu veriyor;
+   * kullanicida bu "bira" ve "bir" oldu. Dogru yaklasim modeli
+   * zorlamak degil, ne diyorsa onu kabul etmek.
+   *
+   * Uyandirma karari `isWakePhrase` ile veriliyor; onu dogrudan
+   * olcuyoruz. Uyku/uyanma dizisinden gecirmek `deafUntil` korumasina
+   * takiliyor ve olculen sey uyandirma mantigi olmaktan cikiyor.     */
+
+  const uyandirma = await page.evaluate(async () => {
+    const sonuc = {};
+    // main.js karari kendi icinde veriyor; test icin disa acilan kanca.
+    const karar = window.__draUyandirirMi;
+    if (typeof karar !== "function") return { hata: "kanca yok" };
+
+    for (const soz of [
+      "bira", "bir", "dra", "hey dra", "dura", "dara", "bra",
+      "bir dakika bekle", "bir sey soyleyeyim", "birak simdi",
+      "biraz bekle", "merhaba nasilsin", "saat kac",
+    ]) {
+      sonuc[soz] = karar(soz);
+    }
+    return sonuc;
+  });
+
+  t.ok(!uyandirma.hata, "uyandirma karari sorgulanabiliyor");
+
+  // Modelin GERCEKTEN urettigi bicimler uyandirmali.
+  for (const soz of ["bira", "bir", "dra", "hey dra", "dura", "dara", "bra"]) {
+    t.eq(uyandirma[soz], true, `"${soz}" uyandiriyor (modelin urettigi bicim)`);
+  }
+
+  /*
+   * Gunluk konusmada gecen kaliplar uyandirMAMALI. "bir" tek basina
+   * kabul ediliyor ama cumle icinde gecmesi yetmemeli — yoksa DRA
+   * durmadan uyanir.
+   */
+  for (const soz of [
+    "bir dakika bekle", "bir sey soyleyeyim", "birak simdi",
+    "biraz bekle", "merhaba nasilsin", "saat kac",
+  ]) {
+    t.eq(uyandirma[soz], false, `"${soz}" uyandirMIYOR (gunluk konusma)`);
+  }
+
   /* ------------------------------------------------------- ag yalitimi */
   t.eq(external, [], "localhost disina hicbir istek atilmadi");
 }
