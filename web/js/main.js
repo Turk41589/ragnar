@@ -319,9 +319,64 @@ async function handleUtterance(rawText) {
 
 /** Secili yaziya ceviricinin okunur adi (teshis ekranlari icin). */
 function saglayiciAdi() {
-  return system.sttCloudInfo?.()?.name ||
-    { elevenlabs: "ElevenLabs", openai: "OpenAI", whisper: "Whisper" }[store.sttProvider] ||
-    "yaziya ceviren";
+  return system.sttCloudInfo?.()?.name || "Whisper";
+}
+
+/**
+ * Whisper'i hazirlar: kurulu degilse kurar (bir kerelik ~580 MB),
+ * sonra baslatir. Ilerleme sohbette TEK satirda guncelleniyor; yuzlerce
+ * "%37" satiri dusmesin diye.
+ *
+ * Kurulum ya da baslatma basarisiz olursa DRA susmuyor: cihazdaki kucuk
+ * model calismaya devam ediyor ve sebep sohbete yaziliyor.
+ */
+let whisperHazirlaniyor = false;
+async function whisperHazirla() {
+  if (!system.isDesktop() || whisperHazirlaniyor) return;
+  whisperHazirlaniyor = true;
+  try {
+    let d = await system.whisperStatus();
+    if (!d?.destekleniyor) {
+      hud.log("system", "Whisper yalnizca Windows'ta calisir; cihazdaki kucuk model kullaniliyor.");
+      return;
+    }
+
+    if (!d.kurulu) {
+      const ADIM = { program: "program", "ekran karti": "ekran karti surumu", model: "ses modeli" };
+      const satir = hud.log(
+        "system",
+        "Konusmanizi dogru anlamak icin Whisper kuruluyor (bir kerelik, ~580 MB). " +
+          "Bu sirada kucuk modelle dinlemeye devam ediyorum.",
+      );
+      try {
+        d = await system.whisperInstall(({ adim, yuzde }) => {
+          satir.textContent = `Whisper kuruluyor — ${ADIM[adim] || adim} %${yuzde}`;
+        });
+        for (const not of d?.notlar || []) hud.log("system", not);
+        satir.textContent = "Whisper kuruldu.";
+      } catch (err) {
+        satir.textContent =
+          `Whisper kurulamadi: ${err.message} Ayar sekmesindeki «Whisper'i kur» ile tekrar deneyebilirsiniz.`;
+        return;
+      }
+    }
+
+    const satir = hud.log("system", "Whisper baslatiliyor (model yukleniyor)…");
+    try {
+      await ctx.applySttProvider();
+      const son = await system.whisperStatus();
+      satir.textContent =
+        `Whisper hazir — ${son?.hizlandirma === "ekran karti" ? "ekran kartinda (hizli)" : "islemcide"} calisiyor. ` +
+        "Artik sizi dogru anlayacagim.";
+    } catch (err) {
+      satir.textContent = `Whisper baslatilamadi: ${err.message} Simdilik kucuk model kullaniliyor.`;
+    }
+  } catch (err) {
+    hud.log("system", `Whisper hazirlanamadi: ${err?.message || err}`);
+  } finally {
+    whisperHazirlaniyor = false;
+    panel.syncSettings();
+  }
 }
 
 /* ============================================================ modlar */
@@ -1959,20 +2014,15 @@ const ctx = {
    * Anahtar ana surecte tutulmuyor; her acilista yeniden bildiriliyor.
    */
   applySttProvider: async () => {
-    const p = store.sttProvider;
     let durum;
     try {
-      if (p === "whisper") {
-        // Programi baslatip modeli yukluyor; islemcide yarim dakika surebilir.
-        durum = await system.configureSttCloud("whisper");
-      } else if (p === "openai") {
-        durum = await system.configureSttCloud("openai", store.openaiKey);
-      } else {
-        // "yerel" secilince anahtar verilmiyor: bulut hazir sayilmaz, Vosk kalir.
-        durum = await system.configureSttCloud("elevenlabs", p === "elevenlabs" ? store.elevenKey : "");
-      }
+      // Whisper'i baslatip modeli yukluyor; islemcide yarim dakika surebilir.
+      // ("yerel" yalnizca testlerde/teshiste: hicbir sey yaziya cevrilmez.)
+      durum = store.sttProvider === "yerel"
+        ? await system.configureSttCloud("elevenlabs", "")
+        : await system.configureSttCloud("whisper");
     } catch (err) {
-      // Secilen calismadiysa bir onceki saglayici acik kalmasin.
+      // Whisper calismadiysa hicbir yaziya ceviren acik kalmasin; Vosk devam eder.
       await system.configureSttCloud("elevenlabs", "").catch(() => {});
       throw err;
     } finally {
@@ -1980,6 +2030,9 @@ const ctx = {
     }
     return durum;
   },
+
+  /** Whisper'i gerekirse kurar, sonra baslatir (acilista kendiliginden). */
+  whisperHazirla: () => whisperHazirla(),
 
   /** Komut kipi ayarini calisan motora uygular. */
   applyCommandMode: async () => {
@@ -2070,7 +2123,7 @@ const ctx = {
       );
       if (b.gonderilen) {
         lines.push(
-          `Buluta giden cumle: ${b.gonderilen}, basarili ${b.basarili}, hata ${b.hata}` +
+          `Yaziya cevrilen cumle: ${b.gonderilen}, basarili ${b.basarili}, hata ${b.hata}` +
             (b.sonSureMs ? `, son cevap ${b.sonSureMs} ms` : ""),
         );
       }
@@ -2239,20 +2292,9 @@ async function connectServer() {
     if (store.ttsProvider === "elevenlabs" && store.elevenKey) {
       await system.configureTts(store.elevenKey, store.elevenVoice, store.elevenModel);
     }
-    // Ses tanima da ayni anahtari kullaniyor (seslendirme secili olmasa bile).
-    // Beklemiyoruz: Whisper secildiyse modelin yuklenmesi yarim dakika
-    // surebilir, acilis onu beklememeli. Basarisiz olursa kullanici
-    // bilsin; o arada cihazdaki kucuk model calisir.
-    ctx.applySttProvider()
-      .then(() => panel.syncSettings())
-      .catch((err) => {
-        hud.log(
-          "system",
-          `Yaziya ceviren hazirlanamadi: ${err?.message || err} ` +
-            "Simdilik cihazdaki kucuk model kullaniliyor.",
-        );
-        panel.syncSettings();
-      });
+    // Beklemiyoruz: Whisper'in kurulumu dakikalar, model yuklemesi yarim
+    // dakika surebilir; acilis onu beklememeli. O arada kucuk model dinler.
+    whisperHazirla();
     // Google arama anahtari da ayni sekilde: diskte yalnizca bu
     // tarayicida durur, arka tarafa her acilista bildirilir.
     if (store.googleKey && store.googleCx) {

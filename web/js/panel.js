@@ -292,10 +292,7 @@ export function syncSettings() {
   $("montage-music-info").textContent = store.montageMusic || "Muzik secilmedi";
 
   syncSwitch($("set-command-mode"), store.commandMode);
-  $("set-stt").value = store.sttProvider;
-  sttSatirlari();
-  $("set-stt-key").value = store.elevenKey;
-  $("set-openai-key").value = store.openaiKey;
+  refreshWhisperStatus();
   refreshSttStatus();
   $("set-google-key").value = store.googleKey;
   $("set-google-cx").value = store.googleCx;
@@ -1093,19 +1090,7 @@ function refreshElevenStatus() {
   }
 }
 
-const STT_ADI = { elevenlabs: "ElevenLabs", openai: "OpenAI", whisper: "Whisper" };
-
-/** Secilen saglayiciya gore ilgili satirlari gosterir. */
-function sttSatirlari() {
-  const p = store.sttProvider;
-  $("row-stt-key").hidden = p !== "elevenlabs";
-  $("row-openai-key").hidden = p !== "openai";
-  $("row-whisper").hidden = p !== "whisper";
-  $("set-stt-test").hidden = p === "yerel";
-  if (p === "whisper") refreshWhisperStatus();
-}
-
-/** Yaziya ceviren motorun durumunu ayar panelinde gosterir. */
+/** Whisper'in (yaziya cevirenin) durumunu ayar panelinde gosterir. */
 function refreshSttStatus(ek) {
   const el = $("stt-status");
   if (!el) return;
@@ -1114,22 +1099,12 @@ function refreshSttStatus(ek) {
     return;
   }
   const b = speech.bulutDurumu();
-  const p = store.sttProvider;
-  const ad = STT_ADI[p];
-  if (p === "yerel") {
-    el.textContent = "Yalnizca cihazdaki kucuk model — hicbir ses disari gitmiyor";
-  } else if (p === "elevenlabs" && !store.elevenKey) {
-    el.textContent = "Anahtar girilmedi — simdilik cihazdaki kucuk model kullaniliyor";
-  } else if (p === "openai" && !store.openaiKey) {
-    el.textContent = "Anahtar girilmedi — simdilik cihazdaki kucuk model kullaniliyor";
-  } else if (b.arizada) {
-    el.textContent = `Gecici olarak cihazdaki model: ${b.sonHata || `${ad} cevap vermedi`}`;
+  if (b.arizada) {
+    el.textContent = `Gecici olarak kucuk model: ${b.sonHata || "Whisper cevap vermedi"}`;
   } else if (b.hazir) {
-    el.textContent = p === "whisper"
-      ? "Hazir — cumleler bu bilgisayarda yaziya cevriliyor"
-      : `Hazir — DRA uyaninca cumleler ${ad}'e gidiyor`;
+    el.textContent = "Hazir — DRA uyaninca cumleler bu bilgisayarda yaziya cevriliyor";
   } else {
-    el.textContent = p === "whisper" ? "Whisper calismiyor — asagidan kurun" : "Ayarlar henuz bildirilmedi";
+    el.textContent = "Whisper calismiyor — simdilik kucuk model dinliyor";
   }
 }
 
@@ -1161,17 +1136,16 @@ async function refreshWhisperStatus(ek) {
   else el.textContent = `Kurulu${d.ekranKarti ? " (ekran karti surumu dahil)" : ""} — calismiyor${d.sonHata ? `: ${d.sonHata}` : ""}`;
 }
 
-/** Saglayiciyi uygular; Whisper'da baslamasini bekler. */
+/** Whisper'i baslatir ve sonucu gosterir. */
 async function sttUygula() {
-  const whisper = store.sttProvider === "whisper";
-  if (whisper) refreshSttStatus("Whisper baslatiliyor… (model yukleniyor, yarim dakika surebilir)");
+  refreshSttStatus("Whisper baslatiliyor… (model yukleniyor, yarim dakika surebilir)");
   try {
     await ctx.applySttProvider();
     refreshSttStatus();
   } catch (err) {
     refreshSttStatus(`Calismiyor: ${err.message}`);
   }
-  if (whisper) refreshWhisperStatus();
+  refreshWhisperStatus();
 }
 
 /* -------------------------------------------------------------- ses modeli */
@@ -1783,9 +1757,6 @@ export function mountPanel(context) {
     saveStore();
     speech.resetElevenCache();
     await pushEleven();
-    // Ayni anahtar ses tanimada da kullaniliyor.
-    $("set-stt-key").value = store.elevenKey;
-    if (store.sttProvider === "elevenlabs") await sttUygula();
     // Anahtar girilir girilmez sesleri getiriyoruz; kullanicinin ayrica
     // bir dugmeye basmasi gerekmesin. Yukleme basarisiz olursa sebebini
     // yazar — bunun uzerine durum tazelemek o sebebi silerdi.
@@ -1920,29 +1891,6 @@ export function mountPanel(context) {
     }
   });
 
-  $("set-stt").addEventListener("change", async (event) => {
-    const v = event.target.value;
-    store.sttProvider = ["elevenlabs", "openai", "whisper", "yerel"].includes(v) ? v : "elevenlabs";
-    saveStore();
-    sttSatirlari();
-    await sttUygula();
-  });
-
-  $("set-stt-key").addEventListener("change", async (event) => {
-    store.elevenKey = event.target.value.trim();
-    saveStore();
-    $("set-eleven-key").value = store.elevenKey;
-    speech.resetElevenCache();
-    await pushEleven();
-    await sttUygula();
-  });
-
-  $("set-openai-key").addEventListener("change", async (event) => {
-    store.openaiKey = event.target.value.trim();
-    saveStore();
-    await sttUygula();
-  });
-
   $("whisper-install").addEventListener("click", async () => {
     const button = $("whisper-install");
     button.disabled = true;
@@ -1955,7 +1903,7 @@ export function mountPanel(context) {
       for (const not of d?.notlar || []) ctx.log("system", not);
       ctx.log("system", "Whisper kuruldu.");
       await refreshWhisperStatus();
-      if (store.sttProvider === "whisper") await sttUygula();
+      await sttUygula();
     } catch (err) {
       ctx.log("error", `Whisper kurulamadi: ${err.message}`);
       refreshWhisperStatus(`Kurulamadi: ${err.message}`);
@@ -1985,30 +1933,23 @@ export function mountPanel(context) {
   });
 
   /*
-   * Yarim saniyelik sessizlik gonderir: anahtar gecerli mi, izin acik
-   * mi, Whisper cevap veriyor mu? Bos yazi donmesi basari demek.
+   * Yarim saniyelik sessizlik gonderir: Whisper cevap veriyor mu, ne
+   * kadar surede? Bos yazi donmesi basari demek.
    */
   $("set-stt-test").addEventListener("click", async () => {
     const button = $("set-stt-test");
-    const p = store.sttProvider;
-    if ((p === "elevenlabs" && !store.elevenKey) || (p === "openai" && !store.openaiKey)) {
-      refreshSttStatus("Once anahtari girin.");
-      return;
-    }
     button.disabled = true;
-    refreshSttStatus("Sinaniyor…");
+    refreshSttStatus("Sinaniyor… (Whisper kapaliysa once baslatiliyor)");
     try {
       await ctx.applySttProvider();
       const bas = Date.now();
       const sonuc = await system.sttCloud(new Int16Array(8000));
-      refreshSttStatus(
-        `Calisiyor — ${STT_ADI[p]} ${sonuc?.seconds ?? 0.5} sn sesi ${Date.now() - bas} ms'de cevirdi.`,
-      );
+      refreshSttStatus(`Calisiyor — Whisper ${sonuc?.seconds ?? 0.5} sn sesi ${Date.now() - bas} ms'de cevirdi.`);
     } catch (err) {
       refreshSttStatus(`Calismiyor: ${err.message}`);
     } finally {
       button.disabled = false;
-      if (p === "whisper") refreshWhisperStatus();
+      refreshWhisperStatus();
     }
   });
 

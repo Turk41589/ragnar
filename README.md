@@ -113,41 +113,29 @@ rozetin `cihazda` yazdığını doğrulayın.
 yenileyin. Tüm istekler `localhost:4173`'e olmalı, başka hiçbir alan adı
 görünmemeli.
 
-### WhatsApp gibi doğru yazı: ElevenLabs ile tanıma
+### WhatsApp gibi doğru yazı: Whisper (bu bilgisayarda)
 
-Cihazdaki model küçük; ne kadar ayarlanırsa ayarlansın "dra"yı "bira",
+Cihazdaki küçük model ne kadar ayarlanırsa ayarlansın "dra"yı "bira",
 "uyan"ı "ayı" diye duyabiliyor. WhatsApp'ın ya da telefonların sesle
-yazması çok büyük modellerle çalışıyor. Aynı kaliteye ulaşmak için
-masaüstü sürümü **iki motoru birlikte** kullanıyor:
+yazması çok büyük modellerle çalışıyor. Masaüstü sürümü bu yüzden **iki
+motoru birlikte** kullanıyor:
 
-| | Ne yapar | Ses nereye gider |
-|---|---|---|
-| Cihazdaki model (Vosk) | Yalnızca **"DRA"**yı bekler | Hiçbir yere — cihazda kalır |
-| ElevenLabs (Scribe) | DRA uyandıktan sonraki cümleleri yazıya çevirir | ElevenLabs'e, **cümle cümle** |
+| | Ne yapar |
+|---|---|
+| Cihazdaki küçük model (Vosk) | Yalnızca **"DRA"**yı bekler |
+| **Whisper** | DRA uyandıktan sonraki cümleleri yazıya çevirir |
 
-* **Uyurken hiçbir ses dışarı gitmez.** Yalnızca içinde "DRA" duyulan
-  cümle gönderilir; "DRA, saat kaç?" tek nefeste söylenirse komut da
-  doğru yazıyla çalışır.
-* Ses sürekli akıtılmaz: **konuşma kesici** sesin enerjisinden cümlenin
-  başını ve sonunu bulur, yalnızca konuşulan kısım gider. Oda gürültüsü
+İkisi de bu bilgisayarda çalışır: **ses hiçbir yere gitmez**, internet
+gerekmez, ücret yok.
+
+* **İlk açılışta kendiliğinden kurulur** (bir kerelik ~580 MB). İlerleme
+  sohbette tek satırda görünür; bu sırada küçük model dinlemeye devam eder.
+* Ses sürekli işlenmez: **konuşma kesici** sesin enerjisinden cümlenin
+  başını ve sonunu bulur, yalnızca konuşulan kısım çevrilir. Oda gürültüsü
   (vantilatör, klima) birkaç saniyede ölçülüp eşik ona göre ayarlanır.
-* DRA konuşurken ya da bir işle meşgulken cümle gönderilmez (kota boşa
-  gitmez).
-* **İnternet koparsa ya da kota biterse DRA susmaz**: sebebini sohbete
-  yazar ve bir süre cihazdaki modelle devam eder (ağ hatasında yarım
-  dakika, anahtar/izin/kota sorununda 10 dakika).
-
-**Ayar → *Yazıya çeviren*** — dört seçenek:
-
-| Seçenek | Doğruluk | Ses nereye gider | Maliyet | Gereken |
-|---|---|---|---|---|
-| **ElevenLabs** (varsayılan) | Çok iyi | ElevenLabs | Kullandıkça | Seslendirmedeki anahtar; **"Speech to Text"** izni açık olmalı |
-| **OpenAI** (`gpt-4o-transcribe`) | En iyi | OpenAI | Kullandıkça | platform.openai.com anahtarı, hesapta bakiye |
-| **Whisper — bu bilgisayarda** | Çok iyi | **Hiçbir yere** | Ücretsiz | Bir kerelik ~580 MB indirme; Windows |
-| Yalnızca küçük model | Zayıf | Hiçbir yere | Ücretsiz | — |
-
-OpenAI ve Whisper'a "DRA" sözcüğü ipucu olarak veriliyor; model onu
-"dıra", "tra" diye yazmıyor.
+* "DRA, saat kaç?" tek nefeste söylenirse komut da doğru yazıyla çalışır.
+* Whisper çalışmazsa DRA susmaz: sebebini sohbete yazar ve küçük modelle
+  devam eder.
 
 **Whisper (bu bilgisayarda).** "Kendi tanımamızı yapalım" isteğinin
 gerçekçi karşılığı: sıfırdan ses modeli eğitmek milyonlarca saatlik kayıt
@@ -170,15 +158,12 @@ programını (sürüm v1.8.7) ve `large-v3-turbo` modelini indirir.
 * Whisper sessizlikte bazen eğitim verisinden kalma cümleler yazıyor
   ("Altyazı M.K.", "İzlediğiniz için teşekkürler"); bunlar komut sayılmıyor.
 
-*Yazıya çeviriciyi sına* yarım saniyelik sessizlik gönderip anahtarı,
-izni ya da Whisper'ın çalıştığını doğrular ve cevap süresini yazar.
-
-Anahtar yoksa ya da *Yalnızca küçük model* seçiliyse her şey eskisi gibi
-cihazda kalır.
+*Whisper'ı sına* (Ayar sekmesi) yarım saniyelik sessizlik gönderip
+Whisper'ın çalıştığını doğrular ve cevap süresini yazar.
 
 **Teşhis:** *Ne duyuyorsun? (30 sn)* artık iki motorun sonucunu yan yana
-yazar (`duydum (cihaz) → …` / `duydum (ElevenLabs/OpenAI/Whisper) → …`). *Ses tanımayı
-sına* ise buluta giden cümle sayısını, son cevap süresini ve son hatayı
+yazar (`duydum (cihaz) → …` / `duydum (Whisper) → …`). *Ses tanımayı
+sına* ise Whisper'a giden cümle sayısını, son cevap süresini ve son hatayı
 gösterir.
 
 ### Komut kipi — doğru tanımanın anahtarı

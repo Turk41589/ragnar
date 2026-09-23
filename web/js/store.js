@@ -22,15 +22,11 @@ const DEFAULTS = {
    */
   commandMode: true,
   /*
-   * Konusmayi yaziya ceviren taraf (DRA uyandiktan sonra):
-   *   "elevenlabs" / "openai" = bulut; WhatsApp'taki gibi dogru yazi.
-   *   "whisper" = BU bilgisayarda calisan buyuk model; internetsiz.
-   *   "yerel" = yalnizca kucuk Vosk modeli; dogruluk dusuk.
-   * Secilen hazir degilse (anahtar yok) kendiliginden Vosk'a duser.
+   * Konusmayi yaziya ceviren taraf (DRA uyandiktan sonra). Tek secenek:
+   * Whisper, bu bilgisayarda. Kurulu degilse ya da calismazsa cihazdaki
+   * kucuk model (Vosk) devam eder.
    */
-  sttProvider: "elevenlabs",
-  // OpenAI (gpt-4o-transcribe) secilirse kullanilan anahtar.
-  openaiKey: "",
+  sttProvider: "whisper",
   speechRate: 1.05,
   bootSequence: true,
   autoSleepMinutes: 2.5, // 0 = otomatik uyku kapali
@@ -116,10 +112,8 @@ function coerce(saved) {
   if (typeof saved.kickToken === "string") store.kickToken = saved.kickToken.slice(0, 400);
   if (typeof saved.kickChannel === "string") store.kickChannel = saved.kickChannel.slice(0, 80);
 
-  if (["yerel", "elevenlabs", "openai", "whisper"].includes(saved.sttProvider)) {
-    store.sttProvider = saved.sttProvider;
-  }
-  if (typeof saved.openaiKey === "string") store.openaiKey = saved.openaiKey.slice(0, 300);
+  // sttProvider kaydedilmiyor: tek secenek Whisper. Eski kayitta
+  // "elevenlabs" ya da "openai" olsa bile Whisper'a geciliyor.
   if (["yerel", "elevenlabs", "piper"].includes(saved.ttsProvider)) {
     store.ttsProvider = saved.ttsProvider;
   }

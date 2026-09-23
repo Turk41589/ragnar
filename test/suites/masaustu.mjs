@@ -345,6 +345,13 @@ export async function run(_page, _base, t) {
     t.eq(wd.durum.kurulu, false, "Whisper kurulu degil");
     t.eq(wd.secim.code, "NOT_INSTALLED", "kurulmamis Whisper secilince sebebi soyleniyor");
 
+    // Acilista Whisper kendiliginden hazirlaniyor. Bu makine Windows
+    // olmadigi icin kurulum yerine sebebi sohbete yazmali.
+    if (process.platform !== "win32") {
+      const sohbet = await window.evaluate(() => document.querySelector("#log")?.textContent || "");
+      t.ok(/Whisper yalnizca Windows/.test(sohbet), "acilista Whisper hazirlama calisti (sebep sohbette)");
+    }
+
     // Bilgisayar kontrolu izin gerektiriyor.
     const izinsizKontrol = await window.evaluate(() =>
       window.dra.control.run({ action: "mute" }).then(
