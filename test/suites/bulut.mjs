@@ -272,6 +272,12 @@ export async function run(_page, _base, t) {
     t.ok(/DRA/.test(oaIstek?.form?.get("prompt") || ""), "OpenAI: 'DRA' ipucu veriliyor");
     t.eq((await oaIstek?.form?.get("file")?.arrayBuffer())?.byteLength, 44 + 32000, "OpenAI: ses WAV olarak tam gitti");
 
+    // Uyurken ipucu verilmiyor: model gurultude "DRA"yi tekrar yazip
+    // DRA'yi kendiliginden uyandirmasin.
+    istekler.length = 0;
+    await stt.transcribe(ton(1), { ipucu: false });
+    t.eq(istekler[0]?.form?.get("prompt"), null, "ipucu: false iken 'DRA' ipucu gitmiyor");
+
     e = await hataIcin(429, { error: { message: "You exceeded your current quota", type: "insufficient_quota", code: "insufficient_quota" } });
     t.ok(/OpenAI hesabinizda bakiye/.test(e?.message || ""), "OpenAI bakiye bitince acikca soyleniyor");
     e = await hataIcin(401, { error: { message: "Incorrect API key provided", code: "invalid_api_key" } });
@@ -422,6 +428,27 @@ export async function run(_page, _base, t) {
     const k = kesiciOlustur();
     const olaylar = parcalaBesle(k, birlestir(gurultu(3, 0.03), sessizlik(0.1)));
     t.ok(!olaylar.some((o) => o.type === "bitti"), "acilistaki ugultu cumle sayilmiyor");
+  }
+
+  {
+    // Kisik kazancli dizustu mikrofonu: normal ses tonu RMS ~0.007.
+    // Eski esik (0.008) bunu hic yakalamiyordu.
+    const k = kesiciOlustur();
+    const olaylar = parcalaBesle(k, birlestir(sessizlik(1), konusma(1, 0.01), sessizlik(1.2)));
+    t.ok(olaylar.some((o) => o.type === "bitti"), "kisik mikrofondaki normal konusma yakalaniyor");
+    const ist = k.istatistik();
+    t.eq(ist.biten, 1, "istatistik: yakalanan cumle sayiliyor");
+    t.ok(ist.enYuksek > ist.esik, "istatistik: en yuksek seviye esigin ustunde");
+  }
+
+  {
+    // Mikrofon neredeyse kapali: hicbir sey yakalanmaz ama NEDEN
+    // yakalanmadigi olculebilmeli (teshis bunu kullaniciya soyluyor).
+    const k = kesiciOlustur();
+    parcalaBesle(k, birlestir(sessizlik(1), konusma(1, 0.004), sessizlik(1.2)));
+    const ist = k.istatistik();
+    t.eq(ist.biten, 0, "cok kisik ses cumle sayilmiyor");
+    t.ok(ist.enYuksek > 0 && ist.enYuksek < ist.esik, "istatistik: sesin esige ulasmadigi gorunuyor");
   }
 
   {

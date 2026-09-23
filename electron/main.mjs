@@ -727,7 +727,8 @@ function registerIpc() {
   });
 
   // Ses baytlari burada metne donusur; anahtar arayuze hic gecmez.
-  handle("dra:stt:cloud", async ({ pcm }) => await sttBulut.transcribe(pcm));
+  handle("dra:stt:cloud", async ({ pcm, ipucu }) =>
+    await sttBulut.transcribe(pcm, { ipucu: ipucu !== false }));
 
   /* --------------------------------------------- gomulu ses tanima -- */
 

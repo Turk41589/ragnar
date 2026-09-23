@@ -160,6 +160,7 @@ export const bulutDurumu = () => ({
   aktif: bulutAktif(),
   arizada: Date.now() < bulutArizaBitis,
   ...bulutSayac,
+  kesici: kesici.istatistik(),
 });
 
 /** Ayar degisince (yeni anahtar) ariza beklemesi sifirlansin. */
@@ -205,6 +206,7 @@ export function bulutBesle(pcm) {
     if (olay.type === "basla") {
       parcaBasi = Date.now();
       if (!ham && kancalar.uyanik() && !kancalar.mesgul()) emit("segment", { status: "dinliyor" });
+      else if (!ham && !kancalar.uyanik() && yerelCevirici()) emit("segment", { status: "uykuda-dinliyor" });
     } else if (olay.type === "bitti") {
       parcaBitti(olay.pcm, parcaBasi);
     } else if (olay.type === "atildi") {
@@ -213,10 +215,25 @@ export function bulutBesle(pcm) {
   }
 }
 
+/**
+ * Yaziya ceviren bu bilgisayarda mi (Whisper)?
+ *
+ * Oyleyse ses hicbir yere gitmiyor; uyurken de her cumleyi Whisper'a
+ * verebiliyoruz ve "DRA" dendi mi kararini kucuk model yerine WHISPER
+ * veriyor. Kucuk model "DRA"yi cogu zaman duymuyordu: kullanicinin
+ * "sesimi algilamiyor" sikayetinin buyuk kismi buydu.
+ */
+const yerelCevirici = () => system.sttCloudInfo?.()?.provider === "whisper";
+
+/** Uyurken sirada bekleyen cumle sayisi (TV gibi surekli ses kuyruk sisirmesin). */
+let uykuKuyrugu = 0;
+const UYKU_KUYRUK_SINIRI = 2;
+
 function parcaBitti(pcm, bas) {
   // Kesici cumlenin basina ~0.6 sn onceki sesi de ekliyor; Vosk'un
   // uyandirma sonucu o aralikta da gelmis olabilir.
   const uyandirmaVar = () => sonUyandirma.at >= bas - 1500;
+  const yerel = yerelCevirici();
 
   const karar = () => {
     const ham = Boolean(hamDinleyici);
@@ -224,35 +241,51 @@ function parcaBitti(pcm, bas) {
     const uyandirma = !uyanik && uyandirmaVar();
 
     if (!ham) {
-      // Uyurken, DRA denmemis bir cumle disari GITMEZ.
-      if (!uyanik && !uyandirma) return;
+      // Bulut saglayicida uyurken, DRA denmemis bir cumle disari GITMEZ.
+      // Whisper bu bilgisayarda: uyurken de her cumle ona gidiyor.
+      if (!uyanik && !uyandirma && !yerel) return;
       if (uyanik && kancalar.mesgul()) {
         emit("segment", { status: "bos" });
         return;
       }
     }
 
+    // Uyurken Whisper yetisemiyorsa (islemcide, surekli konusan bir TV)
+    // eski cumleleri biriktirmek yerine yenisini atliyoruz.
+    const uykuda = !uyanik && !ham;
+    if (uykuda && !uyandirma) {
+      if (uykuKuyrugu >= UYKU_KUYRUK_SINIRI) return;
+      uykuKuyrugu += 1;
+    }
+
     const voskMetni = uyandirma ? sonUyandirma.metin : null;
     if (uyandirma) sonUyandirma = { metin: null, at: 0 };
     bulutKuyrugu = bulutKuyrugu
-      .then(() => bulutaGonder(pcm, { uyandirma, voskMetni, ham }))
-      .catch((err) => console.warn("[dra] bulut kuyrugu:", err?.message || err));
+      .then(() => bulutaGonder(pcm, { uyandirma, voskMetni, ham, uyku: uykuda }))
+      .catch((err) => console.warn("[dra] bulut kuyrugu:", err?.message || err))
+      .finally(() => {
+        if (uykuda && !uyandirma) uykuKuyrugu = Math.max(0, uykuKuyrugu - 1);
+      });
   };
 
   // Vosk'un kesin sonucu cumle bittikten biraz sonra gelebiliyor.
-  // Uyurken ve henuz "DRA" duyulmamissa kararı kisa bir sure erteliyoruz.
-  if (!hamDinleyici && !kancalar.uyanik() && !uyandirmaVar()) setTimeout(karar, 700);
+  // Bulutta, uyurken ve henuz "DRA" duyulmamissa kararı kisa bir sure
+  // erteliyoruz. Whisper'da beklemeye gerek yok: cumle zaten gidiyor.
+  if (!yerel && !hamDinleyici && !kancalar.uyanik() && !uyandirmaVar()) setTimeout(karar, 700);
   else karar();
 }
 
-async function bulutaGonder(pcm, { uyandirma, voskMetni, ham }) {
+async function bulutaGonder(pcm, { uyandirma, voskMetni, ham, uyku = false }) {
   if (!ham && kancalar.uyanik()) emit("segment", { status: "cozuluyor" });
+  if (uyku) emit("segment", { status: "uykuda-cozuluyor" });
 
   const bas = Date.now();
   bulutSayac.gonderilen += 1;
   let metin = "";
   try {
-    const sonuc = await system.sttCloud(pcm);
+    // Uyurken ipucu ("DRA, saat kac?") verilmiyor: Whisper gurultude
+    // ipucunu tekrar yazabiliyor ve bu DRA'yi kendiliginden uyandirirdi.
+    const sonuc = await system.sttCloud(pcm, { ipucu: !uyku });
     metin = String(sonuc?.text || "").trim();
     bulutSayac.basarili += 1;
     bulutSayac.sonSureMs = Date.now() - bas;
@@ -280,6 +313,8 @@ async function bulutaGonder(pcm, { uyandirma, voskMetni, ham }) {
     else emit("segment", { status: "bos" });
     return;
   }
+  // Uyurken gelen yazi: uyandirip uyandirmayacagina main.js karar veriyor
+  // ("DRA" geciyor mu). Gecmiyorsa yalnizca uyku ekraninda gorunur.
   yayinla(metin, { uyandirma, bulut: true });
 }
 
@@ -694,6 +729,27 @@ export function deafen(ms) {
   deafUntil = Math.max(deafUntil, Date.now() + ms);
 }
 
+/**
+ * Konusma GERCEKTEN bittiginde sagirligi kisa bir kuyruga indirir.
+ *
+ * Konusma baslarken sagirlik suresi metnin uzunlugundan TAHMIN
+ * ediliyor ve tahmin cogu zaman 2-3 saniye fazla cikiyordu. DRA "Sizi
+ * dinliyorum" dedikten hemen sonra soylenen komut o fazlalikta
+ * kayboluyordu — "sesimi algilamiyor" sikayetinin bir sebebi buydu.
+ * Artik ses bitince yalnizca hoparlor yankisi icin kisa bir sure kaliyor.
+ *
+ * nesil: yalnizca EN SON baslayan konusmanin bitisi sagirligi kisaltir;
+ * susturulmus eski bir konusmanin gec gelen "bitti"si yeni konusmayi
+ * duyulur hale getirmesin.
+ */
+function sagirlikBitir(nesil, ms = YANKI_MS) {
+  if (nesil !== speakGeneration) return;
+  deafUntil = Date.now() + ms;
+}
+
+/** Hoparlorden gelen sesin kuyrugu icin konusma sonrasi tampon. */
+const YANKI_MS = 600;
+
 /* ------------------------------------------------------------------ sentez */
 
 let voices = [];
@@ -761,6 +817,10 @@ export function shutUp() {
   // uzerinden geldigi icin "sus" komutu istek HENUZ YOLDAYKEN de
   // gelebilir; nesil sayaci o sesin donunce calmasini engeller.
   speakGeneration += 1;
+  // Susturulan konusmanin tahmini sagirligi da bitsin; yoksa "sus"tan
+  // sonraki komut duyulmazdi. (Yeni bir konusma baslarsa kendi
+  // sagirligini hemen ardindan koyuyor.)
+  deafUntil = Math.min(deafUntil, Date.now() + YANKI_MS);
 
   // ElevenLabs calarken de susmali; yoksa "sus" komutu ise yaramaz.
   if (elevenAudio) {
@@ -832,6 +892,7 @@ function sayLocal(text) {
     }
 
     shutUp();
+    const nesil = speakGeneration;
 
     const chunks = splitForSpeech(clean);
     const voice = pickVoice();
@@ -842,7 +903,7 @@ function sayLocal(text) {
       if (settled) return;
       settled = true;
       // Hoparlorden gelen sesin kuyrugunu komut sanmamak icin kisa bir tampon.
-      deafen(600);
+      sagirlikBitir(nesil);
       resolve();
     };
 
@@ -983,6 +1044,7 @@ export async function previewVoice(text, saglayici = "elevenlabs") {
 
 /** Ses baytlarini calar; bitince (ya da hata verince) coz. */
 function playBlob(blob, textLength) {
+  const nesil = speakGeneration;
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
@@ -998,7 +1060,7 @@ function playBlob(blob, textLength) {
       URL.revokeObjectURL(url);
       if (elevenAudio === audio) elevenAudio = null;
       // Hoparlorden gelen sesin kuyrugunu komut sanmamak icin kisa tampon.
-      deafen(600);
+      sagirlikBitir(nesil);
       if (hata) reject(hata);
       else resolve();
     };

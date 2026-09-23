@@ -348,7 +348,8 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === "/api/stt/cloud" && req.method === "POST") {
     // 15 sn'lik ses base64 ile ~650 KB; genel sinir 256 KB.
-    return handleAction(req, res, async (body) => await sttBulut.transcribe(body.pcm), {
+    return handleAction(req, res, async (body) =>
+      await sttBulut.transcribe(body.pcm, { ipucu: body.ipucu !== false }), {
       limit: 1024 * 1024,
     });
   }

@@ -640,10 +640,10 @@ function pcmBase64(pcm) {
 }
 
 /** 16 kHz Int16 sesi metne cevirir. Doner: { text, language, seconds } */
-export async function sttCloud(pcm) {
+export async function sttCloud(pcm, { ipucu = true } = {}) {
   return desktop
-    ? await bridge(() => window.dra.stt.cloud(pcm))
-    : await post("/api/stt/cloud", { pcm: pcmBase64(pcm) });
+    ? await bridge(() => window.dra.stt.cloud(pcm, { ipucu }))
+    : await post("/api/stt/cloud", { pcm: pcmBase64(pcm), ipucu });
 }
 
 /* --------------------------------------------------- masaustu ozellikleri */

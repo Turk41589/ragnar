@@ -122,8 +122,29 @@ motoru birlikte** kullanıyor:
 
 | | Ne yapar |
 |---|---|
-| Cihazdaki küçük model (Vosk) | Yalnızca **"DRA"**yı bekler |
-| **Whisper** | DRA uyandıktan sonraki cümleleri yazıya çevirir |
+| Konuşma kesici | Sesin başını ve sonunu bulur; her cümleyi Whisper'a verir |
+| **Whisper** | Cümleyi yazıya çevirir — **"DRA"yı da o duyar** |
+| Cihazdaki küçük model (Vosk) | Whisper hazır değilken yedek |
+
+Eskiden uyurken "DRA"yı küçük model yakalamak zorundaydı ve çoğu zaman
+yakalayamıyordu: Whisper doğru yazıyordu ama ses ona hiç gitmiyordu. Artık
+uyurken de her cümle Whisper'a gidiyor (ses bilgisayardan çıkmadığı için
+bunun gizlilik bedeli yok). Uyurken Whisper'a "DRA" ipucu verilmiyor;
+gürültüde ipucunu tekrar yazıp DRA'yı kendiliğinden uyandırmasın diye.
+Sürekli konuşan bir TV Whisper'ı boğmasın diye uyurken en fazla 2 cümle
+sırada bekliyor.
+
+**DRA konuştuktan sonra sağır kalmıyor.** Kendi sesini komut sanmasın diye
+konuşurken dinlemiyor. Bu süre eskiden metnin uzunluğundan tahmin
+ediliyordu ve gerçek konuşmadan 2–3 saniye (uzun cevaplarda 10+ saniye)
+fazla çıkıyordu. "Sizi dinliyorum"dan hemen sonra söylenen komut o
+fazlalıkta kayboluyordu. Artık ses bittiği anda yalnızca 0,6 saniyelik
+yankı payı kalıyor; "sus" deyince de hemen dinliyor.
+
+**Mikrofon kısıksa** Ayar → *Ses tanımayı sına* bunu açıkça söyler:
+sesin en yüksek seviyesini ve konuşma eşiğini yazar; ses eşiğe hiç
+ulaşmıyorsa "MİKROFON ÇOK KISIK" uyarısı verir. Uyku ekranında da ses
+duyulunca "sesinizi duyuyorum…", çevrilirken "anlıyorum…" yazar.
 
 İkisi de bu bilgisayarda çalışır: **ses hiçbir yere gitmez**, internet
 gerekmez, ücret yok.

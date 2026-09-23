@@ -61,10 +61,10 @@ const SAGLAYICILAR = {
     model: "gpt-4o-transcribe",
     anahtarGerekli: true,
     zamanAsimi: 15000,
-    istek(form, a) {
+    istek(form, a, ipucu) {
       form.append("model", a.model);
       form.append("language", "tr");
-      form.append("prompt", IPUCU);
+      if (ipucu) form.append("prompt", IPUCU);
       form.append("response_format", "json");
       return { authorization: `Bearer ${a.key}` };
     },
@@ -76,12 +76,12 @@ const SAGLAYICILAR = {
     anahtarGerekli: false,
     // Islemcide calisirken uzun bir cumle birkac saniye surebilir.
     zamanAsimi: 45000,
-    istek(form) {
+    istek(form, _a, ipucu) {
       form.append("language", "tr");
       form.append("response_format", "json");
       form.append("temperature", "0");
       form.append("no_timestamps", "true");
-      form.append("prompt", IPUCU);
+      if (ipucu) form.append("prompt", IPUCU);
       return {};
     },
   },
@@ -251,7 +251,12 @@ function hataMesaji(s, kod, govde) {
  * Sesi metne cevirir.
  * Doner: { text, language, seconds, provider }
  */
-export async function transcribe(girdi, { timeout } = {}) {
+/**
+ * ipucu: false → "DRA" ipucu verilmez. Uyurken kullaniliyor: model
+ * gurultude ipucunu tekrar yazabiliyor, bu da DRA'yi kendiliginden
+ * uyandirirdi.
+ */
+export async function transcribe(girdi, { timeout, ipucu = true } = {}) {
   const s = saglayici();
   if (s.anahtarGerekli && !ayar.key) {
     throw Object.assign(new Error(`Ses tanima icin ${s.ad} anahtari tanimli degil.`), {
@@ -276,7 +281,7 @@ export async function transcribe(girdi, { timeout } = {}) {
   }
 
   const form = new FormData();
-  const basliklar = s.istek(form, ayar);
+  const basliklar = s.istek(form, ayar, ipucu);
   form.append("file", new Blob([pcmToWav(pcm)], { type: "audio/wav" }), "ses.wav");
 
   let res;

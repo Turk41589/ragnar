@@ -317,6 +317,27 @@ async function handleUtterance(rawText) {
   }
 }
 
+/**
+ * Konusma kesicinin olcumlerini okunur satirlara cevirir.
+ * Mikrofon esige hic ulasmiyorsa bunu acikca soyler — o durumda sorun
+ * tanimada degil, mikrofon seviyesinde.
+ */
+function kesiciSatirlari(k) {
+  if (!k) return [];
+  const yuzde = (x) => `${(x * 100).toFixed(1)}%`;
+  const satirlar = [
+    `Konusma yakalayici: ${k.biten} cumle yakaladi, ${k.atilan} tanesi cok kisa diye atildi`,
+    `Sesin en yuksek seviyesi ${yuzde(k.enYuksek)}, konusma esigi ${yuzde(k.esik)}`,
+  ];
+  if (k.enYuksek > 0 && k.enYuksek < k.esik) {
+    satirlar.push(
+      "MIKROFON COK KISIK: sesiniz esige hic ulasmiyor. Windows → Ses ayarlari → " +
+        "Giris → mikrofon seviyesini yukseltin (80-100).",
+    );
+  }
+  return satirlar;
+}
+
 /** Secili yaziya ceviricinin okunur adi (teshis ekranlari icin). */
 function saglayiciAdi() {
   return system.sttCloudInfo?.()?.name || "Whisper";
@@ -753,7 +774,14 @@ on("heard", ({ text, alternatives, final, uyandirma }) => {
  * Arada kullanici bos ekrana bakmasin diye durumu gosteriyoruz.
  */
 on("segment", ({ status }) => {
-  if (state.current === S.SLEEPING || busy || state.current === S.SPEAKING) return;
+  // Uyurken de kullanici sesinin duyuldugunu gorsun: "algilamiyor mu,
+  // anlamiyor mu?" sorusunun cevabi ekranda olsun.
+  if (state.current === S.SLEEPING) {
+    if (status === "dinliyor" || status === "uykuda-dinliyor") hud.sleepStatus("sesinizi duyuyorum…", "ok");
+    else if (status === "uykuda-cozuluyor") hud.sleepStatus("anliyorum…", "ok");
+    return;
+  }
+  if (busy || state.current === S.SPEAKING) return;
   if (status === "dinliyor") {
     hud.setCaption("…", "interim");
     setState(S.LISTENING);
@@ -1970,6 +1998,7 @@ const ctx = {
           rows: [
             ["Komut kipi", store.commandMode ? `acik (${sozluk?.length || 0} sozcuk)` : "kapali"],
             ["Yaziya ceviren", bulut ? saglayiciAdi() : "cihazdaki model"],
+            ...kesiciSatirlari(speech.bulutDurumu().kesici).map((x) => ["Yakalayici", x]),
             ["Ses yolu", yakalama.engine === "worklet" ? "ayri is parcaciginda" : String(yakalama.engine || "—")],
             ["Ornekleme", `${yakalama.contextRate || "—"} Hz`],
             ["Giden parca", String(yakalama.chunks || 0)],
@@ -2127,7 +2156,8 @@ const ctx = {
             (b.sonSureMs ? `, son cevap ${b.sonSureMs} ms` : ""),
         );
       }
-      if (b.sonHata) lines.push(`Son bulut hatasi: ${b.sonHata}`);
+      if (b.sonHata) lines.push(`Son yaziya cevirme hatasi: ${b.sonHata}`);
+      lines.push(...kesiciSatirlari(b.kesici));
     }
     const yakalama = gomuluKipte ? speech.micHealth?.() : null;
     if (yakalama) {

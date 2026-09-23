@@ -34,8 +34,12 @@ export const VARSAYILAN = Object.freeze({
   baslamaCercevesi: 3,
   /** Esik = gurultu tabani x bu carpan. */
   esikCarpani: 3,
-  /** Esik bundan asagi inmez (tam sessiz odada her hisirti konusma sayilmasin). */
-  asgariEsik: 0.008,
+  /**
+   * Esik bundan asagi inmez (tam sessiz odada her hisirti konusma
+   * sayilmasin). 0.008 idi; kisik kazancli dizustu mikrofonlarinda
+   * normal ses tonu bunun altinda kalabiliyordu.
+   */
+  asgariEsik: 0.005,
   /**
    * Gurultu tabani son bu kadar suredeki EN DUSUK enerjidir. Konusmada
    * heceler arasinda hep bir dusus olur; vantilator ya da klima gibi
@@ -93,6 +97,13 @@ export function kesiciOlustur(secenek = {}) {
   /** Cerceveye tamamlanmayi bekleyen ornekler. */
   let artik = new Int16Array(0);
 
+  /**
+   * Teshis sayaclari. "Sesimi algilamiyor" denince tahmin yerine
+   * olcum: mikrofonun en yuksek seviyesi esige hic ulasiyor mu, cumle
+   * basliyor ama kisa diye mi atiliyor?
+   */
+  const sayac = { baslayan: 0, biten: 0, atilan: 0, enYuksek: 0 };
+
   const esik = () => Math.max(a.asgariEsik, taban * a.esikCarpani);
 
   function birlestir(cerceveler) {
@@ -117,9 +128,11 @@ export function kesiciOlustur(secenek = {}) {
     ustUste = 0;
     once = [];
     if (s < asgariSesli) {
+      sayac.atilan += 1;
       olaylar.push({ type: "atildi", sebep: "kisa" });
       return;
     }
+    sayac.biten += 1;
     // Sondaki sessizligin cogunu gondermeye gerek yok; biraz payi kalsin.
     const kirp = Math.max(0, arka - 10);
     const cerceveler = sebep === "sessizlik" ? p.slice(0, p.length - kirp) : p;
@@ -133,6 +146,7 @@ export function kesiciOlustur(secenek = {}) {
 
   function cerceveIsle(c, olaylar) {
     const e = enerji(c);
+    if (e > sayac.enYuksek) sayac.enYuksek = e;
     tabaniGuncelle(e);
     const sinir = esik();
     const yuksek = e >= sinir;
@@ -151,6 +165,7 @@ export function kesiciOlustur(secenek = {}) {
           once = [];
           sesli = ustUste;
           sessizArka = 0;
+          sayac.baslayan += 1;
           olaylar.push({ type: "basla" });
         }
       } else {
@@ -203,6 +218,8 @@ export function kesiciOlustur(secenek = {}) {
     },
 
     konusuyor: () => Boolean(parca),
+    /** Teshis: sayaclar ve o anki esik/taban. */
+    istatistik: () => ({ ...sayac, esik: esik(), taban }),
     esik,
     taban: () => taban,
   };

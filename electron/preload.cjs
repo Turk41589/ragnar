@@ -178,9 +178,10 @@ contextBridge.exposeInMainWorld("dra", {
     stop: () => call("dra:stt:stop"),
     cloudConfigure: (provider, key, model) =>
       call("dra:stt:cloud:configure", { provider, key, model }),
-    cloud: (int16) =>
+    cloud: (int16, { ipucu = true } = {}) =>
       call("dra:stt:cloud", {
         pcm: new Uint8Array(int16.buffer, int16.byteOffset, int16.byteLength),
+        ipucu: ipucu !== false,
       }),
     /** Ses parcasi gonderir (16 kHz, tek kanal, 16-bit). */
     feed: (int16) => ipcRenderer.send("dra:stt:feed", int16),

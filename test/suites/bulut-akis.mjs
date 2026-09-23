@@ -75,10 +75,13 @@ export async function run(page, base, t) {
   /** Bulut cagrilarini yakalayan uc. */
   const istekler = [];
   let siradaki = { ok: true, text: "", seconds: 1 };
+  let gecikme = 0;
   await page.route("**/api/stt/cloud", async (route) => {
     const govde = JSON.parse(route.request().postData() || "{}");
-    istekler.push({ bayt: Buffer.from(govde.pcm || "", "base64").length });
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(siradaki) });
+    istekler.push({ bayt: Buffer.from(govde.pcm || "", "base64").length, ipucu: govde.ipucu });
+    const cevap = JSON.stringify(siradaki);
+    if (gecikme) await new Promise((r) => setTimeout(r, gecikme));
+    await route.fulfill({ status: 200, contentType: "application/json", body: cevap });
   });
 
   await openApp(page, base);
@@ -212,9 +215,130 @@ export async function run(page, base, t) {
   t.ok(!(await page.evaluate(async () => (await import("/js/speech.js")).bulutAktif())),
     "Whisper baslamayinca onceki yaziya ceviren acik kalmiyor (kucuk model devam ediyor)");
 
+  /* ======================= Whisper bu bilgisayarda: uyurken de dinler */
+  // Tarayici surumu Whisper'i baslatamaz; masaustundeki durumu taklit
+  // etmek icin yapilandirma cevabini Whisper olarak veriyoruz.
+  await page.route("**/api/stt/cloud/configure", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        status: { ready: true, keySet: false, provider: "whisper", name: "Whisper (bu bilgisayarda)" },
+      }),
+    }));
+  await openApp(page, base);
+  const whisperHazir = await page.evaluate(async () => {
+    const { store, saveStore } = await import("/js/store.js");
+    const system = await import("/js/system.js");
+    const sp = await import("/js/speech.js");
+    store.bootSequence = false;
+    saveStore();
+    await system.configureSttCloud("whisper");
+    return sp.bulutAktif();
+  });
+  t.ok(whisperHazir, "Whisper hazir");
+  istekler.length = 0;
+
+  // Kucuk model HICBIR SEY duymasa da cumle Whisper'a gidiyor.
+  siradaki = { ok: true, text: "bugün hava güzel", seconds: 1 };
+  await konus(page, [["sessiz", 1], ["ses", 1.2], ["sessiz", 1.2]]);
+  await page.waitForTimeout(900);
+  t.eq(istekler.length, 1, "uyurken kucuk model duymasa da cumle Whisper'a gitti");
+  t.eq(istekler[0]?.ipucu, false, "uyurken 'DRA' ipucu verilmiyor (kendiliginden uyanmasin)");
+  t.eq((await durum(page)).state, "sleeping", "'DRA' gecmeyen cumle uyandirmiyor");
+  t.has(await page.textContent("#sleep-sub"), "bugün hava güzel", "uyku ekraninda ne duydugu gorunuyor");
+
+  // "DRA"yi Whisper duyuyor: kucuk modelin ipucu olmadan uyanir.
+  siradaki = { ok: true, text: "Dıra, 6 kere 7 kaç eder?", seconds: 2 };
+  await konus(page, [["sessiz", 0.5], ["ses", 1.4], ["sessiz", 1.2]]);
+  await page.waitForSelector("#hud:not([hidden])", { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(900);
+  t.ok(await page.locator("#hud").isVisible(), "Whisper 'DRA'yi duyunca uyandi (kucuk model duymadan)");
+  t.has((await readChat(page)).at(-1)?.text, "42", "ayni cumledeki komut calisti");
+  t.eq(istekler.at(-1)?.ipucu, false, "uyandiran cumle de ipucusuz gitti");
+
+  // Uyanikken ipucu veriliyor ("DRA" gibi ozel sozcukler icin).
+  siradaki = { ok: true, text: "5 kere 5 kaç eder", seconds: 1 };
+  await konus(page, [["sessiz", 0.4], ["ses", 1.0], ["sessiz", 1.2]]);
+  await page.waitForTimeout(900);
+  t.eq(istekler.at(-1)?.ipucu, true, "uyanikken ipucu veriliyor");
+  t.has((await readChat(page)).at(-1)?.text, "25", "uyanikken komut calisti");
+
+  /* ---------------------------- konustuktan sonra sagir KALMIYOR ---- */
+  // DRA uzun bir cumle soyluyor; ses bitince hemen dinlemeli. Eskiden
+  // sagirlik suresi metin uzunlugundan tahmin ediliyordu (~20 sn!).
+  await page.route("**/api/tts/configure", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ ok: true, status: { ready: true, keySet: true, voiceId: "v", model: "m" } }) }));
+  await page.route("**/api/tts/speak", (route) => {
+    // 0.3 sn sessiz WAV
+    const n = 4800;
+    const wav = Buffer.alloc(44 + n * 2);
+    wav.write("RIFF", 0, "ascii"); wav.writeUInt32LE(36 + n * 2, 4); wav.write("WAVE", 8, "ascii");
+    wav.write("fmt ", 12, "ascii"); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+    wav.writeUInt32LE(16000, 24); wav.writeUInt32LE(32000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+    wav.write("data", 36, "ascii"); wav.writeUInt32LE(n * 2, 40);
+    return route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ ok: true, audio: wav.toString("base64"), type: "audio/wav" }) });
+  });
+  const konusma = await page.evaluate(async () => {
+    const { store } = await import("/js/store.js");
+    const system = await import("/js/system.js");
+    const sp = await import("/js/speech.js");
+    store.voiceEnabled = true;
+    store.ttsProvider = "elevenlabs";
+    await system.configureTts("k", "v", "m");
+    const bas = Date.now();
+    const sonuc = await Promise.race([
+      sp.say("Bu cumle bilerek uzun tutuldu ki eski tahmin yirmi saniye kadar sagirlik uretsin; " +
+        "gercek ses ise yalnizca uc saniyenin onda biri surecek."),
+      new Promise((r) => setTimeout(() => r("zaman asimi"), 8000)),
+    ]);
+    store.voiceEnabled = false;
+    return { sonuc, sure: Date.now() - bas };
+  });
+  t.ok(konusma.sonuc !== "zaman asimi", `seslendirme bitti (${konusma.sure} ms)`);
+  await page.waitForTimeout(900);
+  const onceIstek = istekler.length;
+  siradaki = { ok: true, text: "8 kere 2 kaç eder", seconds: 1 };
+  await konus(page, [["sessiz", 0.4], ["ses", 1.0], ["sessiz", 1.2]]);
+  await page.waitForTimeout(900);
+  t.eq(istekler.length, onceIstek + 1, "DRA konustuktan hemen sonra soylenen cumle duyuldu");
+  t.has((await readChat(page)).at(-1)?.text, "16", "ve komut calisti");
+
+  // "sus" da tahmini sagirligi bitirmeli.
+  const susSonrasi = await page.evaluate(async () => {
+    const sp = await import("/js/speech.js");
+    sp.deafen(20000);
+    sp.shutUp();
+    return true;
+  });
+  t.ok(susSonrasi, "susturuldu");
+  await page.waitForTimeout(800);
+  const susIstek = istekler.length;
+  siradaki = { ok: true, text: "2 kere 2 kaç eder", seconds: 1 };
+  await konus(page, [["sessiz", 0.4], ["ses", 1.0], ["sessiz", 1.2]]);
+  await page.waitForTimeout(900);
+  t.eq(istekler.length, susIstek + 1, "susturulduktan sonra soylenen cumle duyuldu");
+
+  /* --------------------------- uyurken kuyruk sisirmesin (TV acik) --- */
+  await page.click("#btn-sleep");
+  await page.waitForTimeout(600);
+  const kuyrukOnce = istekler.length;
+  gecikme = 1500;
+  siradaki = { ok: true, text: "haberler devam ediyor", seconds: 1 };
+  for (let i = 0; i < 4; i += 1) await konus(page, [["sessiz", 0.2], ["ses", 0.8], ["sessiz", 1.0]]);
+  await page.waitForTimeout(3800);
+  gecikme = 0;
+  t.ok(istekler.length - kuyrukOnce <= 2, `uyurken en fazla 2 cumle sirada bekliyor (${istekler.length - kuyrukOnce} gitti)`);
+  t.eq((await durum(page)).state, "sleeping", "TV konusmasi DRA'yi uyandirmadi");
+
   // Sunucudaki anahtari temizle; sonraki paketler etkilenmesin.
+  await page.unroute("**/api/stt/cloud/configure");
   await page.evaluate(async () => {
     const system = await import("/js/system.js");
     await system.configureSttCloud("elevenlabs", "");
+    await system.configureTts("", "", "");
   });
 }
