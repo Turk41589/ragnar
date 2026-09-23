@@ -5,7 +5,9 @@
  * konusmak gibi isler `ctx` uzerinden ana module devredilir.
  */
 
-import { store, saveStore, resetStore } from "./store.js";
+import { store, saveStore, resetStore, kaynakDegerleri } from "./store.js";
+import { MODLAR, anahtarSorunu } from "./modlar.js";
+import { komutMu } from "./commands.js";
 import * as system from "./system.js";
 import * as speech from "./speech.js";
 import {
@@ -252,6 +254,9 @@ export function syncSettings() {
   if (system.isDesktop()) {
     system.getAutoStart().then((on) => syncSwitch($("set-autostart"), on)).catch(() => {});
   }
+  syncSwitch($("set-web"), store.webMode);
+  renderModAnahtarlari();
+  refreshGmailStatus();
   syncSwitch($("set-streamer"), store.streamerMode);
 
   $("kick-fields").hidden = !store.streamerMode;
@@ -428,8 +433,11 @@ export async function renderSources() {
       } else {
         store.sourcesOn.push(kaynak.id);
         // Acar acmaz ne isteyecegimizi soyluyoruz; kullanici alanlari
-        // aramak zorunda kalmasin.
-        if (kaynak.fields.length) {
+        // aramak zorunda kalmasin. Gmail ortak giristen geliyor; giris
+        // yoksa DRA sohbette ister.
+        if (kaynak.id === "gmail") {
+          if (!store.mailUser || !store.mailPass) ctx.gmailIste?.("Gmail kaynagi hazir.");
+        } else if (kaynak.fields.length) {
           ctx.log(
             "system",
             `${kaynak.label} icin su bilgiler gerekiyor: ` +
@@ -450,8 +458,18 @@ export async function renderSources() {
     li.append(aciklama);
 
     // --- alanlar: yalnizca acikken ve kaynagin tanimindan ---
-    if (acik && kaynak.fields.length) {
-      const degerler = store.sourceValues[kaynak.id] || {};
+    // Gmail kendi alanlarini gostermiyor: ortak Gmail girisini kullaniyor.
+    if (acik && kaynak.id === "gmail") {
+      const bilgi = document.createElement("p");
+      bilgi.className = "nextalarm";
+      bilgi.textContent = store.mailUser
+        ? `Hesap: ${store.mailUser} (degistirmek icin yukaridaki Gmail hesabi bolumu)`
+        : "Gmail hesabi girilmedi — yukaridaki Gmail hesabi bolumunden giris yapin.";
+      li.append(bilgi);
+    }
+
+    if (acik && kaynak.fields.length && kaynak.id !== "gmail") {
+      const degerler = kaynakDegerleri(kaynak.id);
 
       for (const alan of kaynak.fields) {
         const etiket = document.createElement("label");
@@ -524,7 +542,7 @@ export async function renderSources() {
 
 /** Girilen bilgileri arka tarafa bildirir. */
 async function pushSource(id) {
-  const degerler = store.sourceValues[id] || {};
+  const degerler = kaynakDegerleri(id);
   try {
     await ctx.withPermission(() => system.sourceConfigure(id, degerler));
   } catch (err) {
@@ -716,10 +734,102 @@ function refreshGoogleStatus() {
 function refreshMailStatus() {
   const el = $("mail-status");
   if (!el) return;
-  if (!store.mailMode) el.textContent = "Kapali";
-  else if (!store.mailUser) el.textContent = "Adres girilmedi";
+  if (!store.mailUser) el.textContent = "Adres girilmedi";
   else if (!store.mailPass) el.textContent = "Uygulama sifresi girilmedi";
-  else el.textContent = "Hazir — «Baglantiyi sina» ile dogrulayin";
+  else if (store.gmailDogrulandi === store.mailUser) el.textContent = "Giris yapildi";
+  else el.textContent = "Bilgiler girildi — «Giris yap» ile dogrulayin";
+  refreshGmailStatus();
+}
+
+/** Tek Gmail girisinin durumu (Gmail hesabi bolumu ve e-posta modu). */
+function refreshGmailStatus() {
+  const girisli = store.mailUser && store.mailPass && store.gmailDogrulandi === store.mailUser;
+  const metin = girisli
+    ? `Giris yapildi: ${store.mailUser}`
+    : store.mailUser
+      ? `${store.mailUser} — giris dogrulanmadi`
+      : "Giris yapilmadi";
+  const el = $("gmail-login-status");
+  if (el) el.textContent = metin;
+  const bilgi = $("mail-account-info");
+  if (bilgi) bilgi.textContent = store.mailUser ? `Hesap: ${metin}` : "Gmail hesabi girilmedi";
+}
+
+/* ---------------------------------------------------------- mod anahtarlari */
+
+/**
+ * Her mod icin sesli anahtar kutusu. Liste modlar.js'ten uretiliyor;
+ * yeni bir mod eklemek buraya dokunmayi gerektirmiyor.
+ */
+function renderModAnahtarlari() {
+  const liste = $("mod-keys");
+  if (!liste) return;
+  // Kullanici yazarken kutuyu bastan kurmayalim; odak kaybolur.
+  if (liste.contains(document.activeElement)) return;
+  liste.replaceChildren();
+
+  for (const mod of MODLAR) {
+    const li = document.createElement("li");
+    li.className = "settings__stack";
+    li.dataset.mod = mod.id;
+
+    const etiket = document.createElement("label");
+    etiket.htmlFor = `mod-key-${mod.id}`;
+    etiket.textContent = `${mod.ad} — ${store[mod.bayrak] ? "acik" : "kapali"}`;
+
+    const girdi = document.createElement("input");
+    girdi.id = etiket.htmlFor;
+    girdi.type = "text";
+    girdi.autocomplete = "off";
+    girdi.maxLength = 40;
+    girdi.placeholder = `ornek: ${mod.adlar[0]}`;
+    girdi.value = store.modAnahtarlari?.[mod.id] || "";
+
+    girdi.addEventListener("change", async (event) => {
+      const kelime = event.target.value.trim();
+      const sorun = anahtarSorunu(kelime, mod.id, store.modAnahtarlari)
+        // Anahtar bir komutu golgelerse o komut bir daha calismaz.
+        || (kelime && komutMu(kelime) ? `«${kelime}» zaten bir komut; baska bir sozcuk secin.` : null);
+      if (sorun) {
+        ctx.toast(sorun, 6000);
+        event.target.value = store.modAnahtarlari?.[mod.id] || "";
+        return;
+      }
+      store.modAnahtarlari = { ...store.modAnahtarlari, [mod.id]: kelime };
+      if (!kelime) delete store.modAnahtarlari[mod.id];
+      saveStore();
+      // Cihazdaki ses motoru yeni sozcugu duyabilsin.
+      ctx.applyCommandMode?.().catch(() => {});
+      ctx.toast(kelime ? `«${kelime}» → ${mod.ad}` : `${mod.ad} anahtari kaldirildi`);
+    });
+
+    li.append(etiket, girdi);
+    liste.append(li);
+  }
+}
+
+/**
+ * Bir mod acilip kapaninca panel tarafinda yapilacaklar.
+ * Mod anahtari sesle de, dugmeyle de ayni yoldan gecsin diye burada.
+ */
+export async function modSonrasi(id, acik) {
+  syncSettings();
+  if (id === "eposta") {
+    // Kapatilinca sifreyi surecten de cekiyoruz.
+    if (!acik) system.configureMail("", "").catch(() => {});
+    refreshMailStatus();
+  } else if (id === "isletme" && acik) {
+    await renderSources();
+    await renderRules();
+  } else if (id === "youtube") {
+    if (acik) {
+      await pushYoutube();
+      renderVideos();
+    }
+    refreshYoutubeStatus();
+  } else if (id === "montaj" && acik) {
+    await refreshMontageStatus();
+  }
 }
 
 /* ------------------------------------------------------------ ilk acilis */
@@ -1203,15 +1313,8 @@ export function mountPanel(context) {
   });
 
   /* --- yayinci destegi --- */
-  $("set-streamer").addEventListener("click", () => {
-    store.streamerMode = !store.streamerMode;
-    saveStore();
-    syncSettings();
-    ctx.toast(store.streamerMode ? "Yayinci destegi acildi" : "Yayinci destegi kapatildi");
-    if (store.streamerMode && !store.kickToken) {
-      ctx.log("system", "Yayinci destegi acildi. Moderasyon icin kanal adi ve erisim jetonu girin.");
-    }
-  });
+  $("set-streamer").addEventListener("click", () => ctx.modSesle("yayinci"));
+  $("set-web").addEventListener("click", () => ctx.modSesle("web"));
 
   for (const id of ["set-kick-channel", "set-kick-token"]) {
     $(id).addEventListener("change", async (event) => {
@@ -1230,20 +1333,7 @@ export function mountPanel(context) {
 
   /* -------------------------------------------------------- isletme -- */
 
-  $("set-business").addEventListener("click", async () => {
-    store.businessMode = !store.businessMode;
-    saveStore();
-    syncSettings();
-    if (store.businessMode) {
-      ctx.log(
-        "system",
-        "Isletme modu acildi. Musteri mesajlarinin hangi kaynaktan gelecegini " +
-          "secin; her kaynak icin gereken bilgileri ayri ayri isteyecegim.",
-      );
-      await renderSources();
-      await renderRules();
-    }
-  });
+  $("set-business").addEventListener("click", () => ctx.modSesle("isletme"));
 
   $("set-business-name").addEventListener("change", (event) => {
     store.businessName = event.target.value.trim();
@@ -1317,21 +1407,7 @@ export function mountPanel(context) {
 
   /* --------------------------------------------------------- youtube -- */
 
-  $("set-youtube").addEventListener("click", async () => {
-    store.youtubeMode = !store.youtubeMode;
-    saveStore();
-    syncSettings();
-    if (store.youtubeMode) {
-      ctx.log(
-        "system",
-        "YouTube modu acildi. Google Cloud'dan aldiginiz istemci bilgilerini " +
-          "girip «Kanali bagla» deyin.",
-      );
-      await pushYoutube();
-      renderVideos();
-    }
-    refreshYoutubeStatus();
-  });
+  $("set-youtube").addEventListener("click", () => ctx.modSesle("youtube"));
 
   for (const [id, alan] of [["set-yt-id", "ytClientId"], ["set-yt-secret", "ytClientSecret"]]) {
     $(id).addEventListener("change", async (event) => {
@@ -1424,15 +1500,7 @@ export function mountPanel(context) {
 
   /* ---------------------------------------------------------- montaj -- */
 
-  $("set-montage").addEventListener("click", async () => {
-    store.montageMode = !store.montageMode;
-    saveStore();
-    syncSettings();
-    if (store.montageMode) {
-      ctx.log("system", "Montaj modu acildi.");
-      await refreshMontageStatus();
-    }
-  });
+  $("set-montage").addEventListener("click", () => ctx.modSesle("montaj"));
 
   $("set-montage-template").addEventListener("change", (event) => {
     store.montageTemplate = event.target.value;
@@ -1482,23 +1550,7 @@ export function mountPanel(context) {
 
   /* --------------------------------------------------------- e-posta -- */
 
-  $("set-mail").addEventListener("click", () => {
-    store.mailMode = !store.mailMode;
-    saveStore();
-    syncSettings();
-    if (store.mailMode) {
-      ctx.log(
-        "system",
-        "E-posta raporu acildi. Gmail adresinizi ve UYGULAMA SIFRENIZI girin; " +
-          "sonra «mail var mi» diye sorabilirsiniz.",
-      );
-    } else {
-      // Kapatilinca sifreyi surecten de cekiyoruz.
-      system.configureMail("", "").catch(() => {});
-      ctx.log("system", "E-posta raporu kapatildi.");
-    }
-    refreshMailStatus();
-  });
+  $("set-mail").addEventListener("click", () => ctx.modSesle("eposta"));
 
   for (const id of ["set-google-key", "set-google-cx"]) {
     $(id).addEventListener("change", (event) => {
@@ -1532,8 +1584,10 @@ export function mountPanel(context) {
 
   for (const id of ["set-mail-user", "set-mail-pass"]) {
     $(id).addEventListener("change", async (event) => {
-      if (id === "set-mail-user") store.mailUser = event.target.value.trim();
+      if (id === "set-mail-user") store.mailUser = event.target.value.trim().toLowerCase();
       else store.mailPass = event.target.value.trim();
+      // Hesap ya da sifre degisti: eski giris artik gecerli degil.
+      store.gmailDogrulandi = "";
       saveStore();
       if (store.mailUser && store.mailPass) {
         try {
@@ -1560,15 +1614,29 @@ export function mountPanel(context) {
         $("mail-status").textContent = "Izin verilmedi";
         return;
       }
-      const ozet = `Baglanti tamam — ${sonuc.user}, kutuda ${sonuc.total} mesaj`;
+      const ozet = `Giris yapildi — ${sonuc.user}, kutuda ${sonuc.total} mesaj`;
+      store.gmailDogrulandi = store.mailUser;
+      saveStore();
+      refreshGmailStatus();
       $("mail-status").textContent = ozet;
       ctx.log("system", ozet);
-      ctx.toast("E-posta baglantisi calisiyor");
+      ctx.toast("Gmail girisi tamam");
     } catch (err) {
       $("mail-status").textContent = `Hata: ${err.message}`;
       ctx.log("system", `E-posta baglantisi kurulamadi: ${err.message}`);
       ctx.toast("E-posta baglantisi kurulamadi", 6000);
     }
+  });
+
+  $("gmail-logout").addEventListener("click", () => {
+    store.mailUser = "";
+    store.mailPass = "";
+    store.gmailDogrulandi = "";
+    saveStore();
+    system.configureMail("", "").catch(() => {});
+    syncSettings();
+    refreshMailStatus();
+    ctx.log("system", "Gmail hesabindan cikildi. Yeni hesabi yukaridan girebilirsiniz.");
   });
 
   /* ----------------------------------------------------------- piper -- */

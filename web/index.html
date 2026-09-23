@@ -172,6 +172,42 @@
             hicbir sey yapmaz, hicbir yere baglanmaz.
           </p>
 
+          <h3 class="pane__title">Sesli anahtarlar</h3>
+          <p class="nextalarm">
+            Her moda kendi sozcugunuzu verin. O sozcugu soyleyince (ya da
+            yazinca) mod acilir; bir daha soyleyince kapanir. &laquo;internet
+            ac&raquo;, &laquo;internet kapat&raquo; gibi de diyebilirsiniz.
+          </p>
+          <ul class="settings" id="mod-keys"></ul>
+
+          <h3 class="pane__title">Gmail hesabi</h3>
+          <ul class="settings">
+            <li class="settings__stack" id="gmail-account">
+              <p class="nextalarm" id="gmail-login-status">Giris yapilmadi</p>
+              <label for="set-mail-user">Gmail adresi</label>
+              <input id="set-mail-user" type="email" placeholder="ornek@gmail.com"
+                     autocomplete="off" maxlength="200" />
+              <label for="set-mail-pass">Uygulama sifresi</label>
+              <input id="set-mail-pass" type="password" placeholder="16 haneli uygulama sifresi"
+                     autocomplete="off" maxlength="100" />
+              <button class="btn btn--icon btn--wide btn--go" type="button" id="set-mail-test">
+                Giris yap
+              </button>
+              <button class="btn btn--icon btn--wide" type="button" id="gmail-logout">
+                Cikis yap / hesabi degistir
+              </button>
+              <p class="nextalarm" id="mail-status">Hesap girilmedi</p>
+              <small class="hint">
+                Tek giris: e-posta raporu da isletme modundaki Gmail kaynagi da
+                bu hesabi kullanir. Gmail sifrenizi DEGIL, Google'in verdigi
+                <strong>uygulama sifresini</strong> girin: Google Hesabi &rarr;
+                Guvenlik &rarr; Iki adimli dogrulama &rarr; Uygulama sifreleri.
+                Bosluklu gosterilir, bosluklariyla yapistirabilirsiniz.
+                Bilgiler yalnizca bu bilgisayarda kalir.
+              </small>
+            </li>
+          </ul>
+
           <h3 class="pane__title">Calisma modlari</h3>
           <ul class="settings">
             <li id="row-autostart" hidden>
@@ -191,12 +227,16 @@
               </small>
             </li>
 
+            <li>
+              <span>Web arastirmasi</span>
+              <button class="switch" type="button" id="set-web" role="switch" aria-checked="true"></button>
+            </li>
             <li class="settings__stack">
               <small class="hint">
-                <strong>Web arastirmasi her zaman acik.</strong> DRA bilmedigi
-                bir soruyu uydurmak yerine arastirir ve sonucu gorsellerle,
-                kaynak baglantilariyla birlikte gosterir. Kendiliginden
-                dolasmaz &mdash; yalnizca siz bir sey sordugunuzda arar.
+                <strong>Varsayilan acik.</strong> DRA bilmedigi bir soruyu
+                uydurmak yerine arastirir ve sonucu gorsellerle, kaynak
+                baglantilariyla birlikte gosterir. Kendiliginden dolasmaz
+                &mdash; yalnizca siz bir sey sordugunuzda arar.
               </small>
             </li>
 
@@ -242,23 +282,11 @@
               <button class="switch" type="button" id="set-mail" role="switch" aria-checked="false"></button>
             </li>
             <li class="settings__stack" id="mail-fields" hidden>
-              <label for="set-mail-user">Gmail adresi</label>
-              <input id="set-mail-user" type="email" placeholder="ornek@gmail.com"
-                     autocomplete="off" maxlength="200" />
-              <label for="set-mail-pass">Uygulama sifresi</label>
-              <input id="set-mail-pass" type="password" placeholder="16 haneli uygulama sifresi"
-                     autocomplete="off" maxlength="100" />
-              <button class="btn btn--icon btn--wide" type="button" id="set-mail-test">
-                Baglantiyi sina
-              </button>
-              <p class="nextalarm" id="mail-status">Hesap girilmedi</p>
+              <p class="nextalarm" id="mail-account-info">Gmail hesabi girilmedi</p>
               <small class="hint">
-                Buraya Gmail sifrenizi DEGIL, Google'in verdigi
-                <strong>uygulama sifresini</strong> girin: Google Hesabi &rarr;
-                Guvenlik &rarr; Iki adimli dogrulama &rarr; Uygulama sifreleri.
-                Bosluklu gosterilir, bosluklariyla yapistirabilirsiniz.
-                DRA yalnizca mesaj BASLIKLARINI okur &mdash; govde hic indirilmez.
-                Sifre bu bilgisayarda kalir.
+                Bu mod yukaridaki <strong>Gmail hesabi</strong> girisini
+                kullanir. DRA yalnizca mesaj BASLIKLARINI okur &mdash; govde
+                hic indirilmez.
               </small>
             </li>
 

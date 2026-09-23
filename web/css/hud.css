@@ -499,7 +499,10 @@
 }
 
 .settings select,
-.settings input[type="text"] {
+.settings input[type="text"],
+.settings input[type="password"],
+.settings input[type="email"],
+.settings input[type="datetime-local"] {
   width: 100%;
   padding: 6px 8px;
   background: var(--accent-ghost);
@@ -512,7 +515,10 @@
 }
 
 .settings select:focus,
-.settings input[type="text"]:focus {
+.settings input[type="text"]:focus,
+.settings input[type="password"]:focus,
+.settings input[type="email"]:focus,
+.settings input[type="datetime-local"]:focus {
   outline: none;
   border-color: var(--accent-soft);
 }

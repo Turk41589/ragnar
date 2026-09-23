@@ -308,6 +308,17 @@ export async function run(page, base, t, { external }) {
     "uygulama sifresi ekranda gizli yaziliyor",
   );
 
+  // Hesap yok: DRA sohbette ister. Yazilan adres sohbette kalmamali.
+  let sohbet = await readChat(page);
+  t.has(sohbet.at(-1).text, "Gmail adresinizi yazin", "hesap yoksa DRA sohbette istiyor");
+  await tell(page, "ben@gmail.com", 700);
+  sohbet = await readChat(page);
+  t.ok(!sohbet.some((m) => m.text.includes("ben@gmail.com")), "yazilan adres sohbette gorunmuyor");
+  t.ok(sohbet.some((m) => /Gmail adresi kaydedildi — sohbetten silindi/.test(m.text)), "yerine 'silindi' satiri var");
+  t.eq(await page.locator("#composer-input").getAttribute("type"), "password", "sifre sorulurken yazi kutusu gizli");
+  await tell(page, "iptal", 600);
+  t.eq(await page.locator("#composer-input").getAttribute("type"), "text", "iptalde yazi kutusu normale donuyor");
+
   await tell(page, "mail var mi", 1500);
   const mailYanit = (await readChat(page)).at(-1).text;
   t.has(mailYanit, "uygulama sifrenizi", "hesap yoksa ne yapilacagi soyleniyor");

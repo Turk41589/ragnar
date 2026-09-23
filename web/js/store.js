@@ -57,8 +57,15 @@ const DEFAULTS = {
   googleCx: "",
   // E-posta raporu: Gmail adresi + UYGULAMA SIFRESI (normal sifre degil).
   mailMode: false,
+  // TEK Gmail girisi: e-posta raporu da isletme modundaki Gmail kaynagi
+  // da bunu kullanir. `gmailDogrulandi`, sinanip giris yapilmis adres.
   mailUser: "",
   mailPass: "",
+  gmailDogrulandi: "",
+  // Web arastirmasi: varsayilan acik; sesli anahtarla kapatilabilir.
+  webMode: true,
+  // Her modun kullanicinin sectigi sesli anahtari: { web: "internet", … }
+  modAnahtarlari: {},
   // Montaj: kaynak klasoru, uslup projesi, kapak, muzik ve sablon.
   montageMode: false,
   montageClips: "",
@@ -125,6 +132,17 @@ function coerce(saved) {
   if (typeof saved.googleCx === "string") store.googleCx = saved.googleCx;
   if (typeof saved.mailUser === "string") store.mailUser = saved.mailUser.slice(0, 200);
   if (typeof saved.mailPass === "string") store.mailPass = saved.mailPass.slice(0, 100);
+  if (typeof saved.gmailDogrulandi === "string") {
+    store.gmailDogrulandi = saved.gmailDogrulandi.slice(0, 200);
+  }
+  if (typeof saved.webMode === "boolean") store.webMode = saved.webMode;
+  if (saved.modAnahtarlari && typeof saved.modAnahtarlari === "object") {
+    const temiz = {};
+    for (const [id, kelime] of Object.entries(saved.modAnahtarlari)) {
+      if (/^[a-z]{2,12}$/.test(id) && typeof kelime === "string") temiz[id] = kelime.slice(0, 40);
+    }
+    store.modAnahtarlari = temiz;
+  }
 
   if (typeof saved.montageMode === "boolean") store.montageMode = saved.montageMode;
   for (const k of ["montageClips", "montageProject", "montageImage", "montageMusic", "montageTitle"]) {
@@ -157,6 +175,18 @@ function coerce(saved) {
       }
     }
     store.sourceValues = temiz;
+  }
+
+  /*
+   * Gmail artik tek giris. Eskiden isletme modundaki Gmail kaynagi
+   * kendi adres/sifresini ayri tutuyordu; varsa ortak hesaba tasiyoruz
+   * ki kullanici ayni seyi iki kez girmesin.
+   */
+  const eskiGmail = store.sourceValues.gmail;
+  if (eskiGmail) {
+    if (!store.mailUser && eskiGmail.user) store.mailUser = eskiGmail.user;
+    if (!store.mailPass && eskiGmail.pass) store.mailPass = eskiGmail.pass;
+    delete store.sourceValues.gmail;
   }
 
   if (Number.isFinite(saved.speechRate)) {
@@ -217,6 +247,15 @@ export function loadStore() {
  * demek. Bir kez soyluyoruz — her tuş vurusunda degil.
  */
 let kaydetmeHatasi = null;
+/**
+ * Bir musteri kaynaginin bilgileri. Gmail kaynagi kendi bilgisini
+ * tutmuyor; ortak Gmail girisini kullaniyor.
+ */
+export function kaynakDegerleri(id) {
+  if (id === "gmail") return { user: store.mailUser, pass: store.mailPass };
+  return store.sourceValues[id] || {};
+}
+
 export const storeHealth = () => ({ saveError: kaydetmeHatasi });
 
 export function saveStore() {

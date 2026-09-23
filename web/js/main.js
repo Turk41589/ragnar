@@ -15,10 +15,13 @@ import { mountReactor, mountWave } from "./reactor.js";
 import {
   runCommand, normalize, suggestCommand, nearestCommand, vocabulary,
 } from "./commands.js";
-import { store, loadStore, saveStore } from "./store.js";
+import { store, loadStore, saveStore, kaynakDegerleri } from "./store.js";
 import * as panel from "./panel.js";
 import * as alarms from "./alarms.js";
 import * as system from "./system.js";
+import {
+  GMAIL_ALANLARI, modBul, eksikAlanlar, alanDegeri, anahtarBul, anahtarSozcukleri, iptalMi,
+} from "./modlar.js";
 
 /* ============================================================ ayarlar */
 
@@ -71,7 +74,11 @@ function rebuildWakeWords() {
  */
 function sesSozlugu() {
   if (!store.commandMode) return null;
-  return vocabulary([...BASE_WAKE_WORDS, ...EXACT_WAKE_WORDS, ...store.extraWakeWords]);
+  return vocabulary([
+    ...BASE_WAKE_WORDS, ...EXACT_WAKE_WORDS, ...store.extraWakeWords,
+    // Mod anahtarlari da duyulabilmeli; yoksa komut kipinde hic taninmaz.
+    ...anahtarSozcukleri(store.modAnahtarlari),
+  ]);
 }
 
 // Testler icin: arayuzde calisan gercek karari sorgulayabilmek adina.
@@ -243,6 +250,21 @@ async function handleUtterance(rawText) {
     return;
   }
 
+  /*
+   * DRA sohbette bir bilgi bekliyorsa (jeton, sifre) sesle gelen sozu
+   * ONA yazmiyoruz: sesle soylenen sifre hem odada duyulur hem de
+   * yaziya ceviren servise gider. Soylenen sozu sohbete de yazmiyoruz.
+   */
+  if (toplama) {
+    if (iptalMi(text)) {
+      await toplamayiBitir("Tamam, vazgectim. Bilgileri daha sonra Modlar sekmesinden de girebilirsiniz.");
+      return;
+    }
+    await respond("Guvenlik icin bu bilgiyi sesle degil, sohbete YAZARAK girin. Vazgecmek icin «iptal» deyin.");
+    dom.input.focus();
+    return;
+  }
+
   if (busy) return;
   busy = true;
   touch();
@@ -253,6 +275,14 @@ async function handleUtterance(rawText) {
     remember("user", text);
 
     setState(S.THINKING);
+
+    // Mod anahtari mi? ("internet", "web modunu kapat"…) Komutlardan
+    // once bakiliyor: anahtari kullanici kendisi secti.
+    const modIstegi = anahtarBul(text, store.modAnahtarlari);
+    if (modIstegi) {
+      await respond(await modAyarla(modIstegi.id, modIstegi.istek));
+      return;
+    }
 
     const local = await runCommand(text, ctx);
     if (local) {
@@ -285,6 +315,200 @@ async function handleUtterance(rawText) {
     busy = false;
     if (state.current !== S.SLEEPING) setState(S.IDLE);
   }
+}
+
+/* ============================================================ modlar */
+
+/**
+ * Sohbette bilgi toplama.
+ *
+ * Bir mod acildiginda calismak icin bilgi (hesap, jeton) istiyorsa ve
+ * bilgi girilmemisse DRA sohbette tek tek soruyor. Kullanicinin yazdigi
+ * deger sohbete HIC yazilmiyor: yerine "kaydedildi, sohbetten silindi"
+ * satiri dusuyor. Deger bu bilgisayarda, diger ayarlarin yaninda duruyor.
+ *
+ *   { baslik, alanlar, alan, deneme, bitince }
+ */
+let toplama = null;
+
+// Testler icin: bilgi toplama suruyor mu, hangi alan bekleniyor?
+if (typeof window !== "undefined") {
+  window.__draBilgiBekleniyor = () =>
+    toplama ? { baslik: toplama.baslik, alan: toplama.alan.anahtar } : null;
+}
+
+/** Yazi kutusunu gizli bilgi icin hazirlar (yazarken gorunmesin). */
+function kutuyuHazirla(gizli) {
+  dom.input.type = gizli ? "password" : "text";
+  dom.input.autocomplete = "off";
+  dom.input.placeholder = toplama ? `${toplama.alan.etiket} — yazin ya da «iptal»` : "";
+  if (!gizli && !toplama) dom.input.removeAttribute("placeholder");
+}
+
+function toplamaBaslat(baslik, alanlar, bitince) {
+  const eksik = alanlar.filter((a) => !String(store[a.anahtar] ?? "").trim());
+  if (!eksik.length) return null;
+  toplama = { baslik, alanlar, alan: eksik[0], deneme: 0, bitince };
+  kutuyuHazirla(eksik[0].gizli);
+  // Kullanici hemen yazabilsin.
+  setTimeout(() => dom.input.focus(), 0);
+  return eksik[0];
+}
+
+async function toplamayiBitir(mesaj) {
+  toplama = null;
+  kutuyuHazirla(false);
+  if (mesaj) await respond(mesaj);
+}
+
+/** Yazi kutusundan gelen cevap (bilgi toplanirken). */
+async function toplamaCevabi(ham) {
+  touch();
+  if (iptalMi(ham)) {
+    hud.log("user", ham);
+    await toplamayiBitir("Tamam, vazgectim. Bilgileri daha sonra Modlar sekmesinden de girebilirsiniz.");
+    return;
+  }
+
+  const t = toplama;
+  const alan = t.alan;
+  // Deger sohbete hic yazilmiyor; yalnizca ne oldugu.
+  const balon = hud.log("user", `🔒 ${alan.etiket} alindi`);
+
+  const { deger, hata } = alanDegeri(alan, ham);
+  if (hata) {
+    balon.textContent = `🔒 ${alan.etiket} — kabul edilmedi, sohbetten silindi`;
+    await respond(`${hata} Tekrar yazin ya da «iptal» deyin.`);
+    return;
+  }
+
+  store[alan.anahtar] = deger;
+  // Gmail bilgisi degisti: eski giris artik gecerli degil.
+  if (alan.anahtar === "mailUser" || alan.anahtar === "mailPass") store.gmailDogrulandi = "";
+  saveStore();
+  panel.syncSettings();
+  balon.textContent = `🔒 ${alan.etiket} kaydedildi — sohbetten silindi`;
+
+  const siradaki = t.alanlar.find((a) => !String(store[a.anahtar] ?? "").trim());
+  if (siradaki) {
+    t.alan = siradaki;
+    kutuyuHazirla(siradaki.gizli);
+    await respond(siradaki.soru);
+    return;
+  }
+
+  toplama = null;
+  kutuyuHazirla(false);
+  await respond(await t.bitince());
+}
+
+/**
+ * Gmail'e giris: adres + uygulama sifresiyle sunucuya baglanip sinar.
+ * Doner: { ok, mesaj }
+ */
+async function gmailGiris() {
+  try {
+    await system.configureMail(store.mailUser, store.mailPass);
+    const sonuc = await izinliCalis(() => system.mailTest());
+    if (!sonuc) {
+      return { ok: false, izinYok: true, mesaj: "Izin vermediginiz icin giris sinanamadi; bilgiler kaydedildi." };
+    }
+    store.gmailDogrulandi = store.mailUser;
+    saveStore();
+    panel.syncSettings();
+    // Adres sohbette tekrar yazilmiyor; hangi hesap oldugu Modlar'da gorunuyor.
+    return { ok: true, mesaj: "Gmail'e giris yapildi. Hesap Modlar sekmesinde gorunuyor." };
+  } catch (err) {
+    return { ok: false, mesaj: `Gmail'e giris yapilamadi: ${err.message}` };
+  }
+}
+
+/** Gmail girisi eksikse sohbette ister; bitince sinar. */
+function gmailIste(sonrasi = "") {
+  const ilk = toplamaBaslat("Gmail hesabi", GMAIL_ALANLARI, async () => {
+    const g = await gmailGiris();
+    if (g.ok || g.izinYok) return `${g.mesaj} ${sonrasi}`.trim();
+    // Yanlis sifre en sik hata: sifreyi silip bir kez daha soruyoruz.
+    store.mailPass = "";
+    saveStore();
+    panel.syncSettings();
+    const tekrar = toplamaBaslat("Gmail hesabi", GMAIL_ALANLARI, async () => {
+      const g2 = await gmailGiris();
+      return `${g2.mesaj} ${g2.ok ? sonrasi : "Modlar sekmesindeki Gmail hesabi bolumunden tekrar deneyebilirsiniz."}`.trim();
+    });
+    return `${g.mesaj} ${tekrar ? tekrar.soru : ""}`.trim();
+  });
+  return ilk;
+}
+
+/** Mod hazir olunca yapilacak is ve soylenecek cumle. */
+async function modHazir(mod) {
+  if (mod.id === "eposta") {
+    const g = await gmailGiris();
+    return g.ok ? `${g.mesaj} Artik «mail var mi» diyebilirsiniz.` : g.mesaj;
+  }
+  if (mod.id === "yayinci") {
+    try {
+      await system.configureKick(store.kickToken, store.kickChannel);
+      return "Yayinci destegi hazir. «ahmeti 10 dakika sustur» gibi komutlar verebilirsiniz.";
+    } catch (err) {
+      return `Bilgiler kaydedildi ama Kick'e baglanilamadi: ${err.message}`;
+    }
+  }
+  if (mod.id === "youtube") {
+    await panel.modSonrasi(mod.id, true);
+    return "Bilgiler kaydedildi. Kanali baglamak icin Modlar sekmesinde «Kanali bagla»ya basin.";
+  }
+  if (mod.id === "isletme") {
+    return "Isletme modu hazir. Musteri mesajlarinin nereden gelecegini Modlar sekmesinden secin.";
+  }
+  return `${mod.ad} hazir.`;
+}
+
+/**
+ * Bir modu acar/kapatir. Soylenecek cumleyi dondurur.
+ * istek: "ac" | "kapat" | "degistir"
+ */
+async function modAyarla(id, istek = "degistir") {
+  const mod = modBul(id);
+  if (!mod) return "Boyle bir mod yok.";
+
+  const acik = Boolean(store[mod.bayrak]);
+  const yeni = istek === "ac" ? true : istek === "kapat" ? false : !acik;
+  const anahtar = store.modAnahtarlari?.[mod.id];
+
+  if (yeni !== acik) {
+    store[mod.bayrak] = yeni;
+    saveStore();
+    await panel.modSonrasi(mod.id, yeni);
+  }
+
+  if (!yeni) {
+    if (toplama) {
+      toplama = null;
+      kutuyuHazirla(false);
+    }
+    return acik ? `${mod.ad} kapatildi.` : `${mod.ad} zaten kapali.`;
+  }
+
+  const eksik = eksikAlanlar(mod, store);
+  // Gmail bilgisi tam ama hic sinanmamissa e-posta modu acilirken giris dene.
+  if (!eksik.length) {
+    if (mod.hesap === "gmail" && store.gmailDogrulandi !== store.mailUser && yeni !== acik) {
+      return `${mod.ad} acildi. ${(await gmailGiris()).mesaj}`;
+    }
+    const ek = anahtar && yeni !== acik ? ` Kapatmak icin «${anahtar}» demeniz yeterli.` : "";
+    return acik ? `${mod.ad} zaten acik.` : `${mod.ad} acildi.${ek}`;
+  }
+
+  const ilk = mod.hesap === "gmail"
+    ? gmailIste("Artik «mail var mi» diyebilirsiniz.")
+    : toplamaBaslat(mod.ad, mod.alanlar, () => modHazir(mod));
+  return (
+    `${mod.ad} ${acik ? "acik" : "acildi"}. Calismasi icin ${eksik.length} bilgi lazim. ` +
+    "Sohbete yazin; aldiktan sonra sohbetten silip kendime kaydedecegim. " +
+    (ilk ? ilk.soru : "")
+  ).trim();
 }
 
 /* ============================================================ uyandirma */
@@ -403,6 +627,11 @@ async function wakeUp(spokenRest = "", { silent = false } = {}) {
 
 function goToSleep(farewell) {
   clearTimeout(autoSleepTimer);
+  // Yarim kalan bilgi toplama uykuda beklemesin; yazi kutusu normale donsun.
+  if (toplama) {
+    toplama = null;
+    kutuyuHazirla(false);
+  }
   speech.shutUp();
   setState(S.SLEEPING);
   hud.showSleep();
@@ -1403,7 +1632,7 @@ const ctx = {
       return "E-posta raporu kapali. Modlar sekmesinden acabilirsiniz.";
     }
     if (!store.mailUser || !store.mailPass) {
-      return "E-posta hesabi tanimli degil. Modlar sekmesinden Gmail adresinizi " +
+      return "E-posta hesabi tanimli degil. Modlar sekmesindeki Gmail hesabi bolumune Gmail adresinizi " +
         "ve uygulama sifrenizi girin.";
     }
     const ozet = await izinliCalis(async () => {
@@ -1479,6 +1708,11 @@ const ctx = {
    * dogrulamasini yapabilsin.
    */
   research: async (query) => {
+    if (!store.webMode) {
+      const a = store.modAnahtarlari?.web;
+      return "Web arastirmasi kapali. " +
+        (a ? `Acmak icin «${a}» deyin.` : "Acmak icin «web modunu ac» deyin ya da Modlar sekmesinden acin.");
+    }
     try {
       const sonuc = await system.richSearch(query, 4);
       return arastirmaSun(sonuc);
@@ -1532,7 +1766,7 @@ const ctx = {
     const sonuc = await izinliCalis(async () => {
       // Her acilista bilgileri yeniden bildiriyoruz; jetonlar surecte durmuyor.
       for (const id of store.sourcesOn) {
-        const degerler = store.sourceValues[id] || {};
+        const degerler = kaynakDegerleri(id);
         try {
           await system.sourceConfigure(id, degerler);
         } catch {
@@ -1686,6 +1920,26 @@ const ctx = {
       );
     }
   },
+
+  /** Modu acar/kapatir ve sonucu soyler (panel dugmeleri de bunu kullanir). */
+  modSesle: async (id, istek = "degistir") => {
+    const cevap = await modAyarla(id, istek);
+    await respond(cevap);
+    return cevap;
+  },
+
+  /** Gmail'e giris (panel "Giris yap" dugmesi). */
+  gmailGiris: () => gmailGiris(),
+
+  /** Gmail girisi yoksa sohbette ister. Soru sorulduysa true. */
+  gmailIste: async (sonrasi) => {
+    const ilk = gmailIste(sonrasi);
+    if (ilk) await respond(`Gmail hesabiniz tanimli degil. ${ilk.soru}`);
+    return Boolean(ilk);
+  },
+
+  /** Bilgi toplama suruyor mu? (testler ve panel icin) */
+  bilgiBekleniyor: () => (toplama ? { baslik: toplama.baslik, alan: toplama.alan.anahtar } : null),
 
   /**
    * Ses tanima saglayicisini uygular. ElevenLabs anahtari varsa ve
@@ -2020,6 +2274,11 @@ dom.composer.addEventListener("submit", (event) => {
   const text = dom.input.value.trim();
   if (!text) return;
   dom.input.value = "";
+  // DRA bir bilgi bekliyorsa yazilan komut degil, o bilgi.
+  if (toplama && state.current !== S.SLEEPING) {
+    toplamaCevabi(text).catch((err) => hud.log("error", err?.message || String(err)));
+    return;
+  }
   if (state.current === S.SLEEPING) {
     wakeUp(text);
     return;

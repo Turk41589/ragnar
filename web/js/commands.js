@@ -1425,6 +1425,16 @@ export function vocabulary(ekSozcukler = []) {
   return [...kume].sort();
 }
 
+/**
+ * Metin bir komutla eslesiyor mu? Eslesiyorsa kuralin adi, yoksa null.
+ * Sesli mod anahtari secilirken kullaniliyor: anahtar bir komutu
+ * golgelerse o komut bir daha calismaz.
+ */
+export function komutMu(rawText) {
+  const best = scoreRules(rawText, null)[0];
+  return best && best.score >= THRESHOLD ? best.rule.name : null;
+}
+
 export function explain(rawText, limit = 3, ctx = null) {
   return scoreRules(rawText, ctx)
     .slice(0, limit)

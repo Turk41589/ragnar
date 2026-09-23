@@ -419,6 +419,51 @@ yalnızca mutlak `http`/`https` sahneye giriyor.
 > Ses kapalıysa sahne, metnin okunacağı kadar süre ekranda kalıp
 > kapanıyor — açılır açılmaz kaybolmasın diye.
 
+## Modlar — sesli anahtarlar
+
+Her mod bir anahtar gibi çalışır. **Modlar** sekmesinin en üstünde her
+mod için bir kutu var; oraya kendi sözcüğünüzü yazın (ör. web için
+«internet»). Sonra:
+
+| Söylediğiniz / yazdığınız | Ne olur |
+|---|---|
+| `internet` | Web araştırması açıksa kapanır, kapalıysa açılır |
+| `internet aç` / `internet kapat` | Açar / kapatır |
+| `web modunu kapat`, `e-posta modunu aç` | Anahtar koymadan da çalışır |
+
+* Anahtar **cümlenin tamamı** olmalı: «internette kedi ara» web modunu
+  kapatmaz, «youtube aç» YouTube modunu değil YouTube'u açar.
+* Bir komutla çakışan sözcük («saat kaç» gibi) ve başka bir modun
+  anahtarı kabul edilmez; çakışsaydı o komut bir daha çalışmazdı.
+* Anahtarlar cihazdaki ses motorunun sözlüğüne de eklenir.
+
+### Eksik bilgiyi DRA sohbette ister
+
+Bir mod açıldığında çalışmak için bilgi gerekiyorsa (Kick jetonu,
+YouTube istemci bilgileri, işletme adı, Gmail) ve bu bilgi girilmemişse
+DRA **sohbette tek tek sorar**:
+
+* Yazdığınız değer **sohbete hiç yazılmaz**; yerine
+  `🔒 Kick erişim jetonu kaydedildi — sohbetten silindi` satırı düşer.
+  Değer bu bilgisayarda, diğer ayarların yanında saklanır.
+* Şifre/jeton sorulurken yazı kutusu gizli moda geçer (yazarken de
+  görünmez).
+* Bilgi beklenirken **sesle** söylenen hiçbir şey kaydedilmez ve sohbete
+  yazılmaz; DRA yazarak girmenizi ister. (Sesle söylenen şifre hem odada
+  duyulur hem de yazıya çeviren servise gider.)
+* Biçimi yanlış değer (16 harf olmayan uygulama şifresi, e-posta olmayan
+  adres) ağa gitmeden reddedilir. «iptal» ya da «vazgeç» her an durdurur;
+  DRA uyuyunca da yarım kalan soru iptal olur.
+
+### Gmail: tek giriş
+
+Gmail hesabı artık **tek bir giriş**: e-posta raporu da işletme
+modundaki Gmail kaynağı da aynı hesabı kullanır. Modlar → **Gmail
+hesabı** bölümünden giriş yapılır, **Çıkış yap / hesabı değiştir** ile
+değiştirilir. Giriş sırasında DRA gerçekten bağlanıp sınar; uygulama
+şifresi yanlışsa şifreyi saklamaz ve bir kez daha sorar. Önceden işletme
+modunda ayrı girilmiş bir Gmail varsa ortak hesaba kendiliğinden taşınır.
+
 ## Erişim izinleri
 
 DRA'nın bilgisayara ve hesaplara erişimi genişledikçe "her şeye erişebilir"
