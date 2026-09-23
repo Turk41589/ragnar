@@ -337,7 +337,12 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === "/api/stt/cloud/configure" && req.method === "POST") {
     return handleAction(req, res, async (body) => ({
-      status: sttBulut.configure({ key: body.key, model: body.model }),
+      // Tarayici surumunde Whisper'i baslatacak bir ana surec yok.
+      status: body.provider === "whisper"
+        ? (() => {
+          throw Object.assign(new Error("Whisper yalnizca uygulama surumunde calisir."), { code: "DESKTOP_ONLY" });
+        })()
+        : sttBulut.configure({ provider: body.provider || "elevenlabs", key: body.key, model: body.model }),
     }));
   }
 

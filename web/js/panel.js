@@ -293,8 +293,9 @@ export function syncSettings() {
 
   syncSwitch($("set-command-mode"), store.commandMode);
   $("set-stt").value = store.sttProvider;
-  $("row-stt-key").hidden = store.sttProvider !== "elevenlabs";
+  sttSatirlari();
   $("set-stt-key").value = store.elevenKey;
+  $("set-openai-key").value = store.openaiKey;
   refreshSttStatus();
   $("set-google-key").value = store.googleKey;
   $("set-google-cx").value = store.googleCx;
@@ -1092,6 +1093,18 @@ function refreshElevenStatus() {
   }
 }
 
+const STT_ADI = { elevenlabs: "ElevenLabs", openai: "OpenAI", whisper: "Whisper" };
+
+/** Secilen saglayiciya gore ilgili satirlari gosterir. */
+function sttSatirlari() {
+  const p = store.sttProvider;
+  $("row-stt-key").hidden = p !== "elevenlabs";
+  $("row-openai-key").hidden = p !== "openai";
+  $("row-whisper").hidden = p !== "whisper";
+  $("set-stt-test").hidden = p === "yerel";
+  if (p === "whisper") refreshWhisperStatus();
+}
+
 /** Yaziya ceviren motorun durumunu ayar panelinde gosterir. */
 function refreshSttStatus(ek) {
   const el = $("stt-status");
@@ -1101,17 +1114,64 @@ function refreshSttStatus(ek) {
     return;
   }
   const b = speech.bulutDurumu();
-  if (store.sttProvider === "yerel") {
-    el.textContent = "Cihazdaki model — hicbir ses disari gitmiyor";
-  } else if (!store.elevenKey) {
-    el.textContent = "Anahtar girilmedi — simdilik cihazdaki model kullaniliyor";
+  const p = store.sttProvider;
+  const ad = STT_ADI[p];
+  if (p === "yerel") {
+    el.textContent = "Yalnizca cihazdaki kucuk model — hicbir ses disari gitmiyor";
+  } else if (p === "elevenlabs" && !store.elevenKey) {
+    el.textContent = "Anahtar girilmedi — simdilik cihazdaki kucuk model kullaniliyor";
+  } else if (p === "openai" && !store.openaiKey) {
+    el.textContent = "Anahtar girilmedi — simdilik cihazdaki kucuk model kullaniliyor";
   } else if (b.arizada) {
-    el.textContent = `Gecici olarak cihazdaki model: ${b.sonHata || "ElevenLabs cevap vermedi"}`;
+    el.textContent = `Gecici olarak cihazdaki model: ${b.sonHata || `${ad} cevap vermedi`}`;
   } else if (b.hazir) {
-    el.textContent = "Hazir — DRA uyaninca cumleler ElevenLabs'e gidiyor";
+    el.textContent = p === "whisper"
+      ? "Hazir — cumleler bu bilgisayarda yaziya cevriliyor"
+      : `Hazir — DRA uyaninca cumleler ${ad}'e gidiyor`;
   } else {
-    el.textContent = "Ayarlar henuz bildirilmedi";
+    el.textContent = p === "whisper" ? "Whisper calismiyor — asagidan kurun" : "Ayarlar henuz bildirilmedi";
   }
+}
+
+/** Whisper'in kurulum/calisma durumu. */
+async function refreshWhisperStatus(ek) {
+  const el = $("whisper-status");
+  if (!el) return;
+  if (ek) {
+    el.textContent = ek;
+    return;
+  }
+  let d;
+  try {
+    d = await system.whisperStatus();
+  } catch (err) {
+    el.textContent = `Durum okunamadi: ${err.message}`;
+    return;
+  }
+  if (!d?.destekleniyor) {
+    el.textContent = "Whisper'in hazir programi yalnizca Windows uygulamasinda var.";
+    $("whisper-install").hidden = true;
+    return;
+  }
+  $("whisper-install").hidden = Boolean(d.kurulu) || Boolean(d.kuruluyor);
+  $("whisper-remove").hidden = !d.kurulu;
+  if (d.kuruluyor) el.textContent = "Kuruluyor…";
+  else if (!d.kurulu) el.textContent = "Kurulu degil";
+  else if (d.calisiyor) el.textContent = `Calisiyor — ${d.hizlandirma === "ekran karti" ? "ekran kartinda (hizli)" : "islemcide"}`;
+  else el.textContent = `Kurulu${d.ekranKarti ? " (ekran karti surumu dahil)" : ""} — calismiyor${d.sonHata ? `: ${d.sonHata}` : ""}`;
+}
+
+/** Saglayiciyi uygular; Whisper'da baslamasini bekler. */
+async function sttUygula() {
+  const whisper = store.sttProvider === "whisper";
+  if (whisper) refreshSttStatus("Whisper baslatiliyor… (model yukleniyor, yarim dakika surebilir)");
+  try {
+    await ctx.applySttProvider();
+    refreshSttStatus();
+  } catch (err) {
+    refreshSttStatus(`Calismiyor: ${err.message}`);
+  }
+  if (whisper) refreshWhisperStatus();
 }
 
 /* -------------------------------------------------------------- ses modeli */
@@ -1725,8 +1785,7 @@ export function mountPanel(context) {
     await pushEleven();
     // Ayni anahtar ses tanimada da kullaniliyor.
     $("set-stt-key").value = store.elevenKey;
-    await ctx.applySttProvider().catch(() => {});
-    refreshSttStatus();
+    if (store.sttProvider === "elevenlabs") await sttUygula();
     // Anahtar girilir girilmez sesleri getiriyoruz; kullanicinin ayrica
     // bir dugmeye basmasi gerekmesin. Yukleme basarisiz olursa sebebini
     // yazar — bunun uzerine durum tazelemek o sebebi silerdi.
@@ -1862,15 +1921,11 @@ export function mountPanel(context) {
   });
 
   $("set-stt").addEventListener("change", async (event) => {
-    store.sttProvider = event.target.value === "yerel" ? "yerel" : "elevenlabs";
+    const v = event.target.value;
+    store.sttProvider = ["elevenlabs", "openai", "whisper", "yerel"].includes(v) ? v : "elevenlabs";
     saveStore();
-    $("row-stt-key").hidden = store.sttProvider !== "elevenlabs";
-    try {
-      await ctx.applySttProvider();
-    } catch (err) {
-      ctx.toast(`Uygulanamadi: ${err.message}`, 5000);
-    }
-    refreshSttStatus();
+    sttSatirlari();
+    await sttUygula();
   });
 
   $("set-stt-key").addEventListener("change", async (event) => {
@@ -1879,21 +1934,64 @@ export function mountPanel(context) {
     $("set-eleven-key").value = store.elevenKey;
     speech.resetElevenCache();
     await pushEleven();
+    await sttUygula();
+  });
+
+  $("set-openai-key").addEventListener("change", async (event) => {
+    store.openaiKey = event.target.value.trim();
+    saveStore();
+    await sttUygula();
+  });
+
+  $("whisper-install").addEventListener("click", async () => {
+    const button = $("whisper-install");
+    button.disabled = true;
+    const ADIM = { program: "Program", "ekran karti": "Ekran karti surumu", model: "Model" };
+    ctx.log("system", "Whisper indiriliyor (yaklasik 580 MB, NVIDIA kart varsa +460 MB). Bu bir kerelik.");
     try {
-      await ctx.applySttProvider();
+      const d = await system.whisperInstall(({ adim, yuzde }) => {
+        refreshWhisperStatus(`${ADIM[adim] || adim} indiriliyor… %${yuzde}`);
+      });
+      for (const not of d?.notlar || []) ctx.log("system", not);
+      ctx.log("system", "Whisper kuruldu.");
+      await refreshWhisperStatus();
+      if (store.sttProvider === "whisper") await sttUygula();
     } catch (err) {
-      ctx.toast(`Uygulanamadi: ${err.message}`, 5000);
+      ctx.log("error", `Whisper kurulamadi: ${err.message}`);
+      refreshWhisperStatus(`Kurulamadi: ${err.message}`);
+    } finally {
+      button.disabled = false;
     }
-    refreshSttStatus();
+  });
+
+  $("whisper-pick-model").addEventListener("click", async () => {
+    try {
+      await system.whisperPickModel();
+      await refreshWhisperStatus();
+    } catch (err) {
+      refreshWhisperStatus(`Model kullanilamadi: ${err.message}`);
+    }
+  });
+
+  $("whisper-remove").addEventListener("click", async () => {
+    try {
+      await system.whisperRemove();
+      ctx.log("system", "Whisper kaldirildi. Yer acildi.");
+    } catch (err) {
+      ctx.toast(`Kaldirilamadi: ${err.message}`, 6000);
+    }
+    await sttUygula();
+    refreshWhisperStatus();
   });
 
   /*
-   * Yarim saniyelik sessizlik gonderir: anahtar gecerli mi, "Speech to
-   * Text" izni acik mi? Bos yazi donmesi basari demek.
+   * Yarim saniyelik sessizlik gonderir: anahtar gecerli mi, izin acik
+   * mi, Whisper cevap veriyor mu? Bos yazi donmesi basari demek.
    */
   $("set-stt-test").addEventListener("click", async () => {
     const button = $("set-stt-test");
-    if (!store.elevenKey) {
+    const p = store.sttProvider;
+    if ((p === "elevenlabs" && !store.elevenKey) || (p === "openai" && !store.openaiKey)) {
       refreshSttStatus("Once anahtari girin.");
       return;
     }
@@ -1901,12 +1999,16 @@ export function mountPanel(context) {
     refreshSttStatus("Sinaniyor…");
     try {
       await ctx.applySttProvider();
+      const bas = Date.now();
       const sonuc = await system.sttCloud(new Int16Array(8000));
-      refreshSttStatus(`Calisiyor — ElevenLabs ${sonuc?.seconds ?? 0.5} sn sesi cevirdi.`);
+      refreshSttStatus(
+        `Calisiyor — ${STT_ADI[p]} ${sonuc?.seconds ?? 0.5} sn sesi ${Date.now() - bas} ms'de cevirdi.`,
+      );
     } catch (err) {
       refreshSttStatus(`Calismiyor: ${err.message}`);
     } finally {
       button.disabled = false;
+      if (p === "whisper") refreshWhisperStatus();
     }
   });
 

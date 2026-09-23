@@ -176,7 +176,8 @@ contextBridge.exposeInMainWorld("dra", {
     inspect: () => call("dra:stt:inspect"),
     start: (grammar) => call("dra:stt:start", { grammar }),
     stop: () => call("dra:stt:stop"),
-    cloudConfigure: (key, model) => call("dra:stt:cloud:configure", { key, model }),
+    cloudConfigure: (provider, key, model) =>
+      call("dra:stt:cloud:configure", { provider, key, model }),
     cloud: (int16) =>
       call("dra:stt:cloud", {
         pcm: new Uint8Array(int16.buffer, int16.byteOffset, int16.byteLength),
@@ -200,6 +201,26 @@ contextBridge.exposeInMainWorld("dra", {
       const listener = (_e, data) => handler(data);
       ipcRenderer.on("dra:stt:progress", listener);
       return () => ipcRenderer.removeListener("dra:stt:progress", listener);
+    },
+  },
+
+  /** Whisper — bu bilgisayarda calisan ses tanima. */
+  whisper: {
+    status: () => call("dra:whisper:status"),
+    install: (ekranKarti) => call("dra:whisper:install", { ekranKarti }),
+    pickModel: () => call("dra:whisper:pick-model"),
+    remove: () => call("dra:whisper:remove"),
+    /** Indirme ilerlemesi: { adim, yuzde } */
+    onProgress: (handler) => {
+      const listener = (_e, data) => handler(data);
+      ipcRenderer.on("dra:whisper:progress", listener);
+      return () => ipcRenderer.removeListener("dra:whisper:progress", listener);
+    },
+    /** Sunucu beklenmedik sekilde kapanirsa. */
+    onEvent: (handler) => {
+      const listener = (_e, data) => handler(data);
+      ipcRenderer.on("dra:whisper:event", listener);
+      return () => ipcRenderer.removeListener("dra:whisper:event", listener);
     },
   },
 

@@ -583,12 +583,48 @@ export async function ttsSpeak(text) {
  * ElevenLabs'in konusmayi metne ceviren modelini ayarlar.
  * Anahtar burada birakilmaz: istegi ana surec/sunucu yapar.
  */
-export async function configureSttCloud(key, model) {
+export async function configureSttCloud(provider, key, model) {
   const data = desktop
-    ? await bridge(() => window.dra.stt.cloudConfigure(key, model))
-    : await post("/api/stt/cloud/configure", { key, model });
+    ? await bridge(() => window.dra.stt.cloudConfigure(provider, key, model))
+    : await post("/api/stt/cloud/configure", { provider, key, model });
   serverInfo.sttCloud = data.status;
   return data.status;
+}
+
+export const sttCloudInfo = () => serverInfo.sttCloud || null;
+
+/* -------------------------------------- whisper (bu bilgisayarda) ---- */
+
+const whisperYok = () => new Error("Whisper yalnizca uygulama surumunde calisir.");
+
+export async function whisperStatus() {
+  if (!desktop || !window.dra.whisper) return { destekleniyor: false };
+  return (await bridge(() => window.dra.whisper.status())).status;
+}
+
+export async function whisperInstall(onProgress, ekranKarti = "otomatik") {
+  if (!desktop || !window.dra.whisper) throw whisperYok();
+  const birak = onProgress ? window.dra.whisper.onProgress(onProgress) : null;
+  try {
+    return (await bridge(() => window.dra.whisper.install(ekranKarti))).status;
+  } finally {
+    birak?.();
+  }
+}
+
+export async function whisperPickModel() {
+  if (!desktop || !window.dra.whisper) throw whisperYok();
+  return (await bridge(() => window.dra.whisper.pickModel())).status;
+}
+
+export async function whisperRemove() {
+  if (!desktop || !window.dra.whisper) throw whisperYok();
+  return (await bridge(() => window.dra.whisper.remove())).status;
+}
+
+export function onWhisperEvent(fn) {
+  if (!desktop || !window.dra.whisper) return () => {};
+  return window.dra.whisper.onEvent(fn);
 }
 
 export const sttCloudReady = () => Boolean(serverInfo.sttCloud?.ready);

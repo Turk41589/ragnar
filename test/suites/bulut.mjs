@@ -253,9 +253,67 @@ export async function run(_page, _base, t) {
       e = err;
     }
     t.eq(e?.code, "NETWORK", "ulasilamayinca NETWORK kodu");
+
+    /* ---------------------------------------------------- OpenAI ---- */
+    stt._setEndpointForTests(adres);
+    istekler.length = 0;
+    const oa = stt.configure({ provider: "openai", key: "sk-openai-gizli" });
+    t.eq(oa.provider, "openai", "OpenAI secilebiliyor");
+    t.eq(oa.model, "gpt-4o-transcribe", "OpenAI varsayilan modeli gpt-4o-transcribe");
+    t.ok(!JSON.stringify(oa).includes("sk-openai"), "OpenAI anahtari durumda yok");
+    cevap = { status: 200, body: { text: "DRA, YouTube'u aç." } };
+    const oaSonuc = await stt.transcribe(ton(1));
+    t.eq(oaSonuc.text, "DRA, YouTube'u aç.", "OpenAI yazisi donuyor");
+    const oaIstek = istekler[0];
+    t.eq(oaIstek?.headers.authorization, "Bearer sk-openai-gizli", "OpenAI anahtari Bearer basliginda");
+    t.eq(oaIstek?.headers["xi-api-key"], undefined, "OpenAI'a ElevenLabs basligi gitmiyor");
+    t.eq(oaIstek?.form?.get("model"), "gpt-4o-transcribe", "OpenAI: model alani");
+    t.eq(oaIstek?.form?.get("language"), "tr", "OpenAI: dil Turkce");
+    t.ok(/DRA/.test(oaIstek?.form?.get("prompt") || ""), "OpenAI: 'DRA' ipucu veriliyor");
+    t.eq((await oaIstek?.form?.get("file")?.arrayBuffer())?.byteLength, 44 + 32000, "OpenAI: ses WAV olarak tam gitti");
+
+    e = await hataIcin(429, { error: { message: "You exceeded your current quota", type: "insufficient_quota", code: "insufficient_quota" } });
+    t.ok(/OpenAI hesabinizda bakiye/.test(e?.message || ""), "OpenAI bakiye bitince acikca soyleniyor");
+    e = await hataIcin(401, { error: { message: "Incorrect API key provided", code: "invalid_api_key" } });
+    t.ok(/OpenAI anahtari gecersiz/.test(e?.message || ""), "OpenAI yanlis anahtar");
+
+    stt.configure({ provider: "openai", key: "" });
+    istekler.length = 0;
+    e = null;
+    try {
+      await stt.transcribe(ton(1));
+    } catch (err) {
+      e = err;
+    }
+    t.eq(e?.code, "NO_KEY", "OpenAI anahtarsiz istek atmiyor");
+    t.eq(istekler.length, 0, "OpenAI anahtarsizken istek gitmiyor");
+
+    /* ------------------------------------------------ saglayici disi -- */
+    e = null;
+    try {
+      stt.configure({ provider: "baska" });
+    } catch (err) {
+      e = err;
+    }
+    t.eq(e?.code, "BAD_PROVIDER", "bilinmeyen saglayici reddediliyor");
+    e = null;
+    try {
+      stt.configure({ provider: "whisper" });
+      await stt.transcribe(ton(1));
+    } catch (err) {
+      e = err;
+    }
+    t.eq(e?.code, "NOT_READY", "Whisper baslamadan istek atilmiyor");
+
+    /* ---------------------------------------- Whisper hayaletleri ---- */
+    t.eq(stt.metniTemizle("Altyazı M.K."), "", "Whisper hayaleti: 'Altyazi M.K.' atiliyor");
+    t.eq(stt.metniTemizle("İzlediğiniz için teşekkürler."), "", "Whisper hayaleti: 'izlediginiz icin tesekkurler' atiliyor");
+    t.eq(stt.metniTemizle(stt.LIMITS.IPUCU), "", "ipucunun tamaminin tekrari atiliyor");
+    t.eq(stt.metniTemizle("DRA, saat kaç?"), "DRA, saat kaç?", "ipucuna benzeyen GERCEK komut atilmiyor");
+    t.eq(stt.metniTemizle("Teşekkürler DRA, alarmı kapat"), "Teşekkürler DRA, alarmı kapat", "'tesekkurler' ile baslayan komut atilmiyor");
   } finally {
     stt._setEndpointForTests(null);
-    stt.configure({ key: "" });
+    stt.configure({ provider: "elevenlabs", key: "" });
     await new Promise((r) => sunucu.close(r));
   }
 

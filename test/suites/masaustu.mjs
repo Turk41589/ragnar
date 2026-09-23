@@ -188,7 +188,7 @@ export async function run(_page, _base, t) {
       bridge.anahtarlar,
       ["apps", "autoreply", "business", "control", "desktop", "health", "kick", "mail",
        "messages", "montage", "on", "perm", "piper", "report", "search", "sources",
-       "stt", "tts", "version", "videos", "window", "youtube"],
+       "stt", "tts", "version", "videos", "whisper", "window", "youtube"],
       "kopru yalnizca beklenen yuzeyi aciyor",
     );
 
@@ -317,11 +317,11 @@ export async function run(_page, _base, t) {
     // cikmaz; anahtar durum yanitina hic yazilmaz.
     t.eq(health.sttCloud?.ready, false, "bulutta tanima baslangicta kapali");
     const bulut = await window.evaluate(async () => {
-      const ayar = await window.dra.stt.cloudConfigure("sk-masaustu-deneme");
+      const ayar = await window.dra.stt.cloudConfigure("elevenlabs", "sk-masaustu-deneme");
       // 0.1 sn: gonderilmeye degmeyecek kadar kisa, ag'a cikmadan doner.
       // Donen sure, kopruden gecen ornek sayisini kanitliyor.
       const kisa = await window.dra.stt.cloud(new Int16Array(1600));
-      await window.dra.stt.cloudConfigure("");
+      await window.dra.stt.cloudConfigure("elevenlabs", "");
       const sonuc = await window.dra.stt
         .cloud(new Int16Array(16000))
         .then(() => ({ code: "YOK" }), (e) => ({ code: e.code, message: e.message }));
@@ -331,6 +331,19 @@ export async function run(_page, _base, t) {
     t.ok(!bulut.ayar.includes("sk-masaustu"), "anahtar kopruden geri donmuyor");
     t.eq(bulut.kisa.seconds, 0.1, "ses kopruden ornek kaybetmeden geciyor");
     t.eq(bulut.sonuc.code, "NO_KEY", "anahtarsiz ses disari gitmiyor");
+
+    // Whisper: bu makine Windows degil; kopru durumu dogru soylemeli ve
+    // kurulmamis Whisper secilince acik bir hata donmeli.
+    const wd = await window.evaluate(async () => {
+      const durum = (await window.dra.whisper.status()).status;
+      const secim = await window.dra.stt
+        .cloudConfigure("whisper")
+        .then(() => ({ code: "YOK" }), (e) => ({ code: e.code, message: e.message }));
+      return { durum, secim };
+    });
+    t.eq(wd.durum.destekleniyor, process.platform === "win32", "Whisper destek durumu kopruden geliyor");
+    t.eq(wd.durum.kurulu, false, "Whisper kurulu degil");
+    t.eq(wd.secim.code, "NOT_INSTALLED", "kurulmamis Whisper secilince sebebi soyleniyor");
 
     // Bilgisayar kontrolu izin gerektiriyor.
     const izinsizKontrol = await window.evaluate(() =>

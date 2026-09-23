@@ -34,6 +34,8 @@ import * as messages from "../server/messages.mjs";
 import * as autoreply from "../server/autoreply.mjs";
 import * as business from "../server/business.mjs";
 import * as stt from "./speech-engine.mjs";
+import * as whisper from "./whisper-yerel.mjs";
+import { guvenliKok } from "./yol.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -686,9 +688,43 @@ function registerIpc() {
 
   /* ----------------------------------------- bulutta ses tanima ---- */
 
-  handle("dra:stt:cloud:configure", async ({ key, model }) => ({
-    status: sttBulut.configure({ key, model }),
+  handle("dra:stt:cloud:configure", async ({ provider = "elevenlabs", key, model }) => {
+    // Whisper bu bilgisayarda calisiyor: once sunucusunu baslatip yerel
+    // adresini veriyoruz. Baska saglayici secilince kapatiyoruz ki ekran
+    // karti ve bellek bosa dolmasin.
+    if (provider === "whisper") {
+      const adres = await whisper.baslat();
+      return { status: sttBulut.configure({ provider, adres }), whisper: await whisper.durum() };
+    }
+    whisper.durdur();
+    return { status: sttBulut.configure({ provider, key, model }) };
+  });
+
+  /* ------------------------------------------ whisper (bu bilgisayar) */
+
+  handle("dra:whisper:status", async () => ({ status: await whisper.durum() }));
+
+  handle("dra:whisper:install", async ({ ekranKarti = "otomatik" }) => ({
+    status: await whisper.kur({
+      ekranKarti,
+      onProgress: (p) => mainWindow?.webContents.send("dra:whisper:progress", p),
+    }),
   }));
+
+  // Indirme engellenirse: kullanici modeli tarayicidan indirip gosterir.
+  handle("dra:whisper:pick-model", async () => {
+    const sonuc = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openFile"],
+      filters: [{ name: "Whisper modeli", extensions: ["bin"] }],
+    });
+    if (sonuc.canceled) return { status: await whisper.durum() };
+    return { status: await whisper.modelSec(sonuc.filePaths[0]) };
+  });
+
+  handle("dra:whisper:remove", async () => {
+    sttBulut.configure({ provider: "elevenlabs" });
+    return { status: await whisper.kaldir() };
+  });
 
   // Ses baytlari burada metne donusur; anahtar arayuze hic gecmez.
   handle("dra:stt:cloud", async ({ pcm }) => await sttBulut.transcribe(pcm));
@@ -781,6 +817,17 @@ if (!app.requestSingleInstanceLock()) {
   app.on("second-instance", showWindow);
 
   app.whenReady().then(() => {
+    // Whisper'in klasoru: kullanici adinda Turkce harf varsa ASCII bir
+    // yere (whisper.cpp de Vosk gibi o yolu okuyamiyor).
+    whisper.ayarla({
+      kok: guvenliKok({
+        userData: app.getPath("userData"),
+        programData: process.env.ProgramData,
+        platform: process.platform,
+        alt: "whisper",
+      }),
+    });
+    whisper.onOlay((olay) => mainWindow?.webContents.send("dra:whisper:event", olay));
     setupPermissions();
     registerIpc();
 
@@ -811,5 +858,9 @@ if (!app.requestSingleInstanceLock()) {
     quitting = true;
   });
 
-  app.on("will-quit", () => globalShortcut.unregisterAll());
+  app.on("will-quit", () => {
+    globalShortcut.unregisterAll();
+    // Arka planda Whisper programi kalmasin.
+    whisper.durdur();
+  });
 }

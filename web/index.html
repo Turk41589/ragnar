@@ -511,23 +511,55 @@
               </small>
               <label for="set-stt">Yaziya ceviren</label>
               <select id="set-stt">
-                <option value="elevenlabs">ElevenLabs (WhatsApp gibi dogru)</option>
-                <option value="yerel">Cihazdaki model (internetsiz, zayif)</option>
+                <option value="elevenlabs">ElevenLabs (bulut, WhatsApp gibi dogru)</option>
+                <option value="openai">OpenAI (bulut, en dogru)</option>
+                <option value="whisper">Whisper — bu bilgisayarda (internetsiz, ucretsiz)</option>
+                <option value="yerel">Yalnizca kucuk model (zayif)</option>
               </select>
               <div id="row-stt-key">
                 <label for="set-stt-key">ElevenLabs anahtari</label>
                 <input id="set-stt-key" type="password" autocomplete="off" spellcheck="false"
                   placeholder="sk_…" />
-                <button class="btn btn--icon btn--wide" type="button" id="set-stt-test">
-                  ElevenLabs baglantisini sina
-                </button>
+                <small class="hint">
+                  Seslendirmedekiyle ayni anahtar; &laquo;Speech to Text&raquo;
+                  izni acik olmali (elevenlabs.io &rarr; API Keys).
+                </small>
               </div>
+              <div id="row-openai-key" hidden>
+                <label for="set-openai-key">OpenAI anahtari</label>
+                <input id="set-openai-key" type="password" autocomplete="off" spellcheck="false"
+                  placeholder="sk-…" />
+                <small class="hint">
+                  platform.openai.com &rarr; API keys. Kullandikca ucretlendirilir;
+                  hesapta bakiye olmali.
+                </small>
+              </div>
+              <div id="row-whisper" hidden>
+                <p class="nextalarm" id="whisper-status">Durum bilinmiyor</p>
+                <button class="btn btn--icon btn--wide btn--go" type="button" id="whisper-install">
+                  Whisper'i kur (~580 MB, bir kerelik)
+                </button>
+                <button class="btn btn--icon btn--wide" type="button" id="whisper-pick-model">
+                  Model dosyasi sec (elle indirdiyseniz)
+                </button>
+                <button class="btn btn--icon btn--wide btn--danger" type="button" id="whisper-remove">
+                  Whisper'i kaldir
+                </button>
+                <small class="hint">
+                  Ses hic disari cikmaz, internet gerekmez, ucret yok. NVIDIA
+                  ekran kartiniz varsa onu kullanan surum de kurulur (+460 MB) ve
+                  cumle neredeyse aninda yaziya doner; yoksa islemcide calisir,
+                  kisa bir komut birkac saniye surebilir.
+                </small>
+              </div>
+              <button class="btn btn--icon btn--wide" type="button" id="set-stt-test">
+                Yaziya ceviriciyi sina
+              </button>
               <p class="nextalarm" id="stt-status">—</p>
               <small class="hint">
-                Cihazdaki model yalnizca «DRA»yi bekler; uyurken hicbir ses
-                disari gitmez. DRA uyaninca soylediginiz cumleler ElevenLabs'e
-                gider ve yaziya oradan cevrilir. Anahtar seslendirmedekiyle
-                aynidir; anahtarin «Speech to Text» izni acik olmali.
+                Cihazdaki kucuk model yalnizca &laquo;DRA&raquo;yi bekler; uyurken
+                hicbir ses gonderilmez. DRA uyaninca soylediginiz cumleler
+                secilen yere gider ve yaziya orada cevrilir.
               </small>
               <div class="permrow">
                 <span>Komut kipi (daha dogru tanima)</span>

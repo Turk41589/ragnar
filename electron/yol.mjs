@@ -37,8 +37,8 @@ export const asciiDisi = (x) => /[^\x00-\x7F]/.test(String(x || ""));
  *
  * Girdiler disaridan aliniyor ki test edilebilsin.
  */
-export function guvenliKok({ userData, programData, platform }) {
-  const varsayilan = join(userData, "ses-modeli");
+export function guvenliKok({ userData, programData, platform, alt = "ses-modeli" }) {
+  const varsayilan = join(userData, alt);
   if (!asciiDisi(varsayilan)) return varsayilan;
 
   // Windows disinda UTF-8 yollar sorunsuz; degistirmeye gerek yok.
@@ -46,5 +46,5 @@ export function guvenliKok({ userData, programData, platform }) {
 
   // "C:\ProgramData" kullanici adi tasimaz.
   if (!programData || asciiDisi(programData)) return varsayilan;
-  return join(programData, "DRA", "ses-modeli");
+  return join(programData, "DRA", alt);
 }

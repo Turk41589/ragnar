@@ -173,10 +173,11 @@ function bulutArizasi(err) {
   // Ag kopmasi gecicidir; kisa sure sonra yeniden dene.
   const kalici = /^HTTP_(401|403|429)$/.test(err?.code || "") || err?.code === "NO_KEY";
   bulutArizaBitis = Date.now() + (kalici ? 10 * 60000 : 30000);
+  const ad = system.sttCloudInfo?.()?.name || "Yaziya ceviren";
   emit("stt", {
     status: "fallback",
     message:
-      `Bulutta ses tanima kullanilamadi (${err?.message || "bilinmeyen hata"}). ` +
+      `${ad} kullanilamadi (${err?.message || "bilinmeyen hata"}). ` +
       `${kalici ? "10 dakika" : "Yarim dakika"} cihazdaki motorla devam ediyorum.`,
   });
 }

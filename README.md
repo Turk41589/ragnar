@@ -137,17 +137,47 @@ masaüstü sürümü **iki motoru birlikte** kullanıyor:
   yazar ve bir süre cihazdaki modelle devam eder (ağ hatasında yarım
   dakika, anahtar/izin/kota sorununda 10 dakika).
 
-**Ayar:** Ayar → *Yazıya çeviren* → **ElevenLabs** (varsayılan). Anahtar,
-seslendirmede kullanılanla aynı. Yeni ElevenLabs anahtarları izin
-kapsamıyla oluşturuluyor; anahtarın **"Speech to Text"** izni açık
-olmalı (elevenlabs.io → API Keys). *ElevenLabs bağlantısını sına*
-yarım saniyelik sessizlik gönderip anahtarı ve izni doğrular.
+**Ayar → *Yazıya çeviren*** — dört seçenek:
 
-Anahtar yoksa ya da *Cihazdaki model* seçiliyse her şey eskisi gibi
+| Seçenek | Doğruluk | Ses nereye gider | Maliyet | Gereken |
+|---|---|---|---|---|
+| **ElevenLabs** (varsayılan) | Çok iyi | ElevenLabs | Kullandıkça | Seslendirmedeki anahtar; **"Speech to Text"** izni açık olmalı |
+| **OpenAI** (`gpt-4o-transcribe`) | En iyi | OpenAI | Kullandıkça | platform.openai.com anahtarı, hesapta bakiye |
+| **Whisper — bu bilgisayarda** | Çok iyi | **Hiçbir yere** | Ücretsiz | Bir kerelik ~580 MB indirme; Windows |
+| Yalnızca küçük model | Zayıf | Hiçbir yere | Ücretsiz | — |
+
+OpenAI ve Whisper'a "DRA" sözcüğü ipucu olarak veriliyor; model onu
+"dıra", "tra" diye yazmıyor.
+
+**Whisper (bu bilgisayarda).** "Kendi tanımamızı yapalım" isteğinin
+gerçekçi karşılığı: sıfırdan ses modeli eğitmek milyonlarca saatlik kayıt
+ister; Whisper açık kaynaklı, Türkçede çok iyi ve tamamen bilgisayarda
+çalışıyor. *Whisper'ı kur* düğmesi whisper.cpp'nin hazır Windows
+programını (sürüm v1.8.7) ve `large-v3-turbo` modelini indirir.
+
+* **NVIDIA ekran kartı varsa** onu kullanan sürüm de kurulur (+460 MB);
+  cümle neredeyse anında yazıya döner. Kart sürümü açılamazsa (eski
+  sürücü, CUDA hatası) DRA kendiliğinden işlemci sürümüne geçer ve
+  sebebini saklar.
+* Ekran kartı yoksa işlemcide çalışır: kısa bir komut birkaç saniye sürer.
+* Program yalnızca `127.0.0.1`'de dinler; başka bir makine ulaşamaz. DRA
+  kapanınca o da kapanır; beklenmedik kapanırsa DRA söyler ve küçük
+  modele döner.
+* Dosyalar, kullanıcı adında Türkçe harf varsa `C:\ProgramData\DRA\whisper`
+  altına kurulur (whisper.cpp de Vosk gibi o yolu okuyamıyor).
+* İndirme engellenirse modeli tarayıcıdan indirip *Model dosyası seç* ile
+  gösterebilirsiniz; dosya DRA'nın klasörüne kopyalanır.
+* Whisper sessizlikte bazen eğitim verisinden kalma cümleler yazıyor
+  ("Altyazı M.K.", "İzlediğiniz için teşekkürler"); bunlar komut sayılmıyor.
+
+*Yazıya çeviriciyi sına* yarım saniyelik sessizlik gönderip anahtarı,
+izni ya da Whisper'ın çalıştığını doğrular ve cevap süresini yazar.
+
+Anahtar yoksa ya da *Yalnızca küçük model* seçiliyse her şey eskisi gibi
 cihazda kalır.
 
 **Teşhis:** *Ne duyuyorsun? (30 sn)* artık iki motorun sonucunu yan yana
-yazar (`duydum (cihaz) → …` / `duydum (ElevenLabs) → …`). *Ses tanımayı
+yazar (`duydum (cihaz) → …` / `duydum (ElevenLabs/OpenAI/Whisper) → …`). *Ses tanımayı
 sına* ise buluta giden cümle sayısını, son cevap süresini ve son hatayı
 gösterir.
 

@@ -317,6 +317,13 @@ async function handleUtterance(rawText) {
   }
 }
 
+/** Secili yaziya ceviricinin okunur adi (teshis ekranlari icin). */
+function saglayiciAdi() {
+  return system.sttCloudInfo?.()?.name ||
+    { elevenlabs: "ElevenLabs", openai: "OpenAI", whisper: "Whisper" }[store.sttProvider] ||
+    "yaziya ceviren";
+}
+
 /* ============================================================ modlar */
 
 /**
@@ -701,6 +708,11 @@ on("segment", ({ status }) => {
     hud.setCaption("", "interim");
     setState(S.IDLE);
   }
+});
+
+// Whisper programi beklenmedik sekilde kapanirsa kullanici bilsin.
+system.onWhisperEvent?.((olay) => {
+  if (olay?.message) hud.log("error", `${olay.message} Cihazdaki kucuk modele donuldu.`);
 });
 
 on("stt", ({ message }) => {
@@ -1862,14 +1874,14 @@ const ctx = {
     if (bulut) {
       hud.log(
         "system",
-        "Iki motor birden dinliyor: «cihaz» uyandirma icin, «ElevenLabs» asil yazi icin. " +
+        `Iki motor birden dinliyor: «cihaz» uyandirma icin, «${saglayiciAdi()}» asil yazi icin. ` +
           "Ikisini karsilastirabilirsiniz.",
       );
     }
 
     const birak = speech.listenRaw(({ text, final, kaynak }) => {
       if (final) {
-        const etiket = kaynak === "bulut" ? "ElevenLabs" : "cihaz";
+        const etiket = kaynak === "bulut" ? saglayiciAdi() : "cihaz";
         duyulanlar.push(`${etiket}: ${text}`);
         hud.log("system", `duydum (${etiket}) → "${text}"`);
         sonAra = "";
@@ -1902,7 +1914,7 @@ const ctx = {
           heading: "Ortam",
           rows: [
             ["Komut kipi", store.commandMode ? `acik (${sozluk?.length || 0} sozcuk)` : "kapali"],
-            ["Yaziya ceviren", bulut ? "ElevenLabs (bulut)" : "cihazdaki model"],
+            ["Yaziya ceviren", bulut ? saglayiciAdi() : "cihazdaki model"],
             ["Ses yolu", yakalama.engine === "worklet" ? "ayri is parcaciginda" : String(yakalama.engine || "—")],
             ["Ornekleme", `${yakalama.contextRate || "—"} Hz`],
             ["Giden parca", String(yakalama.chunks || 0)],
@@ -1942,14 +1954,30 @@ const ctx = {
   bilgiBekleniyor: () => (toplama ? { baslik: toplama.baslik, alan: toplama.alan.anahtar } : null),
 
   /**
-   * Ses tanima saglayicisini uygular. ElevenLabs anahtari varsa ve
+   * Ses tanima saglayicisini uygular. Secilenin anahtari varsa ve
    * kullanici "yerel"e cekmediyse cumleler (uyandiktan sonra) oraya gider.
    * Anahtar ana surecte tutulmuyor; her acilista yeniden bildiriliyor.
    */
   applySttProvider: async () => {
-    const key = store.sttProvider === "elevenlabs" ? store.elevenKey : "";
-    const durum = await system.configureSttCloud(key);
-    speech.bulutuYenile();
+    const p = store.sttProvider;
+    let durum;
+    try {
+      if (p === "whisper") {
+        // Programi baslatip modeli yukluyor; islemcide yarim dakika surebilir.
+        durum = await system.configureSttCloud("whisper");
+      } else if (p === "openai") {
+        durum = await system.configureSttCloud("openai", store.openaiKey);
+      } else {
+        // "yerel" secilince anahtar verilmiyor: bulut hazir sayilmaz, Vosk kalir.
+        durum = await system.configureSttCloud("elevenlabs", p === "elevenlabs" ? store.elevenKey : "");
+      }
+    } catch (err) {
+      // Secilen calismadiysa bir onceki saglayici acik kalmasin.
+      await system.configureSttCloud("elevenlabs", "").catch(() => {});
+      throw err;
+    } finally {
+      speech.bulutuYenile();
+    }
     return durum;
   },
 
@@ -2032,12 +2060,12 @@ const ctx = {
       lines.push(
         `Yaziya ceviren: ${
           b.aktif
-            ? "ElevenLabs (DRA uyaninca)"
+            ? `${saglayiciAdi()} (DRA uyaninca)`
             : b.arizada
-              ? "ElevenLabs ARIZALI — gecici olarak cihazdaki model"
+              ? `${saglayiciAdi()} ARIZALI — gecici olarak cihazdaki model`
               : store.sttProvider === "yerel"
                 ? "cihazdaki model (ayardan secildi)"
-                : "cihazdaki model (ElevenLabs anahtari yok)"
+                : `cihazdaki model (${saglayiciAdi()} hazir degil)`
         }`,
       );
       if (b.gonderilen) {
@@ -2212,10 +2240,19 @@ async function connectServer() {
       await system.configureTts(store.elevenKey, store.elevenVoice, store.elevenModel);
     }
     // Ses tanima da ayni anahtari kullaniyor (seslendirme secili olmasa bile).
-    // Basarisiz olursa sunucu baglantisi kopmus sayilmasin; yerel motor calisir.
-    await ctx.applySttProvider().catch((err) =>
-      console.warn("[dra] ses tanima ayari bildirilemedi:", err?.message || err),
-    );
+    // Beklemiyoruz: Whisper secildiyse modelin yuklenmesi yarim dakika
+    // surebilir, acilis onu beklememeli. Basarisiz olursa kullanici
+    // bilsin; o arada cihazdaki kucuk model calisir.
+    ctx.applySttProvider()
+      .then(() => panel.syncSettings())
+      .catch((err) => {
+        hud.log(
+          "system",
+          `Yaziya ceviren hazirlanamadi: ${err?.message || err} ` +
+            "Simdilik cihazdaki kucuk model kullaniliyor.",
+        );
+        panel.syncSettings();
+      });
     // Google arama anahtari da ayni sekilde: diskte yalnizca bu
     // tarayicida durur, arka tarafa her acilista bildirilir.
     if (store.googleKey && store.googleCx) {

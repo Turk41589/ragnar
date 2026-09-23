@@ -90,7 +90,7 @@ export async function run(page, base, t) {
     store.sttProvider = "elevenlabs";
     store.elevenKey = "sk-akis-testi";
     saveStore();
-    const d = await system.configureSttCloud(store.elevenKey);
+    const d = await system.configureSttCloud("elevenlabs", store.elevenKey);
     return { ready: d.ready, keyGorunuyor: JSON.stringify(d).includes("sk-akis"), aktif: sp.bulutAktif() };
   });
   t.ok(hazir.ready, "anahtar bildirilince bulut hazir");
@@ -189,9 +189,46 @@ export async function run(page, base, t) {
   });
   t.ok(!yerel, "'Cihazdaki model' secilince bulut devre disi");
 
+  /* ------------------------------------- saglayici secimi (ayar) ---- */
+  await page.click('.tab[data-tab="ayar"]');
+  await page.waitForTimeout(250);
+  const satir = async () => ({
+    eleven: await page.locator("#row-stt-key").isVisible(),
+    openai: await page.locator("#row-openai-key").isVisible(),
+    whisper: await page.locator("#row-whisper").isVisible(),
+  });
+
+  await page.selectOption("#set-stt", "openai");
+  await page.waitForTimeout(400);
+  t.eq(await satir(), { eleven: false, openai: true, whisper: false }, "OpenAI secilince yalnizca onun anahtari soruluyor");
+  t.has(await page.textContent("#stt-status"), "Anahtar girilmedi", "OpenAI anahtari yokken kucuk modelde kaliyor");
+  await page.fill("#set-openai-key", "sk-openai-akis");
+  await page.dispatchEvent("#set-openai-key", "change");
+  await page.waitForTimeout(500);
+  const oa = await page.evaluate(async () => {
+    const system = await import("/js/system.js");
+    const sp = await import("/js/speech.js");
+    return { bilgi: system.sttCloudInfo(), aktif: sp.bulutAktif() };
+  });
+  t.eq(oa.bilgi?.provider, "openai", "OpenAI anahtari girilince saglayici OpenAI");
+  t.ok(oa.aktif, "OpenAI ile cumleler gonderilebilir durumda");
+  t.ok(!JSON.stringify(oa.bilgi).includes("sk-openai"), "OpenAI anahtari arayuze geri donmuyor");
+
+  await page.selectOption("#set-stt", "whisper");
+  await page.waitForTimeout(700);
+  t.eq(await satir(), { eleven: false, openai: false, whisper: true }, "Whisper secilince kurulum bolumu gorunuyor");
+  t.has(await page.textContent("#whisper-status"), "yalnizca Windows uygulamasinda", "tarayicida Whisper'in olmadigi soyleniyor");
+  t.has(await page.textContent("#stt-status"), "Calismiyor", "Whisper baslamayinca sebebi yaziyor");
+  t.ok(!(await page.evaluate(async () => (await import("/js/speech.js")).bulutAktif())),
+    "Whisper baslamayinca onceki saglayici (OpenAI) acik kalmiyor");
+
+  await page.selectOption("#set-stt", "elevenlabs");
+  await page.waitForTimeout(500);
+  t.eq(await satir(), { eleven: true, openai: false, whisper: false }, "ElevenLabs'a donulebiliyor");
+
   // Sunucudaki anahtari temizle; sonraki paketler etkilenmesin.
   await page.evaluate(async () => {
     const system = await import("/js/system.js");
-    await system.configureSttCloud("");
+    await system.configureSttCloud("elevenlabs", "");
   });
 }
