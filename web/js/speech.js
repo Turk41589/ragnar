@@ -11,6 +11,7 @@ import { emit, state } from "./state.js";
 import { store } from "./store.js";
 import { startCapture, stopCapture, capturing, captureHealth } from "./mic-capture.js";
 import * as system from "./system.js";
+import { kesiciOlustur } from "./kesici.js";
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -103,6 +104,184 @@ export function listenRaw(handler) {
 
 export const rawListening = () => Boolean(hamDinleyici);
 
+/* ------------------------------------------------ bulutta tanima */
+
+/**
+ * Hibrit tanima.
+ *
+ * Cihazdaki Vosk modeli kucuk; "dra"yi "bira", "uyan"i "ayi" diye
+ * duyuyor. WhatsApp'taki gibi dogru yazi ancak buyuk bir modelle
+ * mumkun. Bu yuzden isler ikiye bolundu:
+ *
+ *   - Vosk cihazda kaliyor ve YALNIZCA uyandirma sozcugunu bekliyor.
+ *     Uyurken hicbir ses disari gitmiyor.
+ *   - Kesici sesi cumlelere boluyor. DRA uyaniksa (ya da cumlenin
+ *     icinde "DRA" duyulduysa) o cumle ElevenLabs'e gidiyor ve oradan
+ *     gelen yazi komut olarak isleniyor.
+ *
+ * Bulut hata verirse (internet yok, kota bitti) DRA susmuyor: bir
+ * sureligine eski yola, Vosk'un kendi sonucuna donuyor.
+ */
+const kesici = kesiciOlustur();
+
+/** main.js'in durum bilgisi; speech.js uygulama durumunu bilmiyor. */
+let kancalar = {
+  uyanik: () => false,
+  mesgul: () => false,
+  uyandirirMi: () => false,
+};
+
+export function bulutaBagla(yeni = {}) {
+  kancalar = { ...kancalar, ...yeni };
+}
+
+/** Vosk'un bu cumlede duydugu uyandirma sozu (varsa). */
+let sonUyandirma = { metin: null, at: 0 };
+/** Su an suren cumle ne zaman basladi? */
+let parcaBasi = 0;
+/** Cumleler sirayla gitsin; ikincinin yazisi birinciden once gelmesin. */
+let bulutKuyrugu = Promise.resolve();
+/** Bulut arizaliysa bu ana kadar Vosk'un kendi sonucu kullaniliyor. */
+let bulutArizaBitis = 0;
+const bulutSayac = { gonderilen: 0, basarili: 0, hata: 0, sonHata: null, sonMetin: null, sonSureMs: 0 };
+
+/** Bulut secili ve anahtari verilmis mi? (Ariza penceresine bakmaz.) */
+export function bulutHazir() {
+  return embedded && store.sttProvider !== "yerel" && system.sttCloudReady();
+}
+
+/** Su an cumleler buluta mi gidiyor? */
+export function bulutAktif() {
+  return bulutHazir() && Date.now() >= bulutArizaBitis;
+}
+
+export const bulutDurumu = () => ({
+  hazir: bulutHazir(),
+  aktif: bulutAktif(),
+  arizada: Date.now() < bulutArizaBitis,
+  ...bulutSayac,
+});
+
+/** Ayar degisince (yeni anahtar) ariza beklemesi sifirlansin. */
+export function bulutuYenile() {
+  bulutArizaBitis = 0;
+  bulutSayac.sonHata = null;
+}
+
+function bulutArizasi(err) {
+  // Anahtar, izin, kota sorunlari kendiliginden gecmez; uzun sure bekle.
+  // Ag kopmasi gecicidir; kisa sure sonra yeniden dene.
+  const kalici = /^HTTP_(401|403|429)$/.test(err?.code || "") || err?.code === "NO_KEY";
+  bulutArizaBitis = Date.now() + (kalici ? 10 * 60000 : 30000);
+  emit("stt", {
+    status: "fallback",
+    message:
+      `Bulutta ses tanima kullanilamadi (${err?.message || "bilinmeyen hata"}). ` +
+      `${kalici ? "10 dakika" : "Yarim dakika"} cihazdaki motorla devam ediyorum.`,
+  });
+}
+
+function yayinla(text, ek = {}) {
+  lastResultAt = Date.now();
+  stats.results += 1;
+  emit("heard", { text, alternatives: [text], final: true, confidence: 1, ...ek });
+}
+
+/** Mikrofondan gelen her parca buradan da gecer. (Testler de buradan besler.) */
+export function bulutBesle(pcm) {
+  const ham = Boolean(hamDinleyici) && bulutHazir();
+  if (!bulutAktif() && !ham) {
+    kesici.sifirla();
+    return;
+  }
+  // DRA konusurken kendi sesini cumle sanmasin.
+  if (Date.now() < deafUntil) {
+    kesici.sifirla();
+    return;
+  }
+
+  for (const olay of kesici.besle(pcm)) {
+    if (olay.type === "basla") {
+      parcaBasi = Date.now();
+      if (!ham && kancalar.uyanik() && !kancalar.mesgul()) emit("segment", { status: "dinliyor" });
+    } else if (olay.type === "bitti") {
+      parcaBitti(olay.pcm, parcaBasi);
+    } else if (olay.type === "atildi") {
+      emit("segment", { status: "bos" });
+    }
+  }
+}
+
+function parcaBitti(pcm, bas) {
+  // Kesici cumlenin basina ~0.6 sn onceki sesi de ekliyor; Vosk'un
+  // uyandirma sonucu o aralikta da gelmis olabilir.
+  const uyandirmaVar = () => sonUyandirma.at >= bas - 1500;
+
+  const karar = () => {
+    const ham = Boolean(hamDinleyici);
+    const uyanik = kancalar.uyanik();
+    const uyandirma = !uyanik && uyandirmaVar();
+
+    if (!ham) {
+      // Uyurken, DRA denmemis bir cumle disari GITMEZ.
+      if (!uyanik && !uyandirma) return;
+      if (uyanik && kancalar.mesgul()) {
+        emit("segment", { status: "bos" });
+        return;
+      }
+    }
+
+    const voskMetni = uyandirma ? sonUyandirma.metin : null;
+    if (uyandirma) sonUyandirma = { metin: null, at: 0 };
+    bulutKuyrugu = bulutKuyrugu
+      .then(() => bulutaGonder(pcm, { uyandirma, voskMetni, ham }))
+      .catch((err) => console.warn("[dra] bulut kuyrugu:", err?.message || err));
+  };
+
+  // Vosk'un kesin sonucu cumle bittikten biraz sonra gelebiliyor.
+  // Uyurken ve henuz "DRA" duyulmamissa kararı kisa bir sure erteliyoruz.
+  if (!hamDinleyici && !kancalar.uyanik() && !uyandirmaVar()) setTimeout(karar, 700);
+  else karar();
+}
+
+async function bulutaGonder(pcm, { uyandirma, voskMetni, ham }) {
+  if (!ham && kancalar.uyanik()) emit("segment", { status: "cozuluyor" });
+
+  const bas = Date.now();
+  bulutSayac.gonderilen += 1;
+  let metin = "";
+  try {
+    const sonuc = await system.sttCloud(pcm);
+    metin = String(sonuc?.text || "").trim();
+    bulutSayac.basarili += 1;
+    bulutSayac.sonSureMs = Date.now() - bas;
+    bulutSayac.sonMetin = metin;
+  } catch (err) {
+    bulutSayac.hata += 1;
+    bulutSayac.sonHata = err?.message || String(err);
+    if (ham) {
+      hamDinleyici?.({ text: `(bulut hatasi: ${bulutSayac.sonHata})`, final: true, kaynak: "bulut" });
+      return;
+    }
+    bulutArizasi(err);
+    // Bulut cevap vermese de "DRA" denmisse uyanmali.
+    if (uyandirma && voskMetni) yayinla(voskMetni, { uyandirma: true });
+    else emit("segment", { status: "bos" });
+    return;
+  }
+
+  if (ham) {
+    if (metin) hamDinleyici?.({ text: metin, final: true, kaynak: "bulut" });
+    return;
+  }
+  if (!metin) {
+    if (uyandirma && voskMetni) yayinla(voskMetni, { uyandirma: true });
+    else emit("segment", { status: "bos" });
+    return;
+  }
+  yayinla(metin, { uyandirma, bulut: true });
+}
+
 export function handleRecognitionResult({ partial, final }) {
   if (Date.now() < deafUntil) return false;
   const text = (final || partial || "").trim();
@@ -116,7 +295,19 @@ export function handleRecognitionResult({ partial, final }) {
    * Amac motorun ciktisini tarafsiz gormek.
    */
   if (hamDinleyici) {
-    hamDinleyici({ text, final: Boolean(final) });
+    hamDinleyici({ text, final: Boolean(final), kaynak: "yerel" });
+    return true;
+  }
+
+  /*
+   * Bulut aciksa Vosk'un metni komut olarak KULLANILMIYOR; yalnizca
+   * "DRA dendi mi?" sorusuna cevap veriyor. Asil yazi cumle bitince
+   * buluttan gelecek.
+   */
+  if (bulutAktif()) {
+    if (!kancalar.uyanik() && kancalar.uyandirirMi(text)) {
+      sonUyandirma = { metin: text, at: Date.now() };
+    }
     return true;
   }
 
@@ -188,6 +379,8 @@ async function startEmbedded(dilbilgisi) {
 
   // startCapture artik sebebi tasiyan bir hata atiyor; yutmuyoruz.
   await startCapture((pcm) => {
+    // Kesici kendi kopyasini aliyor; once ona veriyoruz.
+    bulutBesle(pcm);
     // Kopyanin sahibi IPC oldugu icin altta yatan tamponu gonderiyoruz.
     window.dra.stt.feed(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
   });
@@ -223,6 +416,7 @@ export async function setEmbeddedGrammar(words) {
 
 function stopEmbedded() {
   stopCapture();
+  kesici.sifirla();
   window.dra?.stt?.stop?.();
   embeddedRunning = false;
   stats.ends += 1;

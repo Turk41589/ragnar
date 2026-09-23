@@ -481,6 +481,26 @@
                 sohbete yazar, hicbir komut calismaz. Yanlis anlamalarin
                 sebebini ancak bu ciktiyi gorerek bulabiliriz.
               </small>
+              <label for="set-stt">Yaziya ceviren</label>
+              <select id="set-stt">
+                <option value="elevenlabs">ElevenLabs (WhatsApp gibi dogru)</option>
+                <option value="yerel">Cihazdaki model (internetsiz, zayif)</option>
+              </select>
+              <div id="row-stt-key">
+                <label for="set-stt-key">ElevenLabs anahtari</label>
+                <input id="set-stt-key" type="password" autocomplete="off" spellcheck="false"
+                  placeholder="sk_…" />
+                <button class="btn btn--icon btn--wide" type="button" id="set-stt-test">
+                  ElevenLabs baglantisini sina
+                </button>
+              </div>
+              <p class="nextalarm" id="stt-status">—</p>
+              <small class="hint">
+                Cihazdaki model yalnizca «DRA»yi bekler; uyurken hicbir ses
+                disari gitmez. DRA uyaninca soylediginiz cumleler ElevenLabs'e
+                gider ve yaziya oradan cevrilir. Anahtar seslendirmedekiyle
+                aynidir; anahtarin «Speech to Text» izni acik olmali.
+              </small>
               <div class="permrow">
                 <span>Komut kipi (daha dogru tanima)</span>
                 <button class="switch" type="button" id="set-command-mode" role="switch" aria-checked="true"></button>

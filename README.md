@@ -113,6 +113,44 @@ rozetin `cihazda` yazdığını doğrulayın.
 yenileyin. Tüm istekler `localhost:4173`'e olmalı, başka hiçbir alan adı
 görünmemeli.
 
+### WhatsApp gibi doğru yazı: ElevenLabs ile tanıma
+
+Cihazdaki model küçük; ne kadar ayarlanırsa ayarlansın "dra"yı "bira",
+"uyan"ı "ayı" diye duyabiliyor. WhatsApp'ın ya da telefonların sesle
+yazması çok büyük modellerle çalışıyor. Aynı kaliteye ulaşmak için
+masaüstü sürümü **iki motoru birlikte** kullanıyor:
+
+| | Ne yapar | Ses nereye gider |
+|---|---|---|
+| Cihazdaki model (Vosk) | Yalnızca **"DRA"**yı bekler | Hiçbir yere — cihazda kalır |
+| ElevenLabs (Scribe) | DRA uyandıktan sonraki cümleleri yazıya çevirir | ElevenLabs'e, **cümle cümle** |
+
+* **Uyurken hiçbir ses dışarı gitmez.** Yalnızca içinde "DRA" duyulan
+  cümle gönderilir; "DRA, saat kaç?" tek nefeste söylenirse komut da
+  doğru yazıyla çalışır.
+* Ses sürekli akıtılmaz: **konuşma kesici** sesin enerjisinden cümlenin
+  başını ve sonunu bulur, yalnızca konuşulan kısım gider. Oda gürültüsü
+  (vantilatör, klima) birkaç saniyede ölçülüp eşik ona göre ayarlanır.
+* DRA konuşurken ya da bir işle meşgulken cümle gönderilmez (kota boşa
+  gitmez).
+* **İnternet koparsa ya da kota biterse DRA susmaz**: sebebini sohbete
+  yazar ve bir süre cihazdaki modelle devam eder (ağ hatasında yarım
+  dakika, anahtar/izin/kota sorununda 10 dakika).
+
+**Ayar:** Ayar → *Yazıya çeviren* → **ElevenLabs** (varsayılan). Anahtar,
+seslendirmede kullanılanla aynı. Yeni ElevenLabs anahtarları izin
+kapsamıyla oluşturuluyor; anahtarın **"Speech to Text"** izni açık
+olmalı (elevenlabs.io → API Keys). *ElevenLabs bağlantısını sına*
+yarım saniyelik sessizlik gönderip anahtarı ve izni doğrular.
+
+Anahtar yoksa ya da *Cihazdaki model* seçiliyse her şey eskisi gibi
+cihazda kalır.
+
+**Teşhis:** *Ne duyuyorsun? (30 sn)* artık iki motorun sonucunu yan yana
+yazar (`duydum (cihaz) → …` / `duydum (ElevenLabs) → …`). *Ses tanımayı
+sına* ise buluta giden cümle sayısını, son cevap süresini ve son hatayı
+gösterir.
+
 ### Komut kipi — doğru tanımanın anahtarı
 
 Gömülü model (`vosk-model-small-tr-0.3`) yaklaşık 45 MB. Serbest

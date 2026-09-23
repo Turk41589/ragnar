@@ -291,7 +291,8 @@ async function handleUtterance(rawText) {
 
 /** Duyulan metin uyandirma kelimesini iceriyor mu? */
 function isWakePhrase(text) {
-  const n = normalize(text);
+  // Bulut yazisi noktalama koyuyor: "Dra, saat kac?" ya da "D.R.A."
+  const n = normalize(text).replace(/\./g, "").replace(/,/g, " ").replace(/\s+/g, " ").trim();
   if (!n) return false;
   if (wakeWords.has(n)) return true;
 
@@ -317,9 +318,25 @@ if (typeof window !== "undefined") window.__draUyandirirMi = isWakePhrase;
 /** Komuttan bas taraftaki uyandirma kelimesini temizler. */
 function stripWakeWord(text) {
   return text
-    .replace(/^\s*(hey|ey|hay)?\s*(dra|dara|dira|dera|tra|bira|bra|dura|tura)\b[\s,.:!?]*/i, "")
+    .replace(
+      /^\s*((hey|ey|hay)[\s,.!]*)?(d\.?\s?r\.?\s?a\.?|dara|d[iı]ra|dera|tra|t[iı]ra|bira|bra|dura|tura)(?![a-zçğıöşü])[\s,.:!?]*(uyan(?![a-zçğıöşü])[\s,.:!?]*)?/i,
+      "",
+    )
     .trim();
 }
+
+// Testler icin: bulut yazisindan uyandirma sozunun ayiklanmasi.
+if (typeof window !== "undefined") window.__draUyandirmaAyikla = stripWakeWord;
+
+/*
+ * Bulutta tanima uygulamanin durumunu bilmeli: uyurken yalnizca "DRA"
+ * denen cumleler disari gidiyor, DRA mesgulken hic cumle gonderilmiyor.
+ */
+speech.bulutaBagla({
+  uyanik: () => state.current !== S.SLEEPING,
+  mesgul: () => busy || state.current === S.SPEAKING,
+  uyandirirMi: isWakePhrase,
+});
 
 let waking = false;
 /**
@@ -407,11 +424,13 @@ function goToSleep(farewell) {
 
 let lastFinalAt = 0;
 
-on("heard", ({ text, alternatives, final }) => {
+on("heard", ({ text, alternatives, final, uyandirma }) => {
   // --- uyku modu: sadece uyandirma kelimesi ile ilgileniyoruz --------
   if (state.current === S.SLEEPING) {
     hud.sleepStatus(`duyulan: "${text}"`, null);
-    const hit = alternatives.find((alt) => isWakePhrase(alt));
+    // Bulut yazisi "DRA"yi baska yazmis olabilir; cihazdaki motor o
+    // cumlede DRA'yi duyduysa (uyandirma) yine uyaniyoruz.
+    const hit = alternatives.find((alt) => isWakePhrase(alt)) || (uyandirma ? text : null);
     if (hit) wakeUp(hit);
     return;
   }
@@ -436,6 +455,29 @@ on("heard", ({ text, alternatives, final }) => {
   const command = stripWakeWord(text);
   if (!command || command.length < 2) return;
   handleUtterance(command);
+});
+
+/**
+ * Bulutta tanima acikken ara sonuc yok: cumle bitince yazi geliyor.
+ * Arada kullanici bos ekrana bakmasin diye durumu gosteriyoruz.
+ */
+on("segment", ({ status }) => {
+  if (state.current === S.SLEEPING || busy || state.current === S.SPEAKING) return;
+  if (status === "dinliyor") {
+    hud.setCaption("…", "interim");
+    setState(S.LISTENING);
+  } else if (status === "cozuluyor") {
+    hud.setCaption("anliyorum…", "interim");
+  } else if (status === "bos" && state.current === S.LISTENING) {
+    hud.setCaption("", "interim");
+    setState(S.IDLE);
+  }
+});
+
+on("stt", ({ message }) => {
+  if (!message) return;
+  hud.log("system", message);
+  hud.toast(message, 8000);
 });
 
 /* ============================================================ mikrofon durumu */
@@ -1582,10 +1624,20 @@ const ctx = {
     const duyulanlar = [];
     let sonAra = "";
 
-    const birak = speech.listenRaw(({ text, final }) => {
+    const bulut = speech.bulutHazir();
+    if (bulut) {
+      hud.log(
+        "system",
+        "Iki motor birden dinliyor: «cihaz» uyandirma icin, «ElevenLabs» asil yazi icin. " +
+          "Ikisini karsilastirabilirsiniz.",
+      );
+    }
+
+    const birak = speech.listenRaw(({ text, final, kaynak }) => {
       if (final) {
-        duyulanlar.push(text);
-        hud.log("system", `duydum → "${text}"`);
+        const etiket = kaynak === "bulut" ? "ElevenLabs" : "cihaz";
+        duyulanlar.push(`${etiket}: ${text}`);
+        hud.log("system", `duydum (${etiket}) → "${text}"`);
         sonAra = "";
       } else if (text !== sonAra) {
         // Ara sonuclar cok sik geliyor; yalnizca degisince yaziyoruz.
@@ -1616,6 +1668,7 @@ const ctx = {
           heading: "Ortam",
           rows: [
             ["Komut kipi", store.commandMode ? `acik (${sozluk?.length || 0} sozcuk)` : "kapali"],
+            ["Yaziya ceviren", bulut ? "ElevenLabs (bulut)" : "cihazdaki model"],
             ["Ses yolu", yakalama.engine === "worklet" ? "ayri is parcaciginda" : String(yakalama.engine || "—")],
             ["Ornekleme", `${yakalama.contextRate || "—"} Hz`],
             ["Giden parca", String(yakalama.chunks || 0)],
@@ -1632,6 +1685,18 @@ const ctx = {
           "seviye oynuyorsa motor sesi anlamiyor demektir.",
       );
     }
+  },
+
+  /**
+   * Ses tanima saglayicisini uygular. ElevenLabs anahtari varsa ve
+   * kullanici "yerel"e cekmediyse cumleler (uyandiktan sonra) oraya gider.
+   * Anahtar ana surecte tutulmuyor; her acilista yeniden bildiriliyor.
+   */
+  applySttProvider: async () => {
+    const key = store.sttProvider === "elevenlabs" ? store.elevenKey : "";
+    const durum = await system.configureSttCloud(key);
+    speech.bulutuYenile();
+    return durum;
   },
 
   /** Komut kipi ayarini calisan motora uygular. */
@@ -1708,6 +1773,27 @@ const ctx = {
     // motorunda hep sifir kalir; oraya bakip "ses ulasmiyor" demek
     // yanlis yonlendirir.
     const gomuluKipte = speech.embeddedAvailable() && store.speechEngine !== "tarayici";
+    if (gomuluKipte) {
+      const b = speech.bulutDurumu();
+      lines.push(
+        `Yaziya ceviren: ${
+          b.aktif
+            ? "ElevenLabs (DRA uyaninca)"
+            : b.arizada
+              ? "ElevenLabs ARIZALI — gecici olarak cihazdaki model"
+              : store.sttProvider === "yerel"
+                ? "cihazdaki model (ayardan secildi)"
+                : "cihazdaki model (ElevenLabs anahtari yok)"
+        }`,
+      );
+      if (b.gonderilen) {
+        lines.push(
+          `Buluta giden cumle: ${b.gonderilen}, basarili ${b.basarili}, hata ${b.hata}` +
+            (b.sonSureMs ? `, son cevap ${b.sonSureMs} ms` : ""),
+        );
+      }
+      if (b.sonHata) lines.push(`Son bulut hatasi: ${b.sonHata}`);
+    }
     const yakalama = gomuluKipte ? speech.micHealth?.() : null;
     if (yakalama) {
       const gecen = yakalama.lastChunkAt
@@ -1871,6 +1957,11 @@ async function connectServer() {
     if (store.ttsProvider === "elevenlabs" && store.elevenKey) {
       await system.configureTts(store.elevenKey, store.elevenVoice, store.elevenModel);
     }
+    // Ses tanima da ayni anahtari kullaniyor (seslendirme secili olmasa bile).
+    // Basarisiz olursa sunucu baglantisi kopmus sayilmasin; yerel motor calisir.
+    await ctx.applySttProvider().catch((err) =>
+      console.warn("[dra] ses tanima ayari bildirilemedi:", err?.message || err),
+    );
     // Google arama anahtari da ayni sekilde: diskte yalnizca bu
     // tarayicida durur, arka tarafa her acilista bildirilir.
     if (store.googleKey && store.googleCx) {

@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import * as apps from "../server/apps.mjs";
 import * as kick from "../server/kick.mjs";
 import * as tts from "../server/tts.mjs";
+import * as sttBulut from "../server/stt-bulut.mjs";
 import * as piper from "../server/piper.mjs";
 import * as control from "../server/control.mjs";
 import * as media from "../server/media.mjs";
@@ -385,6 +386,7 @@ function registerIpc() {
     search: { enabled: searchEnabled, google: googleDurumu() },
     kick: kick.status(),
     tts: tts.status(),
+    sttCloud: sttBulut.status(),
     piper: piper.status(),
     mail: mail.status(),
     youtube: youtube.status(),
@@ -681,6 +683,15 @@ function registerIpc() {
     // Ses baytlari base64 olarak arayuze gecer; anahtar ana surecte kalir.
     return { audio: audio.toString("base64"), type, chars, truncated };
   });
+
+  /* ----------------------------------------- bulutta ses tanima ---- */
+
+  handle("dra:stt:cloud:configure", async ({ key, model }) => ({
+    status: sttBulut.configure({ key, model }),
+  }));
+
+  // Ses baytlari burada metne donusur; anahtar arayuze hic gecmez.
+  handle("dra:stt:cloud", async ({ pcm }) => await sttBulut.transcribe(pcm));
 
   /* --------------------------------------------- gomulu ses tanima -- */
 

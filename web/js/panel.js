@@ -287,6 +287,10 @@ export function syncSettings() {
   $("montage-music-info").textContent = store.montageMusic || "Muzik secilmedi";
 
   syncSwitch($("set-command-mode"), store.commandMode);
+  $("set-stt").value = store.sttProvider;
+  $("row-stt-key").hidden = store.sttProvider !== "elevenlabs";
+  $("set-stt-key").value = store.elevenKey;
+  refreshSttStatus();
   $("set-google-key").value = store.googleKey;
   $("set-google-cx").value = store.googleCx;
   refreshGoogleStatus();
@@ -978,6 +982,28 @@ function refreshElevenStatus() {
   }
 }
 
+/** Yaziya ceviren motorun durumunu ayar panelinde gosterir. */
+function refreshSttStatus(ek) {
+  const el = $("stt-status");
+  if (!el) return;
+  if (ek) {
+    el.textContent = ek;
+    return;
+  }
+  const b = speech.bulutDurumu();
+  if (store.sttProvider === "yerel") {
+    el.textContent = "Cihazdaki model — hicbir ses disari gitmiyor";
+  } else if (!store.elevenKey) {
+    el.textContent = "Anahtar girilmedi — simdilik cihazdaki model kullaniliyor";
+  } else if (b.arizada) {
+    el.textContent = `Gecici olarak cihazdaki model: ${b.sonHata || "ElevenLabs cevap vermedi"}`;
+  } else if (b.hazir) {
+    el.textContent = "Hazir — DRA uyaninca cumleler ElevenLabs'e gidiyor";
+  } else {
+    el.textContent = "Ayarlar henuz bildirilmedi";
+  }
+}
+
 /* -------------------------------------------------------------- ses modeli */
 
 /** Model durumunu ayar panelinde gosterir. */
@@ -1629,6 +1655,10 @@ export function mountPanel(context) {
     saveStore();
     speech.resetElevenCache();
     await pushEleven();
+    // Ayni anahtar ses tanimada da kullaniliyor.
+    $("set-stt-key").value = store.elevenKey;
+    await ctx.applySttProvider().catch(() => {});
+    refreshSttStatus();
     // Anahtar girilir girilmez sesleri getiriyoruz; kullanicinin ayrica
     // bir dugmeye basmasi gerekmesin. Yukleme basarisiz olursa sebebini
     // yazar — bunun uzerine durum tazelemek o sebebi silerdi.
@@ -1760,6 +1790,55 @@ export function mountPanel(context) {
     } finally {
       button.dataset.calisiyor = "0";
       button.textContent = "Ne duyuyorsun? (30 sn)";
+    }
+  });
+
+  $("set-stt").addEventListener("change", async (event) => {
+    store.sttProvider = event.target.value === "yerel" ? "yerel" : "elevenlabs";
+    saveStore();
+    $("row-stt-key").hidden = store.sttProvider !== "elevenlabs";
+    try {
+      await ctx.applySttProvider();
+    } catch (err) {
+      ctx.toast(`Uygulanamadi: ${err.message}`, 5000);
+    }
+    refreshSttStatus();
+  });
+
+  $("set-stt-key").addEventListener("change", async (event) => {
+    store.elevenKey = event.target.value.trim();
+    saveStore();
+    $("set-eleven-key").value = store.elevenKey;
+    speech.resetElevenCache();
+    await pushEleven();
+    try {
+      await ctx.applySttProvider();
+    } catch (err) {
+      ctx.toast(`Uygulanamadi: ${err.message}`, 5000);
+    }
+    refreshSttStatus();
+  });
+
+  /*
+   * Yarim saniyelik sessizlik gonderir: anahtar gecerli mi, "Speech to
+   * Text" izni acik mi? Bos yazi donmesi basari demek.
+   */
+  $("set-stt-test").addEventListener("click", async () => {
+    const button = $("set-stt-test");
+    if (!store.elevenKey) {
+      refreshSttStatus("Once anahtari girin.");
+      return;
+    }
+    button.disabled = true;
+    refreshSttStatus("Sinaniyor…");
+    try {
+      await ctx.applySttProvider();
+      const sonuc = await system.sttCloud(new Int16Array(8000));
+      refreshSttStatus(`Calisiyor — ElevenLabs ${sonuc?.seconds ?? 0.5} sn sesi cevirdi.`);
+    } catch (err) {
+      refreshSttStatus(`Calismiyor: ${err.message}`);
+    } finally {
+      button.disabled = false;
     }
   });
 

@@ -313,6 +313,25 @@ export async function run(_page, _base, t) {
     // Web arastirmasi artik hep acik: kullanici oyle istedi.
     t.eq(health.search.enabled, true, "web arastirmasi hep acik");
 
+    // Bulutta ses tanima: anahtar yokken ses kopruden gecer ama disari
+    // cikmaz; anahtar durum yanitina hic yazilmaz.
+    t.eq(health.sttCloud?.ready, false, "bulutta tanima baslangicta kapali");
+    const bulut = await window.evaluate(async () => {
+      const ayar = await window.dra.stt.cloudConfigure("sk-masaustu-deneme");
+      // 0.1 sn: gonderilmeye degmeyecek kadar kisa, ag'a cikmadan doner.
+      // Donen sure, kopruden gecen ornek sayisini kanitliyor.
+      const kisa = await window.dra.stt.cloud(new Int16Array(1600));
+      await window.dra.stt.cloudConfigure("");
+      const sonuc = await window.dra.stt
+        .cloud(new Int16Array(16000))
+        .then(() => ({ code: "YOK" }), (e) => ({ code: e.code, message: e.message }));
+      return { ayar: JSON.stringify(ayar), kisa, sonuc };
+    });
+    t.ok(bulut.ayar.includes('"ready":true'), "anahtar ana surece ulasiyor");
+    t.ok(!bulut.ayar.includes("sk-masaustu"), "anahtar kopruden geri donmuyor");
+    t.eq(bulut.kisa.seconds, 0.1, "ses kopruden ornek kaybetmeden geciyor");
+    t.eq(bulut.sonuc.code, "NO_KEY", "anahtarsiz ses disari gitmiyor");
+
     // Bilgisayar kontrolu izin gerektiriyor.
     const izinsizKontrol = await window.evaluate(() =>
       window.dra.control.run({ action: "mute" }).then(

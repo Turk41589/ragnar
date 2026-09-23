@@ -21,6 +21,13 @@ const DEFAULTS = {
    * artiyor. Karsiligi: serbest soru sormak zorlasir.
    */
   commandMode: true,
+  /*
+   * Konusmayi yaziya ceviren taraf. "elevenlabs" = DRA uyaninca
+   * cumleler ElevenLabs'e gider (WhatsApp'taki gibi dogru yazi;
+   * anahtar yoksa kendiliginden cihazdaki motora duser).
+   * "yerel" = her sey cihazda kalir, dogruluk dusuk.
+   */
+  sttProvider: "elevenlabs",
   speechRate: 1.05,
   bootSequence: true,
   autoSleepMinutes: 2.5, // 0 = otomatik uyku kapali
@@ -99,6 +106,9 @@ function coerce(saved) {
   if (typeof saved.kickToken === "string") store.kickToken = saved.kickToken.slice(0, 400);
   if (typeof saved.kickChannel === "string") store.kickChannel = saved.kickChannel.slice(0, 80);
 
+  if (saved.sttProvider === "yerel" || saved.sttProvider === "elevenlabs") {
+    store.sttProvider = saved.sttProvider;
+  }
   if (["yerel", "elevenlabs", "piper"].includes(saved.ttsProvider)) {
     store.ttsProvider = saved.ttsProvider;
   }

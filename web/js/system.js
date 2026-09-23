@@ -577,6 +577,39 @@ export async function ttsSpeak(text) {
   };
 }
 
+/* ------------------------------------------- bulutta ses tanima (STT) */
+
+/**
+ * ElevenLabs'in konusmayi metne ceviren modelini ayarlar.
+ * Anahtar burada birakilmaz: istegi ana surec/sunucu yapar.
+ */
+export async function configureSttCloud(key, model) {
+  const data = desktop
+    ? await bridge(() => window.dra.stt.cloudConfigure(key, model))
+    : await post("/api/stt/cloud/configure", { key, model });
+  serverInfo.sttCloud = data.status;
+  return data.status;
+}
+
+export const sttCloudReady = () => Boolean(serverInfo.sttCloud?.ready);
+
+/** Int16Array'i base64'e cevirir (HTTP yolu icin). */
+function pcmBase64(pcm) {
+  const bayt = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+  let ikili = "";
+  for (let i = 0; i < bayt.length; i += 0x8000) {
+    ikili += String.fromCharCode.apply(null, bayt.subarray(i, i + 0x8000));
+  }
+  return btoa(ikili);
+}
+
+/** 16 kHz Int16 sesi metne cevirir. Doner: { text, language, seconds } */
+export async function sttCloud(pcm) {
+  return desktop
+    ? await bridge(() => window.dra.stt.cloud(pcm))
+    : await post("/api/stt/cloud", { pcm: pcmBase64(pcm) });
+}
+
 /* --------------------------------------------------- masaustu ozellikleri */
 
 /** Acilista baslatma (yalnizca masaustu surumunde). */

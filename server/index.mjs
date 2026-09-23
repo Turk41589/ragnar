@@ -24,6 +24,7 @@ import { SESSION_TOKEN, rejectReason } from "./guard.mjs";
 import * as apps from "./apps.mjs";
 import * as kick from "./kick.mjs";
 import * as tts from "./tts.mjs";
+import * as sttBulut from "./stt-bulut.mjs";
 import * as piper from "./piper.mjs";
 import * as control from "./control.mjs";
 import * as media from "./media.mjs";
@@ -107,13 +108,13 @@ async function readBody(req, limit = 256 * 1024) {
 }
 
 /** Islem yapan uclarin ortak sarmalayicisi: once guvenlik, sonra is. */
-async function handleAction(req, res, work) {
+async function handleAction(req, res, work, { limit } = {}) {
   const reason = rejectReason(req);
   if (reason) return sendJson(res, 403, { error: reason });
 
   let body;
   try {
-    body = await readBody(req);
+    body = await readBody(req, limit);
   } catch {
     return sendJson(res, 400, { error: "Gecersiz istek govdesi." });
   }
@@ -238,6 +239,7 @@ const server = createServer(async (req, res) => {
       search: { enabled: searchEnabled, google: googleDurumu() },
       kick: kick.status(),
       tts: tts.status(),
+      sttCloud: sttBulut.status(),
     piper: piper.status(),
     mail: mail.status(),
     youtube: youtube.status(),
@@ -328,6 +330,21 @@ const server = createServer(async (req, res) => {
       if (!fn) throw new Error("Bilinmeyen moderasyon islemi.");
       const message = await fn(...(body.args || []));
       return { message: typeof message === "string" ? message : JSON.stringify(message) };
+    });
+  }
+
+  /* ------------------------------------------ bulutta ses tanima -- */
+
+  if (url.pathname === "/api/stt/cloud/configure" && req.method === "POST") {
+    return handleAction(req, res, async (body) => ({
+      status: sttBulut.configure({ key: body.key, model: body.model }),
+    }));
+  }
+
+  if (url.pathname === "/api/stt/cloud" && req.method === "POST") {
+    // 15 sn'lik ses base64 ile ~650 KB; genel sinir 256 KB.
+    return handleAction(req, res, async (body) => await sttBulut.transcribe(body.pcm), {
+      limit: 1024 * 1024,
     });
   }
 
